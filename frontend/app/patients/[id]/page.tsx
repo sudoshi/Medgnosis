@@ -1,3 +1,5 @@
+'use client';
+
 import AdminLayout from '@/components/layout/AdminLayout';
 import {
   ChartBarIcon,

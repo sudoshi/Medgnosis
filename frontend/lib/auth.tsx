@@ -27,17 +27,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Added empty dependency array to run only once on mount
 
   const checkAuth = async () => {
     try {
       const response = await auth.user();
       setUser(response.data);
-      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+      if (window && window.location.pathname === '/login') {
         router.push('/dashboard');
       }
     } catch (error) {
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      if (window && window.location.pathname !== '/login') {
         router.push('/login');
       }
     } finally {

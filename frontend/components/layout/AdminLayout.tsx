@@ -38,7 +38,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     document.documentElement.classList.add('dark');
   }, []);
 
-  const isActive = (href: string) => pathname === href;
+  const isActive = (href: string) => pathname.startsWith(href);
 
   return (
     <div className="min-h-screen bg-gradient-dark text-dark-text-primary">

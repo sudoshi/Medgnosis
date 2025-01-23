@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import {
@@ -69,7 +71,7 @@ function ImportSection() {
   return (
     <div className="card">
       <h2 className="text-lg font-semibold mb-4">Data Import</h2>
-      
+
       {/* Import Form */}
       <div className="p-4 border border-dashed border-dark-border rounded-lg bg-dark-primary">
         <div className="flex items-center justify-center">
@@ -106,9 +108,7 @@ function ImportSection() {
             'Start Import'
           )}
         </button>
-        <button className="btn btn-secondary">
-          Import from Synthea
-        </button>
+        <button className="btn btn-secondary">Import from Synthea</button>
       </div>
 
       {/* Recent Jobs */}
@@ -173,7 +173,7 @@ function ExportSection() {
   return (
     <div className="card">
       <h2 className="text-lg font-semibold mb-4">Data Export</h2>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <button className="btn btn-secondary flex items-center justify-center">
           <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
