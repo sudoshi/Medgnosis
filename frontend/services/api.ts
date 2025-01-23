@@ -69,9 +69,14 @@ interface LoginCredentials {
   password: string;
 }
 
+interface LoginResponse {
+  token: string;
+  user: User;
+}
+
 // API endpoints with type safety
 export const auth = {
-  login: (credentials: LoginCredentials): Promise<AxiosResponse<{ token: string }>> => 
+  login: (credentials: LoginCredentials): Promise<AxiosResponse<LoginResponse>> => 
     api.post('/api/login', credentials),
   logout: (): Promise<AxiosResponse<void>> => 
     api.post('/api/logout'),

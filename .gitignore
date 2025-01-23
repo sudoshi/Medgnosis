@@ -25,6 +25,9 @@ vendor/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+/backend/storage/logs/star-schema-refresh.log
+/backend/storage/logs/synthea-import.log
+/backend/storage/logs/audit.log
 
 # System files
 .DS_Store
@@ -34,3 +37,8 @@ Thumbs.db
 start-dev.sh
 stop-dev.sh
 move-to-frontend.sh
+
+# PHM Data
+/backend/storage/phm/*.sql
+/backend/storage/phm/exports/*
+/backend/storage/phm/imports/*

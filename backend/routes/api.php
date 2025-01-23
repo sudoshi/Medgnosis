@@ -22,9 +22,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [App\Http\Controllers\Auth\AuthController::class, 'logout']);
     Route::get('/user', [App\Http\Controllers\Auth\AuthController::class, 'user']);
 
-    // Example resource routes
-    Route::apiResource('example', App\Http\Controllers\ExampleController::class);
+    // Core Clinical Data API
+    Route::prefix('v1')->group(function () {
+        // Patient routes
+        Route::apiResource('patients', App\Http\Controllers\PatientController::class);
 
-    // Dashboard routes
-    Route::get('/v1/dashboard', [App\Http\Controllers\DashboardController::class, 'getData']);
+        // Dashboard routes
+        Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'getData']);
+    });
 });

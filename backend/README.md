@@ -1,66 +1,284 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Population Health Management API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This Laravel-based API provides a comprehensive backend for population health management, implementing both an Inmon-style EDW and Kimball star schema for analytics.
 
-## About Laravel
+## Architecture
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+The system uses a dual-schema approach:
+- `phm_edw`: Inmon-style normalized EDW for transactional data
+- `phm_star`: Kimball star schema for analytics and reporting
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### Key Components
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+1. **Core Models**
+   - Patient
+   - Provider
+   - Organization
+   - Encounter
+   - Condition/Diagnosis
+   - Observation
+   - Procedure
 
-## Learning Laravel
+2. **Analytics**
+   - Risk Stratification
+   - Care Gap Analysis
+   - Quality Measures
+   - Population Health Metrics
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+3. **Security**
+   - Field-level encryption for PHI
+   - Audit logging for all PHI access
+   - Role-based access control
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Setup
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+1. Install dependencies:
+   ```bash
+   composer install
+   ```
 
-## Laravel Sponsors
+2. Configure environment:
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+3. Configure PostgreSQL connection in `.env`:
+   ```
+   DB_CONNECTION=pgsql
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_DATABASE=your_database
+   DB_USERNAME=your_username
+   DB_PASSWORD=your_password
+   ```
 
-### Premium Partners
+4. Run migrations and seeders:
+   ```bash
+   php artisan migrate
+   php artisan db:seed
+   ```
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+5. Schedule ETL process:
+   ```bash
+   # Add to crontab
+   * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+   ```
 
-## Contributing
+## API Endpoints
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Patient Management
 
-## Code of Conduct
+```
+GET /api/v1/patients
+GET /api/v1/patients/{id}
+POST /api/v1/patients
+PUT /api/v1/patients/{id}
+DELETE /api/v1/patients/{id}
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Response includes:
+- Demographics
+- Clinical summary
+- Risk scores
+- Care gaps
+- Recent encounters
 
-## Security Vulnerabilities
+### Authentication
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```
+POST /api/login
+POST /api/logout
+GET /api/user
+```
 
-## License
+## Data Models
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### EDW Schema (phm_edw)
+
+Core entities with full history:
+- address
+- organization
+- provider
+- patient
+- encounter
+- condition_diagnosis
+- procedure_performed
+- observation
+- medication_order
+
+### Star Schema (phm_star)
+
+Optimized for analytics:
+
+Dimensions:
+- dim_date
+- dim_patient
+- dim_provider
+- dim_organization
+- dim_condition
+- dim_procedure
+- dim_measure
+
+Facts:
+- fact_encounter
+- fact_diagnosis
+- fact_observation
+- fact_care_gap
+- fact_measure_result
+
+## Commands
+
+### Data Management
+
+1. Export PHM Data:
+```bash
+# Export all tables to CSV
+./export-phm-data.sh
+
+# Files will be saved to storage/phm/exports/
+# Format: {schema}_{table}_{timestamp}.csv
+```
+
+2. Import PHM Data:
+```bash
+# List available import files
+./import-phm-data.sh --list
+
+# Import a specific file
+./import-phm-data.sh --file storage/phm/imports/phm_edw_patient_20240122.csv
+
+# Import all files in imports directory
+./import-phm-data.sh --all
+```
+
+3. Import Synthea Data:
+```bash
+# Import all data types
+php artisan phm:import-synthea
+
+# Import specific data type
+php artisan phm:import-synthea --type=patients
+
+# Import limited records
+php artisan phm:import-synthea --limit=100
+
+# Available types:
+# - patients
+# - encounters
+# - conditions
+# - observations
+# - all (default)
+```
+
+2. Refresh Star Schema:
+```bash
+php artisan phm:refresh-star-schema
+```
+
+The import process:
+1. Connects to Synthea database
+2. Maps data to PHM EDW schema
+3. Imports records with proper relationships
+4. Optionally refreshes star schema
+
+The star schema refresh:
+1. Updates dimension tables (SCD Type 2)
+2. Refreshes fact tables
+3. Logs process in `storage/logs/star-schema-refresh.log`
+
+## Database Configuration
+
+The system supports multiple data sources:
+
+1. **Primary PHM Database**
+   - Contains EDW and star schemas
+   - Stores all clinical and analytical data
+   - Connection configured via primary DB env vars
+
+2. **Synthea Database**
+   - Contains synthetic patient data
+   - Used for development and testing
+   - Connection configured via SYNTHEA_* env vars
+
+3. **Data Import/Export**
+   - CSV exports stored in `storage/phm/exports/`
+   - CSV imports read from `storage/phm/imports/`
+   - Follows schema_table_timestamp.csv naming convention
+
+1. **PHM Database** (Primary)
+   - Contains EDW and star schemas
+   - Stores all clinical and analytical data
+   - Connection configured via primary DB env vars
+
+2. **Synthea Database** (Source)
+   - Contains synthetic patient data
+   - Used for development and testing
+   - Connection configured via SYNTHEA_* env vars
+
+Configure in `.env`:
+```
+# Primary PHM Database
+DB_CONNECTION=pgsql
+DB_HOST=demo.acumenus.net
+DB_PORT=5432
+DB_DATABASE=PHM
+DB_USERNAME=postgres
+DB_PASSWORD=acumenus
+
+# Synthea Database
+SYNTHEA_DB_HOST=demo.acumenus.net
+SYNTHEA_DB_PORT=5432
+SYNTHEA_DB_DATABASE=synthea
+SYNTHEA_DB_USERNAME=postgres
+SYNTHEA_DB_PASSWORD=acumenus
+```
+
+## Security Features
+
+1. **PHI Protection**
+   - Sensitive fields (SSN, MRN) are encrypted at rest
+   - Access to PHI is logged and audited
+
+2. **Audit Logging**
+   - All PHI access is logged to `storage/logs/audit.log`
+   - Logs include user, timestamp, IP, and action
+
+3. **Access Control**
+   - Role-based access control
+   - Field-level security for sensitive data
+
+## Development
+
+### Adding New Features
+
+1. Create migration for EDW tables:
+   ```bash
+   php artisan make:migration create_new_edw_table --path=database/migrations/edw
+   ```
+
+2. Create migration for star schema:
+   ```bash
+   php artisan make:migration create_new_star_table --path=database/migrations/star
+   ```
+
+3. Update ETL process in `RefreshStarSchema` command
+
+### Testing
+
+Run tests:
+```bash
+php artisan test
+```
+
+## Maintenance
+
+### Daily Tasks
+- Star schema refresh (automated at midnight)
+- Audit log rotation
+- Backup verification
+
+### Monthly Tasks
+- Review audit logs
+- Update reference data
+- Verify data quality metrics

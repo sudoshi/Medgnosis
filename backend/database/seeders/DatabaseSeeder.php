@@ -14,17 +14,23 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
+        // Create test users
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
+            'password' => Hash::make('password'),
         ]);
 
         User::factory()->create([
             'name' => 'Sudoshi',
             'email' => 'sudoshi@acumenus.io',
             'password' => Hash::make('acumenus'),
+        ]);
+
+        // Seed reference data first
+        $this->call([
+            CoreReferenceSeeder::class,
+            TestPatientSeeder::class,
         ]);
     }
 }
