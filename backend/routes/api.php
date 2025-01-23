@@ -14,19 +14,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Auth routes with better error handling
-Route::post('/login', [App\Http\Controllers\Auth\AuthController::class, 'login'])
-    ->middleware(['throttle:6,1'])
-    ->name('login');
-
-Route::post('/logout', [App\Http\Controllers\Auth\AuthController::class, 'logout'])
-    ->middleware(['auth'])
-    ->name('logout');
-
-Route::get('/user', [App\Http\Controllers\Auth\AuthController::class, 'user'])
-    ->middleware(['auth'])
-    ->name('user');
-
 // Protected API routes
 Route::middleware(['web', 'auth'])->prefix('v1')->group(function () {
     // Patient routes

@@ -31,16 +31,18 @@ class AuthController extends Controller
                     'email' => $request->email,
                     'ip' => $request->ip()
                 ]);
-                throw ValidationException::withMessages([
-                    'email' => ['No account found with this email address.'],
-                ]);
+                return response()->json([
+                    'message' => 'No account found with this email address.',
+                    'error' => 'invalid_credentials'
+                ], 401);
             }
 
             // Verify database connection
             if (!DB::connection()->getDatabaseName()) {
                 Log::error('Database connection failed during login attempt');
                 return response()->json([
-                    'message' => 'Service temporarily unavailable. Please try again later.'
+                    'message' => 'Service temporarily unavailable. Please try again later.',
+                    'error' => 'database_error'
                 ], 503);
             }
 
@@ -49,9 +51,10 @@ class AuthController extends Controller
                     'email' => $request->email,
                     'ip' => $request->ip()
                 ]);
-                throw ValidationException::withMessages([
-                    'email' => ['The provided credentials are incorrect.'],
-                ]);
+                return response()->json([
+                    'message' => 'The provided credentials are incorrect.',
+                    'error' => 'invalid_credentials'
+                ], 401);
             }
 
             Log::info('User logged in successfully', [
@@ -63,14 +66,19 @@ class AuthController extends Controller
                 'user' => $request->user()
             ]);
         } catch (ValidationException $e) {
-            throw $e;
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Unexpected error during login', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'email' => $request->email ?? 'not provided'
             ]);
             return response()->json([
-                'message' => 'An unexpected error occurred. Please try again later.'
+                'message' => 'An unexpected error occurred. Please try again later.',
+                'error' => 'server_error'
             ], 500);
         }
     }
@@ -84,16 +92,21 @@ class AuthController extends Controller
             $user = $request->user();
             if (!$user) {
                 Log::warning('User fetch attempt without valid session');
-                return response()->json(['message' => 'Not authenticated'], 401);
+                return response()->json([
+                    'message' => 'Not authenticated',
+                    'error' => 'no_session'
+                ], 401);
             }
             return response()->json($user);
         } catch (\Exception $e) {
             Log::error('Error fetching user data', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'user_id' => $request->user()?->id
             ]);
             return response()->json([
-                'message' => 'Error fetching user data'
+                'message' => 'Error fetching user data',
+                'error' => 'server_error'
             ], 500);
         }
     }
@@ -118,10 +131,12 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             Log::error('Error during logout', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'user_id' => Auth::id()
             ]);
             return response()->json([
-                'message' => 'Error during logout'
+                'message' => 'Error during logout',
+                'error' => 'server_error'
             ], 500);
         }
     }

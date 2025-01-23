@@ -12,8 +12,8 @@ export default function LoadingLogin() {
           <Image
             src="/images/acumenus-logo.png"
             alt="Acumenus Logo"
-            width={200}
-            height={50}
+            width={300} // Increase/decrease this value
+            height={75} // Adjust proportionally with the width
             className="mx-auto mb-8"
           />
         </div>
