@@ -65,6 +65,7 @@ class CoreReferenceSeeder extends Seeder
         // Seed Quality Measures
         DB::table('phm_star.dim_measure')->insert([
             [
+                'measure_id' => 1,
                 'measure_code' => 'DM_A1C_CONTROL',
                 'measure_name' => 'Diabetes: HbA1c Poor Control (>9%)',
                 'measure_type' => 'CHRONIC',
@@ -72,6 +73,7 @@ class CoreReferenceSeeder extends Seeder
                 'created_at' => now(),
             ],
             [
+                'measure_id' => 2,
                 'measure_code' => 'HTN_BP_CONTROL',
                 'measure_name' => 'Controlling High Blood Pressure',
                 'measure_type' => 'CHRONIC',
@@ -79,12 +81,13 @@ class CoreReferenceSeeder extends Seeder
                 'created_at' => now(),
             ],
             [
+                'measure_id' => 3,
                 'measure_code' => 'RISK_SCORE',
                 'measure_name' => 'Patient Risk Score',
                 'measure_type' => 'ANALYTICS',
                 'description' => 'Composite risk score based on clinical, demographic, and social determinants of health factors.',
                 'created_at' => now(),
-            ],
+            ]
         ]);
 
         // Seed Organizations

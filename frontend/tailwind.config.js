@@ -64,6 +64,6 @@ module.exports = {
     },
   },
   plugins: [
-    require('@heroicons/react'),
+    require('@heroicons/react/24/solid'),
   ],
 }

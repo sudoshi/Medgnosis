@@ -2,58 +2,43 @@ import axios from 'axios';
 import type { AxiosInstance, AxiosResponse } from 'axios';
 
 const api: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'X-Requested-With': 'XMLHttpRequest'
   },
-  withCredentials: true // Required for Sanctum authentication
+  withCredentials: true,
+  // Increase timeout for slower connections
+  timeout: 10000
 });
 
-// Response interceptor for handling errors
+// Get CSRF token before making requests
+api.interceptors.request.use(async (config) => {
+  try {
+    await axios.get(`${api.defaults.baseURL}/sanctum/csrf-cookie`, {
+      withCredentials: true
+    });
+  } catch (error) {
+    console.error('Failed to fetch CSRF token:', error);
+  }
+  return config;
+});
+
+// Error handling interceptor with navigation
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: any) => {
+  async (error: any) => {
     if (axios.isAxiosError(error)) {
-      console.error('API Error:', error.response?.data);
-      if (error.response?.status === 401) {
-        // Handle unauthorized access
+      if (error.response?.status === 401 && window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
+      // Handle other errors
+      console.error('API Error:', error.response?.data?.message || error.message);
     }
     return Promise.reject(error);
   }
 );
-
-// Request interceptor for adding CSRF token
-api.interceptors.request.use(async (config) => {
-  try {
-    // Get CSRF cookie from Laravel before making requests
-    if (!document.cookie.includes('XSRF-TOKEN')) {
-      await axios.get('http://localhost:8000/sanctum/csrf-cookie', {
-        withCredentials: true,
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      });
-    }
-
-    // Get XSRF token from cookie
-    const xsrfToken = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('XSRF-TOKEN='))
-      ?.split('=')[1];
-
-    if (xsrfToken) {
-      config.headers['X-XSRF-TOKEN'] = decodeURIComponent(xsrfToken);
-    }
-  } catch (error) {
-    console.error('Error setting up request:', error);
-  }
-  return config;
-});
 
 export default api;
 
@@ -69,16 +54,11 @@ interface LoginCredentials {
   password: string;
 }
 
-interface LoginResponse {
-  token: string;
-  user: User;
-}
-
 // API endpoints with type safety
 export const auth = {
-  login: (credentials: LoginCredentials): Promise<AxiosResponse<LoginResponse>> => 
+  login: (credentials: LoginCredentials): Promise<AxiosResponse<{ user: User }>> => 
     api.post('/api/login', credentials),
-  logout: (): Promise<AxiosResponse<void>> => 
+  logout: (): Promise<AxiosResponse<{ message: string }>> => 
     api.post('/api/logout'),
   user: (): Promise<AxiosResponse<User>> => 
     api.get('/api/user')
@@ -93,44 +73,39 @@ interface CrudOperations<T> {
 }
 
 // Dashboard data types
-interface RiskScore {
-  total: number;
-}
-
-interface RiskData {
-  riskScore: RiskScore;
-  factorBreakdown: Record<string, number>;
-  trending: Array<{
-    month: string;
-    risk_score: number;
-  }>;
-}
-
-interface MeasureData {
-  historical_trend: Array<{
-    month_name: string;
-    compliance_rate: number;
-  }>;
-  current_rate: {
-    rate: number;
-  };
-  improvement_opportunities: Array<{
-    description: string;
-    potential_impact: string;
-  }>;
-}
-
-interface Alert {
-  level: 'critical' | 'warning' | 'info';
-  message: string;
-  action_required?: string;
-  contributing_factors?: Record<string, number>;
-}
-
 export interface DashboardData {
-  riskData: RiskData;
-  measureData: MeasureData;
-  alerts: Alert[];
+  stats: {
+    totalPatients: {
+      value: number;
+      trend: number;
+    };
+    riskScore: {
+      value: number;
+      trend: number;
+    };
+    careGaps: {
+      value: number;
+      trend: number;
+    };
+    encounters: {
+      value: number;
+      trend: number;
+    };
+  };
+  careGaps: Array<{
+    id: number;
+    patient: string;
+    measure: string;
+    days_open: number;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+  highRiskPatients: Array<{
+    id: number;
+    name: string;
+    riskScore: number;
+    conditions: string[];
+    lastEncounter: string;
+  }>;
 }
 
 // Example of using the generic CRUD type

@@ -14,20 +14,26 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Public routes
-Route::post('/login', [App\Http\Controllers\Auth\AuthController::class, 'login']);
+// Auth routes with better error handling
+Route::middleware(['web'])->group(function () {
+    Route::post('/login', [App\Http\Controllers\Auth\AuthController::class, 'login'])
+        ->middleware(['throttle:6,1'])
+        ->name('login');
 
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [App\Http\Controllers\Auth\AuthController::class, 'logout']);
-    Route::get('/user', [App\Http\Controllers\Auth\AuthController::class, 'user']);
+    Route::post('/logout', [App\Http\Controllers\Auth\AuthController::class, 'logout'])
+        ->middleware(['auth'])
+        ->name('logout');
 
-    // Core Clinical Data API
-    Route::prefix('v1')->group(function () {
-        // Patient routes
-        Route::apiResource('patients', App\Http\Controllers\PatientController::class);
+    Route::get('/user', [App\Http\Controllers\Auth\AuthController::class, 'user'])
+        ->middleware(['auth'])
+        ->name('user');
+});
 
-        // Dashboard routes
-        Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'getData']);
-    });
+// Protected API routes
+Route::middleware(['web', 'auth'])->prefix('v1')->group(function () {
+    // Patient routes
+    Route::apiResource('patients', App\Http\Controllers\PatientController::class);
+
+    // Dashboard routes
+    Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'getData']);
 });

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 import { auth } from '@/services/api';
 
 interface User {
@@ -30,33 +31,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const response = await auth.user();
-        setUser(response.data);
+      const response = await auth.user();
+      setUser(response.data);
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        router.push('/dashboard');
       }
     } catch (error) {
-      localStorage.removeItem('token');
-      router.push('/login');
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        router.push('/login');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const login = async (email: string, password: string) => {
-    const response = await auth.login({ email, password });
-    localStorage.setItem('token', response.data.token);
-    setUser(response.data.user);
-    router.push('/dashboard');
+    try {
+      setLoading(true);
+      const response = await auth.login({ email, password });
+      setUser(response.data.user);
+      router.push('/dashboard');
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || 'Login failed');
+      }
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = async () => {
     try {
+      setLoading(true);
       await auth.logout();
-    } finally {
-      localStorage.removeItem('token');
       setUser(null);
       router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 

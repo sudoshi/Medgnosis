@@ -21,13 +21,26 @@ composer install
 echo -e "${YELLOW}Generating application key...${NC}"
 php artisan key:generate
 
-# Run migrations
-echo -e "${YELLOW}Running database migrations...${NC}"
-php artisan migrate
+# Test database connection
+echo -e "${YELLOW}Testing database connection...${NC}"
+if ! php artisan db:show --json > /dev/null 2>&1; then
+    echo -e "\033[0;31mError: Could not connect to database. Please check your .env configuration.${NC}"
+    exit 1
+fi
 
-# Run core reference data seeder
-echo -e "${YELLOW}Seeding core reference data...${NC}"
-php artisan db:seed --class=CoreReferenceSeeder
+# Run migrations and ensure test users exist
+echo -e "${YELLOW}Running database migrations...${NC}"
+if ! php artisan migrate --force; then
+    echo -e "\033[0;31mError: Migration failed.${NC}"
+    exit 1
+fi
+
+# Ensure test users exist
+echo -e "${YELLOW}Ensuring test users exist...${NC}"
+if ! php artisan users:ensure-test; then
+    echo -e "\033[0;31mError: Failed to create test users.${NC}"
+    exit 1
+fi
 
 # Ask if user wants to import Synthea data
 echo -e "${YELLOW}Would you like to import data from Synthea? (y/n)${NC}"

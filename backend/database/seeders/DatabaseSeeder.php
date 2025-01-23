@@ -31,6 +31,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             CoreReferenceSeeder::class,
             TestPatientSeeder::class,
+            QualityMeasureSeeder::class,
         ]);
     }
 }

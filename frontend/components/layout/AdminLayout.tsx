@@ -1,5 +1,7 @@
+'use client';
+
 import { ReactNode, useEffect } from 'react';
-import { useRouter } from 'next/router';
+import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
   ChartBarIcon,
@@ -29,13 +31,14 @@ const navigation: NavItem[] = [
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   // Force dark mode
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);
 
-  const isActive = (href: string) => router.pathname === href;
+  const isActive = (href: string) => pathname === href;
 
   return (
     <div className="min-h-screen bg-gradient-dark text-dark-text-primary">
@@ -93,7 +96,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               </div>
             </div>
             <button
-              onClick={() => router.push('/logout')}
+              onClick={() => router.push('/login')}
               className="mt-4 flex w-full items-center rounded-lg px-3 py-2 text-sm text-dark-text-secondary hover:bg-dark-secondary"
             >
               <ArrowLeftOnRectangleIcon className="mr-2 h-5 w-5" />

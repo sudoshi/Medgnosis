@@ -1,13 +1,11 @@
-import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { ClientLayout } from './client-layout';
+import { metadata } from './metadata';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: 'Population Health Platform',
-  description: 'A comprehensive platform for population health management',
-};
+export { metadata };
 
 export default function RootLayout({
   children,
@@ -15,9 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className={`${inter.className} bg-dark-primary text-dark-text-primary antialiased`}>
-        {children}
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );

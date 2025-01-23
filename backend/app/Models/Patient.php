@@ -35,6 +35,7 @@ class Patient extends Model
         'next_of_kin_name',
         'next_of_kin_phone',
         'active_ind',
+        'risk_score',
     ];
 
     /**
@@ -48,6 +49,7 @@ class Patient extends Model
         'effective_end_date' => 'date',
         'created_date' => 'datetime',
         'updated_date' => 'datetime',
+        'risk_score' => 'decimal:2',
     ];
 
     /**
@@ -98,6 +100,14 @@ class Patient extends Model
     public function observations()
     {
         return $this->hasMany(Observation::class);
+    }
+
+    /**
+     * Get the care gaps for the patient.
+     */
+    public function careGaps()
+    {
+        return $this->hasMany(CareGap::class);
     }
 
     /**

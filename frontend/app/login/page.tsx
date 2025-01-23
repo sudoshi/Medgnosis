@@ -2,18 +2,17 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
+  const { login, loading } = useAuth();
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
     setError('');
 
     const formData = new FormData(e.currentTarget);
@@ -22,10 +21,12 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-    } catch (err: unknown) {
-      setError('Invalid email or password');
-    } finally {
-      setIsLoading(false);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
     }
   };
 
@@ -38,6 +39,8 @@ export default function LoginPage() {
             alt="Acumenus Logo"
             width={200}
             height={50}
+            priority
+            style={{ width: '200px', height: '50px' }}
             className="mx-auto mb-8"
           />
         </div>
@@ -101,17 +104,17 @@ export default function LoginPage() {
               </div>
 
               <div className="text-sm">
-                <button
-                  onClick={() => router.push('/reset-password')}
-                  className="font-medium text-accent-primary hover:text-accent-primary/80 transition-colors"
-                >
-                  Forgot your password?
-                </button>
+              <Link
+                href="/reset-password"
+                className="font-medium text-accent-primary hover:text-accent-primary/80 transition-colors"
+              >
+                Forgot your password?
+              </Link>
               </div>
             </div>
 
             {error && (
-              <div className="text-accent-error text-sm text-center animate-fade-in">
+              <div className="text-accent-error text-sm text-center animate-fade-in bg-accent-error/10 p-2 rounded">
                 {error}
               </div>
             )}
@@ -119,12 +122,22 @@ export default function LoginPage() {
             <div>
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={loading}
                 className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-accent-primary hover:bg-accent-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-primary transition-colors ${
-                  isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                  loading ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                {isLoading ? 'Signing in...' : 'Sign in'}
+                {loading ? (
+                  <div className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Signing in...
+                  </div>
+                ) : (
+                  'Sign in'
+                )}
               </button>
             </div>
           </form>

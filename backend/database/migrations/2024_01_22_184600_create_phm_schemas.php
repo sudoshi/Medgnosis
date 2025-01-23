@@ -19,16 +19,16 @@ class CreatePhmSchemas extends Migration
         $starDdl = File::get(database_path('phm-kimbal-ddl.sql'));
         DB::unprepared($starDdl);
 
-        // Grant permissions to the Laravel database user
-        // Note: Replace 'laravel' with your actual database username from .env
+        // Grant permissions to the database user
+        $dbUsername = config('database.connections.pgsql.username');
         DB::unprepared("
-            GRANT USAGE ON SCHEMA phm_edw TO laravel;
-            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA phm_edw TO laravel;
-            GRANT USAGE ON ALL SEQUENCES IN SCHEMA phm_edw TO laravel;
+            GRANT USAGE ON SCHEMA phm_edw TO {$dbUsername};
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA phm_edw TO {$dbUsername};
+            GRANT USAGE ON ALL SEQUENCES IN SCHEMA phm_edw TO {$dbUsername};
 
-            GRANT USAGE ON SCHEMA phm_star TO laravel;
-            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA phm_star TO laravel;
-            GRANT USAGE ON ALL SEQUENCES IN SCHEMA phm_star TO laravel;
+            GRANT USAGE ON SCHEMA phm_star TO {$dbUsername};
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA phm_star TO {$dbUsername};
+            GRANT USAGE ON ALL SEQUENCES IN SCHEMA phm_star TO {$dbUsername};
         ");
     }
 

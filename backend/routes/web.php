@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
+// Frontend will handle all web routes
+Route::get('/{path?}', function () {
     return view('welcome');
-});
+})->where('path', '.*');

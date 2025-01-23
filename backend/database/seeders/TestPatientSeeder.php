@@ -20,8 +20,8 @@ class TestPatientSeeder extends Seeder
             'state' => 'MA',
             'zip' => '02108',
             'country' => 'USA',
-            'active_ind' => 'Y',
             'created_date' => now(),
+            'active_ind' => 'Y',
         ]);
 
         // Create test provider
