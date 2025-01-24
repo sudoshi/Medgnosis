@@ -131,7 +131,7 @@ export default function QualityMeasures({ data, loading }: QualityMeasuresProps)
   return (
     <div className="space-y-6">
       {/* Overall Performance */}
-      <div className="card analytics-card">
+      <div className="analytics-panel">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Quality Performance</h3>
           <div className="flex items-center space-x-2">
@@ -149,13 +149,13 @@ export default function QualityMeasures({ data, loading }: QualityMeasuresProps)
       </div>
 
       {/* Performance Trend */}
-      <div className="card analytics-card">
+      <div className="analytics-panel">
         <h3 className="text-lg font-semibold mb-4">Performance Trend</h3>
         <TrendChart data={trends.monthly} />
       </div>
 
       {/* Improvement Opportunities */}
-      <div className="card analytics-card">
+      <div className="analytics-panel">
         <h3 className="text-lg font-semibold mb-4">
           Improvement Opportunities
         </h3>

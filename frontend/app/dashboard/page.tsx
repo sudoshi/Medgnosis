@@ -15,6 +15,7 @@ import { mockPatientsList } from '@/services/mockPatientData';
 import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
 import QualityMeasures from '@/components/quality/QualityMeasures';
 import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
+import CareGapSummary from '@/components/analytics/CareGapSummary';
 
 interface StatCardProps {
   loading?: boolean;
@@ -30,7 +31,7 @@ interface StatCardProps {
 
 function StatCard({ title, value, description, icon: Icon, trend, loading }: StatCardProps) {
   return (
-    <div className={`card stat-card ${loading ? 'animate-pulse' : ''}`}>
+    <div className={`stat-panel ${loading ? 'animate-pulse' : ''}`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-dark-text-secondary text-sm font-medium">{title}</p>
@@ -60,56 +61,6 @@ function StatCard({ title, value, description, icon: Icon, trend, loading }: Sta
   );
 }
 
-interface CareGapProps {
-  loading?: boolean;
-  gaps?: Array<{
-    id: number;
-    patient: string;
-    measure: string;
-    days_open: number;
-    priority: 'high' | 'medium' | 'low';
-  }>;
-}
-
-function CareGapsList({ loading, gaps = [] }: CareGapProps) {
-  return (
-    <div className={`card list-card ${loading ? 'animate-pulse' : ''}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Care Gaps</h3>
-        <button className="btn btn-secondary">View All</button>
-      </div>
-      <div className="space-y-4">
-        {gaps.map((gap) => (
-          <div
-            key={gap.id}
-            className="flex items-center justify-between p-3 rounded-lg bg-dark-primary hover:bg-dark-secondary transition-colors"
-          >
-            <div className="flex items-center space-x-3">
-              <div
-                className={`h-2 w-2 rounded-full ${
-                  gap.priority === 'high'
-                    ? 'bg-accent-error'
-                    : gap.priority === 'medium'
-                    ? 'bg-accent-warning'
-                    : 'bg-accent-success'
-                }`}
-              />
-              <div>
-                <p className="font-medium">{gap.patient}</p>
-                <p className="text-sm text-dark-text-secondary">{gap.measure}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2 text-dark-text-secondary">
-              <ClockIcon className="h-4 w-4" />
-              <span className="text-sm">{gap.days_open} days</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const [state, setState] = useState<DashboardData | null>(mockDashboardData);
   const [loading, setLoading] = useState(false);
@@ -133,21 +84,10 @@ export default function DashboardPage() {
           {state && state.stats && (
             <>
               <StatCard
-                title="Total Patients"
-                value={state.stats.totalPatients.value.toLocaleString()}
-                description="Active patients under care"
-                icon={UserGroupIcon}
-                trend={{
-                  value: state.stats.totalPatients.trend,
-                  label: 'vs last month',
-                }}
-                loading={loading}
-              />
-              <StatCard
-                title="Risk Score Avg"
-                value={state.stats.riskScore.value.toString()}
-                description="Population risk assessment"
-                icon={ChartBarIcon}
+                title="High Risk Patients"
+                value={`${state.stats.riskScore.highRiskCount} (${state.stats.riskScore.highRiskPercentage}%)`}
+                description="Patients requiring immediate attention"
+                icon={ExclamationTriangleIcon}
                 trend={{
                   value: state.stats.riskScore.trend,
                   label: 'vs last month',
@@ -158,7 +98,7 @@ export default function DashboardPage() {
                 title="Care Gaps"
                 value={state.stats.careGaps.value.toLocaleString()}
                 description="Open care gaps requiring attention"
-                icon={ExclamationTriangleIcon}
+                icon={ChartBarIcon}
                 trend={{
                   value: state.stats.careGaps.trend,
                   label: 'vs last month',
@@ -176,41 +116,54 @@ export default function DashboardPage() {
                 }}
                 loading={loading}
               />
+              <StatCard
+                title="Total Patients"
+                value={state.stats.totalPatients.value.toLocaleString()}
+                description="Active patients under care"
+                icon={UserGroupIcon}
+                trend={{
+                  value: state.stats.totalPatients.trend,
+                  label: 'vs last month',
+                }}
+                loading={loading}
+              />
             </>
           )}
         </div>
 
         {/* Two Column Layout */}
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <CareGapsList
-            loading={loading}
-            gaps={state?.careGaps}
-          />
-          <HighRiskPatientsList
-            loading={loading}
-            patients={mockPatientsList}
-          />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="h-full">
+            {state?.analytics && (
+              <CareGapSummary
+                summary={state.analytics.careGapSummary}
+                loading={loading}
+              />
+            )}
+          </div>
+          <div className="h-full">
+            <HighRiskPatientsList
+              loading={loading}
+              patients={mockPatientsList}
+            />
+          </div>
         </div>
 
         {/* Analytics Overview */}
-        <div className="col-span-1 lg:col-span-2">
-          {state?.analytics && (
-            <AnalyticsOverview
-              data={state.analytics}
-              loading={loading}
-            />
-          )}
-        </div>
+        {state?.analytics && (
+          <AnalyticsOverview
+            data={state.analytics}
+            loading={loading}
+          />
+        )}
 
         {/* Quality Measures */}
-        <div className="col-span-1 lg:col-span-2">
-          {state?.qualityMeasures && (
-            <QualityMeasures
-              data={state.qualityMeasures}
-              loading={loading}
-            />
-          )}
-        </div>
+        {state?.qualityMeasures && (
+          <QualityMeasures
+            data={state.qualityMeasures}
+            loading={loading}
+          />
+        )}
       </div>
     </AdminLayout>
   );

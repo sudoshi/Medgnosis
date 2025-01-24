@@ -29,12 +29,12 @@ export default function HighRiskPatientsList({
 
   return (
     <>
-      <div className={`card ${loading ? 'animate-pulse' : ''}`}>
+      <div className={`list-panel ${loading ? 'animate-pulse' : ''}`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">High Risk Patients</h3>
           <button className="btn btn-secondary">View All</button>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 h-[300px] overflow-y-auto scrollbar-thin">
           {patients.map((patient) => (
             <button
               key={patient.id}

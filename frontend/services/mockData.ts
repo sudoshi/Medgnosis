@@ -7,8 +7,10 @@ export const mockDashboardData: DashboardData = {
       trend: 5.2
     },
     riskScore: {
-      value: 28.5,
-      trend: -2.1
+      value: 85,
+      trend: 5,
+      highRiskCount: 127,
+      highRiskPercentage: 12.7
     },
     careGaps: {
       value: 145,
@@ -66,16 +68,9 @@ export const mockDashboardData: DashboardData = {
     },
     {
       id: 3,
-      name: "David Thompson",
-      riskScore: 72,
-      conditions: ["COPD", "Depression"],
-      lastEncounter: "2024-01-10"
-    },
-    {
-      id: 4,
-      name: "Linda Martinez",
-      riskScore: 69,
-      conditions: ["Diabetes", "CAD"],
+      name: "Robert Smith",
+      riskScore: 82,
+      conditions: ["COPD", "Depression", "Heart Failure"],
       lastEncounter: "2024-01-20"
     }
   ],

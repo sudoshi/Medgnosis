@@ -97,6 +97,8 @@ export interface DashboardData {
     riskScore: {
       value: number;
       trend: number;
+      highRiskCount: number;
+      highRiskPercentage: number;
     };
     careGaps: {
       value: number;

@@ -1,12 +1,14 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
-  ChartBarIcon,
+  ChartBarSquareIcon,
   UserGroupIcon,
-  DocumentDuplicateIcon,
+  UserIcon,
+  BeakerIcon,
   CogIcon,
   ArrowLeftOnRectangleIcon,
 } from '@heroicons/react/24/outline';
@@ -19,13 +21,14 @@ interface AdminLayoutProps {
 interface NavItem {
   name: string;
   href: string;
-  icon: typeof ChartBarIcon;
+  icon: typeof ChartBarSquareIcon;
 }
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: ChartBarIcon },
-  { name: 'Patients', href: '/patients', icon: UserGroupIcon },
-  { name: 'Data Management', href: '/data', icon: DocumentDuplicateIcon },
+  { name: 'Dashboard', href: '/dashboard', icon: ChartBarSquareIcon },
+  { name: 'Populations', href: '/populations', icon: UserGroupIcon },
+  { name: 'Patients', href: '/patients', icon: UserIcon },
+  { name: 'Measures Library', href: '/measures', icon: BeakerIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
 ];
 

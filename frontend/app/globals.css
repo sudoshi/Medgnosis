@@ -121,44 +121,83 @@
 }
 
 @layer components {
-  /* Card Styles */
+  /* Base Card Style */
   .card {
-    @apply rounded-lg border border-dark-secondary bg-dark-primary shadow-lg transition-all duration-200;
+    @apply rounded-xl border-2 border-dark-secondary border-opacity-30;
+    @apply bg-dark-primary/95 p-6;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 
-  /* Stat Cards (Top Row) */
-  .stat-card {
-    @apply bg-gradient-to-br from-dark-primary to-dark-secondary/50 border-b-2;
-    @apply border-b-accent-primary border-opacity-30;
+  /* Stat Cards */
+  .stat-panel {
+    @apply rounded-xl bg-gradient-to-br from-dark-primary to-dark-primary/95;
+    @apply border-2 border-accent-primary border-opacity-25 p-6;
+    @apply transition-all duration-200;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
   }
 
-  .stat-card:hover {
-    @apply border-opacity-50 shadow-xl transform -translate-y-0.5;
+  .stat-panel:hover {
+    @apply border-opacity-40;
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
   }
 
-  /* List Cards (Care Gaps, High Risk Patients) */
-  .list-card {
-    @apply bg-dark-primary border-l-4;
-    @apply border-l-accent-primary border-opacity-50;
+  /* List Cards */
+  .list-panel {
+    @apply rounded-xl bg-dark-primary/95;
+    @apply border-2 border-accent-primary border-opacity-25 p-6;
+    @apply transition-all duration-200;
+    @apply h-[400px];
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
   }
 
-  .list-card:hover {
-    @apply border-opacity-100 shadow-xl;
+  .list-panel:hover {
+    @apply border-opacity-40;
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
   }
 
   /* Analytics Cards */
-  .analytics-card {
-    @apply bg-dark-primary border-t-2;
-    @apply border-t-accent-primary border-opacity-30;
+  .analytics-panel {
+    @apply rounded-xl bg-dark-primary/95;
+    @apply border-2 border-accent-primary border-opacity-25 p-6;
+    @apply transition-all duration-200;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
   }
 
-  .analytics-card:hover {
-    @apply border-opacity-50 shadow-xl;
+  .analytics-panel:hover {
+    @apply border-opacity-40;
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
   }
 
-  /* General Card Hover */
+  /* Card Hover Effect */
   .card-hover {
-    @apply hover:shadow-xl hover:border-dark-secondary;
+    @apply transition-all duration-200;
+    @apply hover:bg-dark-primary/90;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-hover:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Custom Scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-dark-secondary rounded-sm;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-border;
   }
 }
 
