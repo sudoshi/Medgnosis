@@ -6,159 +6,164 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
-  }
 
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+ 
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+ 
+    --radius: 0.5rem;
+  }
+ 
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
-@layer base {
-  * {
-    @apply border-dark-border;
-  }
-  body {
-    @apply bg-dark-primary text-dark-text-primary;
-    font-feature-settings: "rlig" 1, "calt" 1;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
-/* Custom Scrollbar for Dark Theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-dark-primary;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-dark-border rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-dark-text-secondary;
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateY(-10px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes pulseGlow {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 15px rgba(37, 99, 235, 0.3);
+@keyframes modalGlow {
+  0% {
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.3),
+                0 0 30px rgba(59, 130, 246, 0.1);
   }
   50% {
-    opacity: 0.5;
-    box-shadow: 0 0 25px rgba(37, 99, 235, 0.5);
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.5),
+                0 0 50px rgba(59, 130, 246, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.3),
+                0 0 30px rgba(59, 130, 246, 0.1);
   }
 }
 
-/* Custom Components */
+@keyframes borderPulse {
+  0% {
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    border-color: rgba(59, 130, 246, 0.8);
+  }
+  100% {
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+}
+
+@keyframes modalScale {
+  0% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0.95);
+  }
+}
+
+.modal-animate {
+  animation: modalGlow 3s infinite ease-in-out,
+             borderPulse 3s infinite ease-in-out;
+}
+
+.modal-content {
+  animation: modalScale 0.3s ease-out forwards;
+}
+
 @layer components {
+  /* Card Styles */
   .card {
-    @apply bg-dark-secondary rounded-lg border border-dark-border p-4 shadow-sm transition-all duration-200;
+    @apply rounded-lg border border-dark-secondary bg-dark-primary shadow-lg transition-all duration-200;
   }
 
+  /* Stat Cards (Top Row) */
+  .stat-card {
+    @apply bg-gradient-to-br from-dark-primary to-dark-secondary/50 border-b-2;
+    @apply border-b-accent-primary border-opacity-30;
+  }
+
+  .stat-card:hover {
+    @apply border-opacity-50 shadow-xl transform -translate-y-0.5;
+  }
+
+  /* List Cards (Care Gaps, High Risk Patients) */
+  .list-card {
+    @apply bg-dark-primary border-l-4;
+    @apply border-l-accent-primary border-opacity-50;
+  }
+
+  .list-card:hover {
+    @apply border-opacity-100 shadow-xl;
+  }
+
+  /* Analytics Cards */
+  .analytics-card {
+    @apply bg-dark-primary border-t-2;
+    @apply border-t-accent-primary border-opacity-30;
+  }
+
+  .analytics-card:hover {
+    @apply border-opacity-50 shadow-xl;
+  }
+
+  /* General Card Hover */
   .card-hover {
-    @apply hover:shadow-glow hover:border-accent-primary/50;
+    @apply hover:shadow-xl hover:border-dark-secondary;
   }
+}
 
-  .input {
-    @apply appearance-none block w-full px-3 py-2 border border-dark-border rounded-md shadow-sm 
-           bg-dark-primary text-dark-text-primary placeholder-dark-text-secondary 
-           focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent 
-           transition-colors;
-  }
-
-  .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent 
-           rounded-md shadow-sm text-sm font-medium transition-colors
-           focus:outline-none focus:ring-2 focus:ring-offset-2;
-  }
-
-  .btn-primary {
-    @apply bg-accent-primary text-white hover:bg-accent-primary/90 
-           focus:ring-accent-primary;
-  }
-
-  .btn-secondary {
-    @apply bg-dark-secondary text-dark-text-primary hover:bg-dark-border/50 
-           focus:ring-dark-border;
-  }
-
-  .btn-success {
-    @apply bg-accent-success text-white hover:bg-accent-success/90 
-           focus:ring-accent-success;
-  }
-
-  .btn-warning {
-    @apply bg-accent-warning text-white hover:bg-accent-warning/90 
-           focus:ring-accent-warning;
-  }
-
-  .btn-error {
-    @apply bg-accent-error text-white hover:bg-accent-error/90 
-           focus:ring-accent-error;
-  }
-
-  .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .badge-success {
-    @apply bg-accent-success/10 text-accent-success;
-  }
-
-  .badge-warning {
-    @apply bg-accent-warning/10 text-accent-warning;
-  }
-
-  .badge-error {
-    @apply bg-accent-error/10 text-accent-error;
-  }
-
-  .table-container {
-    @apply w-full overflow-x-auto rounded-lg border border-dark-border;
-  }
-
-  .table {
-    @apply min-w-full divide-y divide-dark-border;
-  }
-
-  .table th {
-    @apply px-6 py-3 bg-dark-secondary text-left text-xs font-medium text-dark-text-secondary uppercase tracking-wider;
-  }
-
-  .table td {
-    @apply px-6 py-4 whitespace-nowrap text-sm text-dark-text-primary;
-  }
-
-  .table tr {
-    @apply bg-dark-primary hover:bg-dark-secondary transition-colors;
-  }
-
-  .table tr:nth-child(even) {
-    @apply bg-dark-secondary/50;
-  }
+/* Ensure modal styles don't affect cards */
+.modal-animate:not(.card) {
+  animation: modalGlow 3s infinite ease-in-out,
+             borderPulse 3s infinite ease-in-out;
 }

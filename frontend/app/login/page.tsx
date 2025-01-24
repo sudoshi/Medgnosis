@@ -20,7 +20,9 @@ export default function LoginPage() {
     const password = formData.get('password') as string;
 
     try {
-      await login(email, password);
+      const remember = formData.get('remember-me') === 'on';
+      await login({ email, password, remember });
+      router.push('/dashboard'); // Redirect to Dashboard after successful login
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
