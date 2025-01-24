@@ -11,6 +11,7 @@ import {
   BeakerIcon,
   CogIcon,
   ArrowLeftOnRectangleIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -22,13 +23,27 @@ interface NavItem {
   name: string;
   href: string;
   icon: typeof ChartBarSquareIcon;
+  children?: Array<{
+    name: string;
+    href: string;
+  }>;
 }
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: ChartBarSquareIcon },
   { name: 'Populations', href: '/populations', icon: UserGroupIcon },
   { name: 'Patients', href: '/patients', icon: UserIcon },
-  { name: 'Measures Library', href: '/measures', icon: BeakerIcon },
+  { 
+    name: 'Measures Library', 
+    href: '/measures', 
+    icon: BeakerIcon,
+    children: [
+      { name: 'Quality Measures', href: '/measures' },
+      { name: 'Performance', href: '/measures/performance' },
+      { name: 'Reports', href: '/measures/reports' }
+    ]
+  },
+  { name: 'Care Lists', href: '/care-lists', icon: ClipboardDocumentListIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
 ];
 
@@ -64,23 +79,41 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             {navigation.map((item) => {
               const active = isActive(item.href);
               return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
-                    active
-                      ? 'bg-accent-primary bg-opacity-10 text-accent-primary shadow-glow'
-                      : 'text-dark-text-secondary hover:bg-dark-secondary'
-                  }`}
-                >
-                  <item.icon
-                    className={`mr-3 h-5 w-5 flex-shrink-0 transition-colors ${
-                      active ? 'text-accent-primary' : 'text-dark-text-secondary'
+                <div key={item.name}>
+                  <Link
+                    href={item.href}
+                    className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
+                      active
+                        ? 'bg-accent-primary bg-opacity-10 text-accent-primary shadow-glow'
+                        : 'text-dark-text-secondary hover:bg-dark-secondary'
                     }`}
-                    aria-hidden="true"
-                  />
-                  {item.name}
-                </Link>
+                  >
+                    <item.icon
+                      className={`mr-3 h-5 w-5 flex-shrink-0 transition-colors ${
+                        active ? 'text-accent-primary' : 'text-dark-text-secondary'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {item.name}
+                  </Link>
+                  {item.children && active && (
+                    <div className="ml-8 mt-2 space-y-1">
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.name}
+                          href={child.href}
+                          className={`block rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
+                            pathname === child.href
+                              ? 'text-accent-primary'
+                              : 'text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-secondary'
+                          }`}
+                        >
+                          {child.name}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

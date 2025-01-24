@@ -1,229 +1,128 @@
 import { useState } from 'react';
 import {
-  ChevronUpDownIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ClockIcon,
+  ChartBarIcon,
   ExclamationTriangleIcon,
+  ClipboardDocumentListIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import type { PatientDetails } from '@/types/patient';
 import PatientDetailModal from '@/components/patients/PatientDetailModal';
 
-interface Column {
-  id: keyof PatientDetails | 'careGapsCount' | 'conditionsCount';
-  label: string;
-  sortable?: boolean;
-  render: (patient: PatientDetails) => React.ReactNode;
-}
-
 interface PopulationGridProps {
   patients: PatientDetails[];
-  loading?: boolean;
 }
 
-const columns: Column[] = [
-  {
-    id: 'name',
-    label: 'Patient',
-    sortable: true,
-    render: (patient) => (
-      <div>
-        <p className="font-medium">{patient.name}</p>
-        <p className="text-sm text-dark-text-secondary">
-          {patient.demographics.age} years • {patient.demographics.gender}
-        </p>
-      </div>
-    ),
-  },
-  {
-    id: 'conditionsCount',
-    label: 'Conditions',
-    sortable: true,
-    render: (patient) => (
-      <div className="flex flex-wrap gap-1">
-        {patient.conditions.map((condition) => (
-          <span
-            key={condition.id}
-            className="inline-block px-2 py-1 text-xs rounded-full bg-dark-secondary text-dark-text-secondary"
-          >
-            {condition.name}
-          </span>
-        ))}
-      </div>
-    ),
-  },
-  {
-    id: 'riskFactors',
-    label: 'Risk Score',
-    sortable: true,
-    render: (patient) => (
-      <div className="flex items-center space-x-2">
-        <span
-          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            patient.riskFactors.level === 'high'
-              ? 'bg-accent-error/10 text-accent-error'
-              : patient.riskFactors.level === 'medium'
-              ? 'bg-accent-warning/10 text-accent-warning'
-              : 'bg-accent-success/10 text-accent-success'
-          }`}
-        >
-          {patient.riskFactors.score}
-        </span>
-        {patient.riskFactors.trending === 'up' && (
-          <ExclamationTriangleIcon className="h-4 w-4 text-accent-error" />
-        )}
-      </div>
-    ),
-  },
-  {
-    id: 'careGapsCount',
-    label: 'Care Gaps',
-    sortable: true,
-    render: (patient) => (
-      <div>
-        {patient.careGaps.length > 0 ? (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-error/10 text-accent-error">
-            {patient.careGaps.length} open
-          </span>
-        ) : (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-success/10 text-accent-success">
-            None
-          </span>
-        )}
-      </div>
-    ),
-  },
-  {
-    id: 'encounters',
-    label: 'Last Encounter',
-    sortable: true,
-    render: (patient) => (
-      <div className="flex items-center space-x-1 text-sm text-dark-text-secondary">
-        <ClockIcon className="h-4 w-4" />
-        <span>
-          {new Date(patient.encounters[0]?.date).toLocaleDateString()}
-        </span>
-      </div>
-    ),
-  },
-];
-
-export default function PopulationGrid({ patients, loading }: PopulationGridProps) {
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof PatientDetails | 'careGapsCount' | 'conditionsCount';
-    direction: 'asc' | 'desc';
-  }>({ key: 'name', direction: 'asc' });
-  const [selectedPatient, setSelectedPatient] = useState<PatientDetails | null>(null);
-
-  const handleSort = (columnId: typeof sortConfig.key) => {
-    setSortConfig((current) => ({
-      key: columnId,
-      direction:
-        current.key === columnId && current.direction === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const getSortedPatients = () => {
-    const sorted = [...patients].sort((a, b) => {
-      if (sortConfig.key === 'careGapsCount') {
-        return (a.careGaps.length - b.careGaps.length) *
-          (sortConfig.direction === 'asc' ? 1 : -1);
-      }
-      if (sortConfig.key === 'conditionsCount') {
-        return (a.conditions.length - b.conditions.length) *
-          (sortConfig.direction === 'asc' ? 1 : -1);
-      }
-      if (sortConfig.key === 'riskFactors') {
-        return (a.riskFactors.score - b.riskFactors.score) *
-          (sortConfig.direction === 'asc' ? 1 : -1);
-      }
-      if (sortConfig.key === 'encounters') {
-        return (new Date(a.encounters[0]?.date).getTime() -
-          new Date(b.encounters[0]?.date).getTime()) *
-          (sortConfig.direction === 'asc' ? 1 : -1);
-      }
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return aValue.localeCompare(bValue) *
-          (sortConfig.direction === 'asc' ? 1 : -1);
-      }
-      return 0;
-    });
-    return sorted;
-  };
-
-  const SortIcon = ({ column }: { column: Column }) => {
-    if (!column.sortable) return null;
-    if (sortConfig.key !== column.id) {
-      return <ChevronUpDownIcon className="h-4 w-4" />;
-    }
-    return sortConfig.direction === 'asc' ? (
-      <ChevronUpIcon className="h-4 w-4" />
-    ) : (
-      <ChevronDownIcon className="h-4 w-4" />
-    );
-  };
-
-  if (loading) {
-    return <div className="animate-pulse">Loading population data...</div>;
-  }
+function PatientCard({ patient }: { patient: PatientDetails }) {
+  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <>
-      <div className="analytics-panel overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th
-                    key={column.id}
-                    className={`px-4 py-3 text-left text-sm font-medium ${
-                      column.sortable ? 'cursor-pointer hover:bg-dark-secondary/50' : ''
-                    }`}
-                    onClick={() =>
-                      column.sortable ? handleSort(column.id) : undefined
-                    }
-                  >
-                    <div className="flex items-center space-x-2">
-                      <span>{column.label}</span>
-                      {column.sortable && (
-                        <span className="text-dark-text-secondary">
-                          <SortIcon column={column} />
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {getSortedPatients().map((patient) => (
-                <tr
-                  key={patient.id}
-                  onClick={() => setSelectedPatient(patient)}
-                  className="hover:bg-dark-secondary/50 cursor-pointer"
-                >
-                  {columns.map((column) => (
-                    <td key={column.id} className="px-4 py-3">
-                      {column.render(patient)}
-                    </td>
-                  ))}
-                </tr>
+      <button
+        onClick={() => setShowDetails(true)}
+        className="p-4 bg-dark-primary hover:bg-dark-secondary border border-dark-border rounded-lg transition-colors"
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-lg font-medium">
+                {`${patient.name.first} ${patient.name.last}`}
+              </h3>
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  patient.riskFactors.level === 'high'
+                    ? 'bg-accent-error/10 text-accent-error'
+                    : patient.riskFactors.level === 'medium'
+                    ? 'bg-accent-warning/10 text-accent-warning'
+                    : 'bg-accent-success/10 text-accent-success'
+                }`}
+              >
+                {patient.riskFactors.level} risk
+              </span>
+            </div>
+            <div className="mt-1 text-sm text-dark-text-secondary">
+              {patient.demographics.age} years • {patient.demographics.gender}
+            </div>
+            <div className="mt-2 text-sm">
+              {patient.conditions.map((condition, index) => (
+                <span key={condition.id}>
+                  {index > 0 && ' • '}
+                  {condition.name}
+                </span>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <div className="text-sm text-dark-text-secondary">Risk Score</div>
+              <div className="text-lg font-medium">{patient.riskFactors.score}</div>
+            </div>
+            <div className="flex flex-col items-end">
+              <div className="text-sm text-dark-text-secondary">Care Gaps</div>
+              <div className="text-lg font-medium">{patient.careGaps.length}</div>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      <PatientDetailModal
+        isOpen={showDetails}
+        onClose={() => setShowDetails(false)}
+        patient={patient}
+      />
+    </>
+  );
+}
+
+export default function PopulationGrid({ patients }: PopulationGridProps) {
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="p-4 bg-dark-primary border border-dark-border rounded-lg">
+          <div className="flex items-center space-x-2">
+            <ExclamationTriangleIcon className="h-5 w-5 text-dark-text-secondary" />
+            <span className="text-dark-text-secondary">High Risk</span>
+          </div>
+          <div className="mt-2 text-2xl font-semibold">
+            {patients.filter(p => p.riskFactors.level === 'high').length}
+          </div>
+        </div>
+        <div className="p-4 bg-dark-primary border border-dark-border rounded-lg">
+          <div className="flex items-center space-x-2">
+            <ChartBarIcon className="h-5 w-5 text-dark-text-secondary" />
+            <span className="text-dark-text-secondary">Average Risk Score</span>
+          </div>
+          <div className="mt-2 text-2xl font-semibold">
+            {Math.round(
+              patients.reduce((acc, p) => acc + p.riskFactors.score, 0) /
+                patients.length
+            )}
+          </div>
+        </div>
+        <div className="p-4 bg-dark-primary border border-dark-border rounded-lg">
+          <div className="flex items-center space-x-2">
+            <ClipboardDocumentListIcon className="h-5 w-5 text-dark-text-secondary" />
+            <span className="text-dark-text-secondary">Total Care Gaps</span>
+          </div>
+          <div className="mt-2 text-2xl font-semibold">
+            {patients.reduce((acc, p) => acc + p.careGaps.length, 0)}
+          </div>
+        </div>
+        <div className="p-4 bg-dark-primary border border-dark-border rounded-lg">
+          <div className="flex items-center space-x-2">
+            <UserGroupIcon className="h-5 w-5 text-dark-text-secondary" />
+            <span className="text-dark-text-secondary">Total Patients</span>
+          </div>
+          <div className="mt-2 text-2xl font-semibold">{patients.length}</div>
         </div>
       </div>
 
-      {selectedPatient && (
-        <PatientDetailModal
-          isOpen={true}
-          onClose={() => setSelectedPatient(null)}
-          patient={selectedPatient}
-        />
-      )}
-    </>
+      {/* Patient Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        {patients.map(patient => (
+          <PatientCard key={patient.id} patient={patient} />
+        ))}
+      </div>
+    </div>
   );
 }

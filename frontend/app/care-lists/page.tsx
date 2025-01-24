@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import AdminLayout from '@/components/layout/AdminLayout';
 import {
   UserGroupIcon,
   ClipboardDocumentListIcon,
@@ -13,8 +12,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { mockCareLists, mockPatientsList } from '@/services/mockCareListData';
 import type { CareList } from '@/services/mockCareListData';
-import type { PatientDetails } from '@/types/patient';
-import CareListDetails from '@/components/measures/CareListDetails';
+import CareListDetails from '@/components/care-lists/CareListDetails';
+import AdminLayout from '@/components/layout/AdminLayout';
 
 interface StatCardProps {
   title: string;
@@ -154,95 +153,97 @@ export default function CareListsPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">My Care Lists</h1>
-          <button className="btn btn-primary">
-            <PlusIcon className="h-5 w-5 mr-2" />
-            Create List
-          </button>
-        </div>
+      <div className="h-full overflow-y-auto">
+        <div className="space-y-6 p-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-semibold">Care Lists</h1>
+            <button className="btn btn-primary">
+              <PlusIcon className="h-5 w-5 mr-2" />
+              Create List
+            </button>
+          </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Total Patients"
-            value={totalPatients}
-            description="Patients in active care lists"
-            icon={UserGroupIcon}
-            trend={{
-              value: 12.5,
-              label: 'vs last month'
-            }}
-          />
-          <StatCard
-            title="High Risk"
-            value={highRiskPatients}
-            description="Patients requiring attention"
-            icon={ChartBarIcon}
-            trend={{
-              value: -5.2,
-              label: 'vs last month'
-            }}
-          />
-          <StatCard
-            title="Care Gaps"
-            value={totalCareGaps}
-            description="Open care gaps"
-            icon={ClockIcon}
-            trend={{
-              value: -8.1,
-              label: 'vs last month'
-            }}
-          />
-          <StatCard
-            title="Active Lists"
-            value={mockCareLists.length}
-            description="Care coordination lists"
-            icon={ClipboardDocumentListIcon}
-          />
-        </div>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Total Patients"
+              value={totalPatients}
+              description="Patients in active care lists"
+              icon={UserGroupIcon}
+              trend={{
+                value: 12.5,
+                label: 'vs last month'
+              }}
+            />
+            <StatCard
+              title="High Risk"
+              value={highRiskPatients}
+              description="Patients requiring attention"
+              icon={ChartBarIcon}
+              trend={{
+                value: -5.2,
+                label: 'vs last month'
+              }}
+            />
+            <StatCard
+              title="Care Gaps"
+              value={totalCareGaps}
+              description="Open care gaps"
+              icon={ClockIcon}
+              trend={{
+                value: -8.1,
+                label: 'vs last month'
+              }}
+            />
+            <StatCard
+              title="Active Lists"
+              value={mockCareLists.length}
+              description="Care coordination lists"
+              icon={ClipboardDocumentListIcon}
+            />
+          </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-dark-text-secondary" />
-              <input
-                type="text"
-                placeholder="Search lists..."
-                className="input pl-10 w-full"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-dark-text-secondary" />
+                <input
+                  type="text"
+                  placeholder="Search lists..."
+                  className="input pl-10 w-full"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <button className="btn btn-secondary">
+                <FunnelIcon className="h-5 w-5 mr-2" />
+                Filters
+              </button>
+              <select
+                className="input min-w-[150px]"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as any)}
+              >
+                <option value="all">All Lists</option>
+                <option value="measure">Measure Based</option>
+                <option value="manual">Manual Lists</option>
+              </select>
             </div>
           </div>
-          <div className="flex gap-4">
-            <button className="btn btn-secondary">
-              <FunnelIcon className="h-5 w-5 mr-2" />
-              Filters
-            </button>
-            <select
-              className="input min-w-[150px]"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as any)}
-            >
-              <option value="all">All Lists</option>
-              <option value="measure">Measure Based</option>
-              <option value="manual">Manual Lists</option>
-            </select>
-          </div>
-        </div>
 
-        {/* Care Lists Grid */}
-        <div className="grid grid-cols-1 gap-4">
-          {filteredLists.map((list) => (
-            <CareListCard
-              key={list.id}
-              list={list}
-              onSelect={() => handleSelectList(list)}
-            />
-          ))}
+          {/* Care Lists Grid */}
+          <div className="grid grid-cols-1 gap-4">
+            {filteredLists.map((list) => (
+              <CareListCard
+                key={list.id}
+                list={list}
+                onSelect={() => handleSelectList(list)}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

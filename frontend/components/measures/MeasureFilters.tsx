@@ -32,7 +32,10 @@ const types: { id: MeasureType; label: string }[] = [
   { id: 'structural', label: 'Structural' },
 ];
 
-const performanceFilters = [
+const performanceFilters: Array<{
+  id: 'below' | 'meeting' | 'exceeding';
+  label: string;
+}> = [
   { id: 'below', label: 'Below Target' },
   { id: 'meeting', label: 'Meeting Target' },
   { id: 'exceeding', label: 'Exceeding Target' },

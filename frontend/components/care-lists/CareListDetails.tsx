@@ -7,10 +7,8 @@ import {
   ShareIcon,
   DocumentDuplicateIcon,
   ArchiveBoxIcon,
-  TrashIcon,
 } from '@heroicons/react/24/outline';
 import type { CareList } from '@/services/mockCareListData';
-import type { PatientDetails } from '@/types/patient';
 import { mockPatientsList } from '@/services/mockCareListData';
 import PatientRow from '@/components/patients/PatientRow';
 

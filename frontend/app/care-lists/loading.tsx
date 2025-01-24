@@ -44,37 +44,39 @@ function CareListCardSkeleton() {
 export default function LoadingCareListsPage() {
   return (
     <AdminLayout>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div className="h-8 bg-dark-secondary rounded w-48 animate-pulse"></div>
-          <div className="h-10 bg-dark-secondary rounded w-32 animate-pulse"></div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-        </div>
-
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="h-10 bg-dark-secondary rounded w-full animate-pulse"></div>
-          </div>
-          <div className="flex gap-4">
-            <div className="h-10 bg-dark-secondary rounded w-24 animate-pulse"></div>
+      <div className="h-full overflow-y-auto">
+        <div className="space-y-6 p-6">
+          <div className="flex items-center justify-between">
+            <div className="h-8 bg-dark-secondary rounded w-48 animate-pulse"></div>
             <div className="h-10 bg-dark-secondary rounded w-32 animate-pulse"></div>
           </div>
-        </div>
 
-        {/* Care Lists Grid */}
-        <div className="grid grid-cols-1 gap-4">
-          <CareListCardSkeleton />
-          <CareListCardSkeleton />
-          <CareListCardSkeleton />
-          <CareListCardSkeleton />
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </div>
+
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="h-10 bg-dark-secondary rounded w-full animate-pulse"></div>
+            </div>
+            <div className="flex gap-4">
+              <div className="h-10 bg-dark-secondary rounded w-24 animate-pulse"></div>
+              <div className="h-10 bg-dark-secondary rounded w-32 animate-pulse"></div>
+            </div>
+          </div>
+
+          {/* Care Lists Grid */}
+          <div className="grid grid-cols-1 gap-4">
+            <CareListCardSkeleton />
+            <CareListCardSkeleton />
+            <CareListCardSkeleton />
+            <CareListCardSkeleton />
+          </div>
         </div>
       </div>
     </AdminLayout>

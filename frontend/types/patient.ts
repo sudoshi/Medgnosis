@@ -1,207 +1,156 @@
-export interface PatientDetails {
-  id: number;
-  name: string;
-  demographics: {
-    age: number;
-    gender: string;
-    language: string;
-    ethnicity: string;
-    address: string;
-    phone: string;
-    email: string;
-    insurance?: {
-      primary: string;
-      secondary?: string;
-      memberId: string;
-      group: string;
-    };
-    socialDeterminants?: {
-      housing: string;
-      transportation: string;
-      foodSecurity: string;
-      socialSupport: string;
-      employmentStatus: string;
-    };
-    preferences?: {
-      contactMethod: string;
-      language: string;
-      timePreference: string;
-      communicationNeeds: string;
-    };
+export interface Patient {
+  id: string;
+  name: {
+    first: string;
+    last: string;
   };
+  dateOfBirth: string;
+  gender: string;
   riskFactors: {
-    score: number;
     level: 'low' | 'medium' | 'high';
+    score: number;
     factors: Array<{
       name: string;
       severity: 'low' | 'medium' | 'high';
       lastAssessed: string;
     }>;
-    trending: 'up' | 'down' | 'stable';
+    trending?: 'up' | 'down' | 'stable';
   };
-  conditions: Array<{
-    id: number;
-    name: string;
-    status: 'active' | 'resolved' | 'inactive';
-    diagnosedDate: string;
-    lastAssessed: string;
-    controlStatus: 'uncontrolled' | 'controlled' | 'unknown';
-    details?: {
-      severity: string;
-      complications?: string[];
-      symptoms?: string[];
-      targetGoals?: Record<string, string>;
-      ejectionFraction?: string;
-      fev1?: string;
-      exacerbations?: string;
-      riskFactors?: string[];
-    };
-    treatmentPlan?: {
-      lifestyle?: string[];
-      education?: string[];
-    monitoring?: {
-      frequency: string;
-      tests?: string[];
-      parameters?: string[];
-    };
-    };
-  }>;
-  medications: Array<{
-    id: number;
-    name: string;
-    dosage: string;
-    frequency: string;
-    startDate: string;
-    endDate?: string;
-    adherence?: number;
-    status: 'active' | 'discontinued' | 'completed';
-  }>;
   careGaps: Array<{
-    id: number;
+    id: string;
     measure: string;
-    priority: 'high' | 'medium' | 'low';
     dueDate: string;
-    status: 'open' | 'in_progress' | 'completed';
+    status: 'open' | 'closed' | 'in_progress';
+    priority: 'low' | 'medium' | 'high';
     description: string;
   }>;
-  labs: Array<{
-    id: number;
+  conditions: Array<{
+    id: string;
+    code: string;
     name: string;
-    value?: string;
-    unit?: string;
+    status: 'active' | 'resolved' | 'inactive';
+    onsetDate: string;
+    diagnosedDate: string;
+    lastAssessed: string;
+    controlStatus: 'controlled' | 'uncontrolled' | 'unknown';
+  }>;
+  encounters: Array<{
+    id: string;
+    date: string;
+    type: string;
+    provider: string;
+    summary: string;
+    followUpNeeded: boolean;
+    followUpDate?: string;
+    reason?: string;
+    details?: {
+      vitals?: {
+        temperature: string;
+        heartRate: string;
+        respiratoryRate: string;
+        bloodPressure: string;
+        weight: string;
+        bmi: string;
+      };
+    };
+  }>;
+  metrics: {
+    [key: string]: {
+      value: number;
+      unit: string;
+      date: string;
+    };
+  };
+}
+
+export interface PatientDetails extends Patient {
+  demographics: {
+    age: number;
+    gender: string;
+    ethnicity: string;
+    language: string;
+    maritalStatus: string;
+    employment: string;
+    phone?: string;
+    email?: string;
+    address?: {
+      street: string;
+      city: string;
+      state: string;
+      zip: string;
+    };
+  };
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
+  contact: {
+    phone: string;
+    email: string;
+  };
+  insurance: {
+    provider: string;
+    plan: string;
+    memberId: string;
+  };
+  primaryCare: {
+    provider: string;
+    clinic: string;
+    lastVisit: string;
+  };
+  careTeam: Array<{
+    id: string;
+    name: string;
+    role: string;
+    specialty?: string;
+    primary: boolean;
+    phone?: string;
+    email?: string;
+    details?: {
+      npi: string;
+      practice: string;
+      languages: string[];
+      expertise: string[];
+    };
+  }>;
+  alerts: ClinicalAlert[];
+  recentActions: PatientAction[];
+  labs: Array<{
+    id: string;
+    name: string;
+    value: number;
+    unit: string;
     date: string;
     status: 'normal' | 'abnormal' | 'critical';
-    trend?: 'improving' | 'worsening' | 'stable';
+    trend?: 'up' | 'down' | 'stable';
     referenceRange?: string;
-    history?: Array<{
-      date: string;
-      value: string;
-    }>;
-    details?: {
-      method?: string;
-      location?: string;
-      orderedBy?: string;
-      notes?: string;
-    };
     components?: Array<{
       name: string;
-      value: string;
+      value: number;
       unit: string;
       referenceRange: string;
       status: string;
     }>;
   }>;
-  encounters: Array<{
-    id: number;
-    type: string;
-    provider: string;
-    date: string;
-    reason: string;
-    summary: string;
-    followUpNeeded: boolean;
-    followUpDate?: string;
-    details?: {
-      vitals?: {
-        temperature?: string;
-        heartRate?: string;
-        respiratoryRate?: string;
-        bloodPressure?: string;
-        weight?: string;
-        bmi?: string;
-      };
-      physicalExam?: Record<string, string>;
-      cardiacExam?: Record<string, string>;
-      assessment?: string[];
-      plan?: string[];
-      diagnostics?: Record<string, string>;
-    };
-  }>;
-  careTeam: Array<{
-    id: number;
-    name: string;
-    role: string;
-    specialty?: string;
-    phone: string;
-    email: string;
-    primary: boolean;
-    details?: {
-      credentials?: string;
-      npi?: string;
-      practice?: string;
-      address?: string;
-      availability?: {
-        office?: string;
-        hours?: string;
-        urgent?: string;
-        response?: string;
-      };
-      languages?: string[];
-      expertise?: string[];
-      specialty?: string;
-      responsibilities?: string[];
-      assignedSince?: string;
-    };
-  }>;
-  programs: Array<{
-    id: number;
-    name: string;
-    type: string;
-    startDate: string;
-    endDate?: string;
-    status: 'active' | 'completed' | 'discontinued';
-    coordinator: string;
-  }>;
-}
-
-export interface PatientAction {
-  id: number;
-  type: 'appointment' | 'outreach' | 'referral' | 'care_gap' | 'medication' | 'program';
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  priority: 'high' | 'medium' | 'low';
-  dueDate: string;
-  assignedTo?: string;
-  description: string;
-  notes?: string;
-  outcome?: string;
 }
 
 export interface ClinicalAlert {
-  id: number;
-  type: 'lab' | 'medication' | 'condition' | 'care_gap' | 'risk';
-  severity: 'high' | 'medium' | 'low';
+  id: string;
+  type: 'warning' | 'info' | 'critical';
   message: string;
   date: string;
-  acknowledged: boolean;
-  acknowledgedBy?: string;
-  acknowledgedDate?: string;
+  status: 'active' | 'resolved';
+  category: string;
 }
 
-export interface PatientNote {
-  id: number;
-  type: 'clinical' | 'administrative' | 'care_management';
-  author: string;
+export interface PatientAction {
+  id: string;
+  type: string;
+  description: string;
   date: string;
-  content: string;
-  tags: string[];
-  private: boolean;
+  provider: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  priority: 'low' | 'medium' | 'high';
 }

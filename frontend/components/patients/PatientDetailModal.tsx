@@ -1,419 +1,337 @@
-import { useState } from 'react';
-import type { PatientDetails, PatientAction, ClinicalAlert } from '@/types/patient';
-import Modal from '@/components/ui/modal';
+import { Dialog } from '@headlessui/react';
 import {
-  UserIcon,
-  ChartBarIcon,
-  HeartIcon,
-  BeakerIcon,
-  ClockIcon,
+  ClipboardDocumentListIcon,
+  XMarkIcon,
   UserGroupIcon,
-  DocumentTextIcon,
+  ChartBarIcon,
+  ClockIcon,
+  BeakerIcon,
   ExclamationTriangleIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import type { PatientDetails } from '@/types/patient';
 
 interface PatientDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   patient: PatientDetails;
-  onAction?: (action: PatientAction) => void;
 }
 
-type TabType = 'overview' | 'conditions' | 'care-gaps' | 'labs' | 'encounters' | 'care-team';
-
-function TabButton({ active, icon: Icon, label, onClick }: {
-  active: boolean;
-  icon: typeof UserIcon;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-        active
-          ? 'bg-accent-primary text-white'
-          : 'text-dark-text-secondary hover:bg-dark-secondary'
-      }`}
-    >
-      <Icon className="h-5 w-5" />
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function RiskBadge({ level, score }: { level: string; score: number }) {
+function Badge({ children, variant = 'default' }: { children: React.ReactNode; variant?: 'default' | 'success' | 'warning' | 'error' }) {
   const colors = {
-    high: 'bg-accent-error/10 text-accent-error',
-    medium: 'bg-accent-warning/10 text-accent-warning',
-    low: 'bg-accent-success/10 text-accent-success',
-  }[level];
+    default: 'bg-dark-secondary text-dark-text-secondary',
+    success: 'bg-accent-success/10 text-accent-success',
+    warning: 'bg-accent-warning/10 text-accent-warning',
+    error: 'bg-accent-error/10 text-accent-error',
+  };
 
   return (
-    <div className={`inline-flex items-center px-3 py-1 rounded-full ${colors}`}>
-      <span className="text-sm font-medium">Risk Score: {score}</span>
-    </div>
-  );
-}
-
-function StatusBadge({ status, className = '' }: { status: string; className?: string }) {
-  const colors = {
-    active: 'bg-accent-success/10 text-accent-success',
-    completed: 'bg-accent-primary/10 text-accent-primary',
-    open: 'bg-accent-warning/10 text-accent-warning',
-    critical: 'bg-accent-error/10 text-accent-error',
-    normal: 'bg-accent-success/10 text-accent-success',
-    abnormal: 'bg-accent-warning/10 text-accent-warning',
-  }[status.toLowerCase()];
-
-  return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${colors} ${className}`}>
-      {status}
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[variant]}`}>
+      {children}
     </span>
   );
 }
 
-function ActionButton({ label, onClick, primary = false }: {
-  label: string;
-  onClick: () => void;
-  primary?: boolean;
-}) {
+function Section({ title, icon: Icon, children }: { title: string; icon: typeof InformationCircleIcon; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 rounded-lg transition-colors ${
-        primary
-          ? 'bg-accent-primary text-white hover:bg-accent-primary/90'
-          : 'bg-dark-secondary text-dark-text-primary hover:bg-dark-secondary/90'
-      }`}
-    >
-      {label}
-    </button>
+    <div className="space-y-3">
+      <div className="flex items-center space-x-2">
+        <Icon className="h-5 w-5 text-dark-text-secondary" />
+        <h3 className="text-sm font-medium">{title}</h3>
+      </div>
+      <div className="pl-7">{children}</div>
+    </div>
   );
 }
 
-export default function PatientDetailModal({
-  isOpen,
-  onClose,
-  patient,
-  onAction,
-}: PatientDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-
-  const handleAction = (action: Partial<PatientAction>) => {
-    if (onAction) {
-      onAction({
-        id: Date.now(),
-        status: 'pending',
-        priority: 'medium',
-        dueDate: new Date().toISOString(),
-        ...action,
-      } as PatientAction);
-    }
-  };
-
-  const renderOverviewTab = () => (
-    <div className="space-y-6">
-      {/* Demographics */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-sm font-medium text-dark-text-secondary mb-2">Demographics</h4>
-          <dl className="space-y-2">
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Age</dt>
-              <dd>{patient.demographics.age} years</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Gender</dt>
-              <dd>{patient.demographics.gender}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Language</dt>
-              <dd>{patient.demographics.language}</dd>
-            </div>
-          </dl>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-dark-text-secondary mb-2">Contact</h4>
-          <dl className="space-y-2">
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Phone</dt>
-              <dd>{patient.demographics.phone}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Email</dt>
-              <dd>{patient.demographics.email}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-dark-text-secondary">Address</dt>
-              <dd>{patient.demographics.address}</dd>
-            </div>
-          </dl>
-        </div>
-      </div>
-
-      {/* Risk Factors */}
-      <div>
-        <h4 className="text-sm font-medium text-dark-text-secondary mb-2">Risk Factors</h4>
-        <div className="space-y-3">
-          {patient.riskFactors.factors.map((factor, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-3 rounded-lg bg-dark-secondary"
-            >
-              <div>
-                <p className="font-medium">{factor.name}</p>
-                <p className="text-sm text-dark-text-secondary">
-                  Last assessed: {new Date(factor.lastAssessed).toLocaleDateString()}
-                </p>
-              </div>
-              <StatusBadge status={factor.severity} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex space-x-4">
-        <ActionButton
-          label="Schedule Follow-up"
-          onClick={() =>
-            handleAction({
-              type: 'appointment',
-              description: 'Schedule follow-up appointment',
-            })
-          }
-        />
-        <ActionButton
-          label="Add to Care Management"
-          onClick={() =>
-            handleAction({
-              type: 'program',
-              description: 'Enroll in care management program',
-            })
-          }
-          primary
-        />
-      </div>
-    </div>
-  );
-
-  const renderConditionsTab = () => (
-    <div className="space-y-4">
-      {patient.conditions.map((condition) => (
-        <div
-          key={condition.id}
-          className="p-4 rounded-lg bg-dark-secondary"
-        >
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h4 className="font-medium">{condition.name}</h4>
-              <p className="text-sm text-dark-text-secondary">
-                Diagnosed: {new Date(condition.diagnosedDate).toLocaleDateString()}
-              </p>
-            </div>
-            <StatusBadge status={condition.status} />
-          </div>
-          <div className="flex items-center space-x-4 mt-3">
-            <span className="text-sm text-dark-text-secondary">
-              Control Status: {condition.controlStatus}
-            </span>
-            <span className="text-sm text-dark-text-secondary">
-              Last Assessed: {new Date(condition.lastAssessed).toLocaleDateString()}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderCareGapsTab = () => (
-    <div className="space-y-4">
-      {patient.careGaps.map((gap) => (
-        <div
-          key={gap.id}
-          className="p-4 rounded-lg bg-dark-secondary"
-        >
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h4 className="font-medium">{gap.measure}</h4>
-              <p className="text-sm text-dark-text-secondary">
-                {gap.description}
-              </p>
-            </div>
-            <StatusBadge status={gap.priority} />
-          </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-sm text-dark-text-secondary">
-              Due: {new Date(gap.dueDate).toLocaleDateString()}
-            </span>
-            <ActionButton
-              label="Address Gap"
-              onClick={() =>
-                handleAction({
-                  type: 'care_gap',
-                  description: `Address care gap: ${gap.measure}`,
-                  priority: gap.priority,
-                })
-              }
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderLabsTab = () => (
-    <div className="space-y-4">
-      {patient.labs.map((lab) => (
-        <div
-          key={lab.id}
-          className="p-4 rounded-lg bg-dark-secondary"
-        >
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h4 className="font-medium">{lab.name}</h4>
-              <p className="text-xl font-semibold mt-1">
-                {lab.value} {lab.unit}
-              </p>
-            </div>
-            <StatusBadge status={lab.status} />
-          </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-sm text-dark-text-secondary">
-              Date: {new Date(lab.date).toLocaleDateString()}
-            </span>
-            <span className={`text-sm ${
-              lab.trend === 'improving'
-                ? 'text-accent-success'
-                : lab.trend === 'worsening'
-                ? 'text-accent-error'
-                : 'text-dark-text-secondary'
-            }`}>
-              Trend: {lab.trend}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderEncountersTab = () => (
-    <div className="space-y-4">
-      {patient.encounters.map((encounter) => (
-        <div
-          key={encounter.id}
-          className="p-4 rounded-lg bg-dark-secondary"
-        >
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h4 className="font-medium">{encounter.type}</h4>
-              <p className="text-sm text-dark-text-secondary">
-                Provider: {encounter.provider}
-              </p>
-            </div>
-            <span className="text-sm text-dark-text-secondary">
-              {new Date(encounter.date).toLocaleDateString()}
-            </span>
-          </div>
-          <p className="text-sm mt-2">{encounter.summary}</p>
-          {encounter.followUpNeeded && (
-            <div className="mt-3 flex justify-between items-center">
-              <span className="text-sm text-accent-warning">
-                Follow-up needed by: {encounter.followUpDate}
-              </span>
-              <ActionButton
-                label="Schedule Follow-up"
-                onClick={() =>
-                  handleAction({
-                    type: 'appointment',
-                    description: `Schedule follow-up for ${encounter.type}`,
-                  })
-                }
-              />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderCareTeamTab = () => (
-    <div className="space-y-4">
-      {patient.careTeam.map((member) => (
-        <div
-          key={member.id}
-          className="p-4 rounded-lg bg-dark-secondary"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <h4 className="font-medium">
-                {member.name}
-                {member.primary && (
-                  <span className="ml-2 text-xs bg-accent-primary/10 text-accent-primary px-2 py-1 rounded-full">
-                    Primary
-                  </span>
-                )}
-              </h4>
-              <p className="text-sm text-dark-text-secondary">
-                {member.role}
-                {member.specialty && ` - ${member.specialty}`}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 space-y-1">
-            <p className="text-sm">
-              <span className="text-dark-text-secondary">Phone:</span> {member.phone}
-            </p>
-            <p className="text-sm">
-              <span className="text-dark-text-secondary">Email:</span> {member.email}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: UserIcon },
-    { id: 'conditions', label: 'Conditions', icon: HeartIcon },
-    { id: 'care-gaps', label: 'Care Gaps', icon: ExclamationTriangleIcon },
-    { id: 'labs', label: 'Labs', icon: BeakerIcon },
-    { id: 'encounters', label: 'Encounters', icon: ClockIcon },
-    { id: 'care-team', label: 'Care Team', icon: UserGroupIcon },
-  ] as const;
-
+export default function PatientDetailModal({ isOpen, onClose, patient }: PatientDetailModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={patient.name} size="xl">
-      <div className="flex items-center justify-between mb-6">
-        <RiskBadge level={patient.riskFactors.level} score={patient.riskFactors.score} />
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-dark-text-secondary">
-            Trend: {patient.riskFactors.trending}
-          </span>
-        </div>
-      </div>
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      className="relative z-50"
+    >
+      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
 
-      <div className="flex space-x-2 mb-6 overflow-x-auto pb-2">
-        {tabs.map((tab) => (
-          <TabButton
-            key={tab.id}
-            active={activeTab === tab.id}
-            icon={tab.icon}
-            label={tab.label}
-            onClick={() => setActiveTab(tab.id as TabType)}
-          />
-        ))}
-      </div>
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <Dialog.Panel className="w-full max-w-4xl rounded-lg bg-dark-primary p-6 shadow-xl">
+          {/* Header */}
+          <div className="mb-6 flex items-start justify-between">
+            <div>
+              <Dialog.Title className="text-2xl font-semibold">
+                {`${patient.name.first} ${patient.name.last}`}
+              </Dialog.Title>
+              <div className="mt-1 text-dark-text-secondary">
+                <div className="flex items-center space-x-4">
+                  <div>
+                    Age: {patient.demographics.age}
+                  </div>
+                  <div>
+                    Gender: {patient.demographics.gender}
+                  </div>
+                  <div>
+                    Language: {patient.demographics.language}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4 mt-1">
+                  <div>
+                    Phone: {patient.demographics.phone}
+                  </div>
+                  <div>
+                    Email: {patient.demographics.email}
+                  </div>
+                  <div>
+                    Address: {patient.demographics.address ? `${patient.demographics.address.street}, ${patient.demographics.address.city}, ${patient.demographics.address.state} ${patient.demographics.address.zip}` : 'Not provided'}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1 text-dark-text-secondary hover:bg-dark-secondary"
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
 
-      <div className="mt-6">
-        {activeTab === 'overview' && renderOverviewTab()}
-        {activeTab === 'conditions' && renderConditionsTab()}
-        {activeTab === 'care-gaps' && renderCareGapsTab()}
-        {activeTab === 'labs' && renderLabsTab()}
-        {activeTab === 'encounters' && renderEncountersTab()}
-        {activeTab === 'care-team' && renderCareTeamTab()}
+          {/* Content */}
+          <div className="space-y-6">
+            {/* Risk Factors */}
+            <Section title="Risk Factors" icon={ExclamationTriangleIcon}>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-dark-text-secondary">Risk Score</div>
+                    <div className="text-lg font-medium">{patient.riskFactors.score}</div>
+                  </div>
+                  <div>
+                    <Badge
+                      variant={
+                        patient.riskFactors.level === 'high'
+                          ? 'error'
+                          : patient.riskFactors.level === 'medium'
+                          ? 'warning'
+                          : 'success'
+                      }
+                    >
+                      {patient.riskFactors.level} risk
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm font-medium mb-2">Contributing Factors</div>
+                  <div className="space-y-2">
+                    {patient.riskFactors.factors.map((factor, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-2 bg-dark-secondary rounded-lg"
+                      >
+                        <div>{factor.name}</div>
+                        <div className="flex items-center space-x-4">
+                          <div className="text-sm text-dark-text-secondary">
+                            Last assessed: {factor.lastAssessed}
+                          </div>
+                          <Badge
+                            variant={
+                              factor.severity === 'high'
+                                ? 'error'
+                                : factor.severity === 'medium'
+                                ? 'warning'
+                                : 'success'
+                            }
+                          >
+                            {factor.severity}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Section>
+
+            {/* Conditions */}
+            <Section title="Active Conditions" icon={BeakerIcon}>
+              <div className="space-y-2">
+                {patient.conditions.map(condition => (
+                  <div
+                    key={condition.id}
+                    className="p-2 bg-dark-secondary rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{condition.name}</div>
+                        <div className="text-sm text-dark-text-secondary">
+                          Diagnosed: {condition.diagnosedDate}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <Badge
+                          variant={
+                            condition.controlStatus === 'uncontrolled'
+                              ? 'error'
+                              : condition.controlStatus === 'controlled'
+                              ? 'success'
+                              : 'warning'
+                          }
+                        >
+                          {condition.controlStatus}
+                        </Badge>
+                        <div className="text-sm text-dark-text-secondary">
+                          Last assessed: {condition.lastAssessed}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Care Gaps */}
+            <Section title="Care Gaps" icon={ClipboardDocumentListIcon}>
+              <div className="space-y-2">
+                {patient.careGaps.map(gap => (
+                  <div
+                    key={gap.id}
+                    className="p-2 bg-dark-secondary rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{gap.measure}</div>
+                        <div className="text-sm text-dark-text-secondary">
+                          {gap.description}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-sm text-dark-text-secondary">
+                          Due: {gap.dueDate}
+                        </div>
+                        <Badge
+                          variant={
+                            gap.priority === 'high'
+                              ? 'error'
+                              : gap.priority === 'medium'
+                              ? 'warning'
+                              : 'success'
+                          }
+                        >
+                          {gap.priority}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Labs */}
+            <Section title="Recent Labs" icon={BeakerIcon}>
+              <div className="space-y-2">
+                {patient.labs.map(lab => (
+                  <div
+                    key={lab.id}
+                    className="p-2 bg-dark-secondary rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{lab.name}</div>
+                        <div className="text-sm text-dark-text-secondary">
+                          {lab.value} {lab.unit} • {lab.date}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <Badge
+                          variant={
+                            lab.status === 'critical'
+                              ? 'error'
+                              : lab.status === 'abnormal'
+                              ? 'warning'
+                              : 'success'
+                          }
+                        >
+                          {lab.status}
+                        </Badge>
+                        {lab.trend && (
+                          <div className="flex items-center space-x-1">
+                            <ChartBarIcon
+                              className={`h-4 w-4 ${
+                                lab.trend === 'up'
+                                  ? 'text-accent-error'
+                                  : lab.trend === 'down'
+                                  ? 'text-accent-success'
+                                  : 'text-dark-text-secondary'
+                              }`}
+                            />
+                            <span className="text-sm text-dark-text-secondary">
+                              {lab.trend}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Recent Encounters */}
+            <Section title="Recent Encounters" icon={ClockIcon}>
+              <div className="space-y-2">
+                {patient.encounters.map(encounter => (
+                  <div
+                    key={encounter.id}
+                    className="p-2 bg-dark-secondary rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{encounter.type}</div>
+                        <div className="text-sm text-dark-text-secondary">
+                          {encounter.summary}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-sm text-dark-text-secondary">
+                          {encounter.date}
+                        </div>
+                        {encounter.followUpNeeded && (
+                          <Badge variant="warning">
+                            Follow-up: {encounter.followUpDate}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Care Team */}
+            <Section title="Care Team" icon={UserGroupIcon}>
+              <div className="space-y-2">
+                {patient.careTeam.map(member => (
+                  <div
+                    key={member.id}
+                    className="p-2 bg-dark-secondary rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{member.name}</div>
+                        <div className="text-sm text-dark-text-secondary">
+                          {member.role}
+                          {member.specialty && ` • ${member.specialty}`}
+                        </div>
+                      </div>
+                      {member.primary && (
+                        <Badge variant="success">Primary</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          </div>
+        </Dialog.Panel>
       </div>
-    </Modal>
+    </Dialog>
   );
 }

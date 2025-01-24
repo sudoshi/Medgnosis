@@ -1,124 +1,132 @@
-import { useState } from 'react';
-import {
-  ChartBarIcon,
-  ClockIcon,
-  BeakerIcon,
-  DocumentTextIcon,
-  ChevronRightIcon,
-} from '@heroicons/react/24/outline';
 import type { QualityMeasure } from '@/types/measure';
+import { ChartBarIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/outline';
 
 interface MeasureListProps {
   measures: QualityMeasure[];
-  onSelectMeasure: (measure: QualityMeasure) => void;
+  onSelectMeasure?: (measure: QualityMeasure) => void;
   selectedMeasureId?: string;
+  selectedMeasures?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-function getDomainIcon(domain: QualityMeasure['domain']) {
-  switch (domain) {
-    case 'chronic':
-      return ClockIcon;
-    case 'acute':
-      return BeakerIcon;
-    case 'preventive':
-      return DocumentTextIcon;
-    case 'safety':
-      return ChartBarIcon;
-    default:
-      return ChartBarIcon;
-  }
-}
-
-function getPerformanceColor(
-  performance: number | undefined,
-  target: number | undefined,
-  benchmark: number | undefined
-) {
-  if (!performance || !target) return 'text-dark-text-secondary';
-  if (performance >= (benchmark || target)) return 'text-accent-success';
-  if (performance >= target) return 'text-accent-warning';
+function getStatusColor(performance: number, target: number, benchmark: number) {
+  if (performance >= benchmark) return 'text-accent-success';
+  if (performance >= target) return 'text-accent-primary';
   return 'text-accent-error';
+}
+
+function MeasureCard({
+  measure,
+  isSelected,
+  isSelectedForCareList,
+  onClick,
+  onToggleSelect,
+}: {
+  measure: QualityMeasure;
+  isSelected: boolean;
+  isSelectedForCareList: boolean;
+  onClick: () => void;
+  onToggleSelect?: () => void;
+}) {
+  // Mock performance data
+  const performance = 75;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full p-4 rounded-lg text-left transition-colors ${
+        isSelected
+          ? 'bg-accent-primary/10 border border-accent-primary'
+          : 'bg-dark-primary hover:bg-dark-secondary border border-dark-border'
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center space-x-2">
+            <h3
+              className={`text-lg font-medium truncate ${
+                isSelected ? 'text-accent-primary' : ''
+              }`}
+            >
+              {measure.title}
+            </h3>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                isSelected
+                  ? 'bg-accent-primary/10 text-accent-primary'
+                  : 'bg-dark-secondary text-dark-text-secondary'
+              }`}
+            >
+              {measure.implementation.category}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-dark-text-secondary truncate">
+            {measure.implementation.code} • {measure.steward}
+          </p>
+          <div className="mt-4 flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <ChartBarIcon
+                className={`h-4 w-4 ${getStatusColor(
+                  performance,
+                  measure.performance?.target || 0,
+                  measure.performance?.benchmark || 0
+                )}`}
+              />
+              <span className="text-sm">{performance}%</span>
+            </div>
+            {measure.domain === 'chronic' && (
+              <div className="flex items-center space-x-2">
+                <ClockIcon className="h-4 w-4 text-dark-text-secondary" />
+                <span className="text-sm">Ongoing</span>
+              </div>
+            )}
+            {measure.type === 'outcome' && (
+              <div className="flex items-center space-x-2">
+                <BeakerIcon className="h-4 w-4 text-dark-text-secondary" />
+                <span className="text-sm">Outcome</span>
+              </div>
+            )}
+          </div>
+        </div>
+        {onToggleSelect && (
+          <div className="ml-4 flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={isSelectedForCareList}
+              onChange={(e) => {
+                e.stopPropagation();
+                onToggleSelect();
+              }}
+              className="h-4 w-4 rounded border-dark-border text-accent-primary focus:ring-accent-primary"
+            />
+          </div>
+        )}
+      </div>
+    </button>
+  );
 }
 
 export default function MeasureList({
   measures,
   onSelectMeasure,
   selectedMeasureId,
+  selectedMeasures,
+  onToggleSelect,
 }: MeasureListProps) {
   return (
     <div className="space-y-4">
-      {measures.map((measure) => {
-        const Icon = getDomainIcon(measure.domain);
-        const performanceColor = getPerformanceColor(
-          75, // Mock current performance
-          measure.performance?.target,
-          measure.performance?.benchmark
-        );
-
-        return (
-          <button
-            key={measure.id}
-            onClick={() => onSelectMeasure(measure)}
-            className={`w-full text-left p-4 rounded-lg transition-colors ${
-              selectedMeasureId === measure.id
-                ? 'bg-accent-primary/10 border-2 border-accent-primary'
-                : 'bg-dark-primary hover:bg-dark-secondary border-2 border-transparent'
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-4">
-                <div className={`p-2 rounded-lg bg-dark-secondary`}>
-                  <Icon className="h-6 w-6 text-dark-text-secondary" />
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-dark-text-secondary">
-                      {measure.id}
-                    </span>
-                    <span className="text-sm text-dark-text-secondary">•</span>
-                    <span
-                      className={`text-sm font-medium px-2 py-0.5 rounded-full ${
-                        measure.domain === 'chronic'
-                          ? 'bg-accent-warning/10 text-accent-warning'
-                          : measure.domain === 'acute'
-                          ? 'bg-accent-error/10 text-accent-error'
-                          : measure.domain === 'preventive'
-                          ? 'bg-accent-success/10 text-accent-success'
-                          : 'bg-accent-primary/10 text-accent-primary'
-                      }`}
-                    >
-                      {measure.domain}
-                    </span>
-                  </div>
-                  <h3 className="font-medium mt-1">{measure.title}</h3>
-                  <p className="text-sm text-dark-text-secondary mt-1 line-clamp-2">
-                    {measure.description}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                {measure.performance?.target && (
-                  <div className="text-right">
-                    <div className={`text-lg font-semibold ${performanceColor}`}>
-                      75%
-                    </div>
-                    <div className="text-xs text-dark-text-secondary">
-                      Target: {measure.performance.target}%
-                    </div>
-                  </div>
-                )}
-                <ChevronRightIcon
-                  className={`h-5 w-5 ${
-                    selectedMeasureId === measure.id
-                      ? 'text-accent-primary'
-                      : 'text-dark-text-secondary'
-                  }`}
-                />
-              </div>
-            </div>
-          </button>
-        );
-      })}
+      {measures.map((measure) => (
+        <MeasureCard
+          key={measure.id}
+          measure={measure}
+          isSelected={measure.id === selectedMeasureId}
+          isSelectedForCareList={selectedMeasures?.has(measure.id) || false}
+          onClick={() => onSelectMeasure?.(measure)}
+          onToggleSelect={
+            onToggleSelect ? () => onToggleSelect(measure.id) : undefined
+          }
+        />
+      ))}
     </div>
   );
 }

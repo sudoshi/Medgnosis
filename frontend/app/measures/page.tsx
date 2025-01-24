@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import AdminLayout from '@/components/layout/AdminLayout';
 import MeasureList from '@/components/measures/MeasureList';
 import MeasureDetails from '@/components/measures/MeasureDetails';
 import MeasureFilters from '@/components/measures/MeasureFilters';
 import { mockMeasures } from '@/services/mockMeasures';
+import { useRouter } from 'next/navigation';
 import type { QualityMeasure, MeasureFilter, MeasureDomain, MeasureType } from '@/types/measure';
 
-export default function MeasuresPage() {
+export default function QualityMeasuresPage() {
+  const router = useRouter();
   const [selectedMeasure, setSelectedMeasure] = useState<QualityMeasure | null>(null);
+  const [selectedMeasures, setSelectedMeasures] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<MeasureFilter>({});
 
   const filteredMeasures = useMemo(() => {
@@ -76,12 +78,45 @@ export default function MeasuresPage() {
       excluded: 50,
       compliant: 300,
       performance: 75,
+      gaps: [
+        {
+          patient: 'P1001',
+          requirements: ['BP Reading', 'Medication Review']
+        },
+        {
+          patient: 'P1002',
+          requirements: ['BP Reading']
+        }
+      ],
+      trends: [
+        {
+          period: '2024-01',
+          performance: 75
+        },
+        {
+          period: '2023-12',
+          performance: 72
+        }
+      ]
     };
   }, [selectedMeasure]);
 
+  const handleCreateCareList = () => {
+    // Add the current measure to selected measures
+    if (selectedMeasure) {
+      const newSelected = new Set(selectedMeasures);
+      newSelected.add(selectedMeasure.id);
+      setSelectedMeasures(newSelected);
+    }
+
+    // If we have measures selected, navigate to care list creation
+    if (selectedMeasures.size > 0 || selectedMeasure) {
+      router.push(`/care-lists/create?measures=${Array.from(selectedMeasures).join(',')}`);
+    }
+  };
+
   return (
-    <AdminLayout>
-      <div className="flex h-[calc(100vh-4rem)]">
+      <div className="flex h-full">
         {/* Left Sidebar - Filters */}
         <div className="w-80 border-r border-dark-border p-6 overflow-y-auto">
           <MeasureFilters
@@ -103,6 +138,16 @@ export default function MeasuresPage() {
             measures={filteredMeasures}
             onSelectMeasure={setSelectedMeasure}
             selectedMeasureId={selectedMeasure?.id}
+            selectedMeasures={selectedMeasures}
+            onToggleSelect={(id) => {
+              const newSelected = new Set(selectedMeasures);
+              if (newSelected.has(id)) {
+                newSelected.delete(id);
+              } else {
+                newSelected.add(id);
+              }
+              setSelectedMeasures(newSelected);
+            }}
           />
         </div>
 
@@ -112,6 +157,8 @@ export default function MeasuresPage() {
             <MeasureDetails
               measure={selectedMeasure}
               performance={measurePerformance}
+              onCreateCareList={handleCreateCareList}
+              selectedForCareList={selectedMeasures.has(selectedMeasure.id)}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-dark-text-secondary">
@@ -120,6 +167,5 @@ export default function MeasuresPage() {
           )}
         </div>
       </div>
-    </AdminLayout>
   );
 }

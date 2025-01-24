@@ -1,5 +1,26 @@
 export type MeasureDomain = 'preventive' | 'chronic' | 'acute' | 'safety';
 export type MeasureType = 'process' | 'outcome' | 'structural';
+export type MeasureCategory = 'NQF' | 'eCQM' | 'USPSTF';
+
+export interface ClinicalFocus {
+  id: string;
+  name: string;
+  description: string;
+  relatedConditions: string[];
+  recommendedMeasures: string[]; // measure IDs
+}
+
+export interface MeasureBundle {
+  id: string;
+  name: string;
+  description: string;
+  clinicalFocus: string; // references ClinicalFocus.id
+  measures: string[]; // measure IDs
+  recommendedFrequency?: {
+    value: number;
+    unit: 'days' | 'weeks' | 'months' | 'years';
+  };
+}
 
 export interface ValueSetConcept {
   code: string;
@@ -60,13 +81,23 @@ export interface MeasureCriteria {
   };
 }
 
+export interface MeasureImplementation {
+  category: MeasureCategory;
+  code: string; // e.g., "NQF-0018" or "CMS122v3"
+  version: string;
+  status: 'active' | 'draft' | 'retired';
+  effectiveDate: string;
+  lastReviewDate: string;
+}
+
 export interface QualityMeasure {
   id: string;
   title: string;
-  version: string;
+  implementation: MeasureImplementation;
   steward: string;
   domain: MeasureDomain;
   type: MeasureType;
+  clinicalFocus: string; // references ClinicalFocus.id
   description: string;
   rationale: string;
   guidance?: string;
