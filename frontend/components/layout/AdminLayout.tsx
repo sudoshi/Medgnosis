@@ -40,7 +40,7 @@ const navigation: NavItem[] = [
     icon: BeakerIcon,
     children: [
       { name: 'Quality Measures', href: '/measures' },
-      { name: 'Performance', href: '/measures/performance' },
+      { name: 'MIPS', href: '/measures/mips' },
       { name: 'Reports', href: '/measures/reports' }
     ]
   },

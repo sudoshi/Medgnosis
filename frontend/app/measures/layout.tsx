@@ -7,7 +7,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 const navigation = [
   { name: 'Quality Measures', href: '/measures' },
   { name: 'Cohort Creator', href: '/measures/cohort-creator' },
-  { name: 'Performance', href: '/measures/performance' },
+  { name: 'MIPS', href: '/measures/mips' },
   { name: 'Reports', href: '/measures/reports' },
 ];
 
