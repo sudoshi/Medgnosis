@@ -17,12 +17,15 @@ export interface Patient {
     trending?: 'up' | 'down' | 'stable';
   };
   careGaps: Array<{
-    id: string;
-    measure: string;
-    dueDate: string;
-    status: 'open' | 'closed' | 'in_progress';
-    priority: 'low' | 'medium' | 'high';
-    description: string;
+  id: string;
+  measure: string;
+  dueDate: string;
+  status: 'open' | 'closed' | 'in_progress';
+  priority: 'low' | 'medium' | 'high';
+  description: string;
+  type?: 'lab' | 'imaging' | 'procedure' | 'referral' | 'immunization';
+  orderType?: string;
+  orderCode?: string;
   }>;
   conditions: Array<{
     id: string;

@@ -12,6 +12,7 @@ import {
   CogIcon,
   ArrowLeftOnRectangleIcon,
   ClipboardDocumentListIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -44,6 +45,7 @@ const navigation: NavItem[] = [
     ]
   },
   { name: 'Care Lists', href: '/care-lists', icon: ClipboardDocumentListIcon },
+  { name: 'Anticipatory Care', href: '/anticipatory-care', icon: ClockIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
 ];
 
