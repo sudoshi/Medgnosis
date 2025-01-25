@@ -286,34 +286,157 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                     </div>
                   </Section>
 
-                  {/* Recent Encounters */}
-                  <Section title="Recent Encounters" icon={ClockIcon}>
-                    <div className="space-y-2">
-                      {patient.encounters.map(encounter => (
-                        <div
-                          key={encounter.id}
-                          className="p-2 bg-dark-secondary/30 rounded-lg"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-medium">{encounter.type}</div>
-                              <div className="text-sm text-dark-text-secondary">
-                                {encounter.summary}
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                              <div className="text-sm text-dark-text-secondary">
-                                {encounter.date}
-                              </div>
-                              {encounter.followUpNeeded && (
-                                <Badge variant="warning">
-                                  Follow-up: {encounter.followUpDate}
-                                </Badge>
-                              )}
-                            </div>
+                  {/* Patient Activity */}
+                  <Section title="Patient Activity" icon={ClockIcon}>
+                    <div className="space-y-4">
+                      {/* Emergency/Urgent Care */}
+                      {patient.encounters.some(e => e.type === 'Emergency Department') && (
+                        <div>
+                          <div className="text-sm font-medium mb-2 text-accent-error">Emergency/Urgent Care</div>
+                          <div className="space-y-2">
+                            {patient.encounters
+                              .filter(e => e.type === 'Emergency Department')
+                              .map(encounter => (
+                                <div
+                                  key={encounter.id}
+                                  className="p-2 bg-accent-error/10 rounded-lg border border-accent-error/20"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium">{encounter.provider}</div>
+                                      <div className="text-sm text-dark-text-secondary">
+                                        {encounter.summary}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center space-x-4">
+                                      <div className="text-sm text-dark-text-secondary">
+                                        {encounter.date}
+                                      </div>
+                                      {encounter.followUpNeeded && (
+                                        <Badge variant="warning">
+                                          Follow-up: {encounter.followUpDate}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Specialty Care */}
+                      {patient.encounters.some(e => e.type !== 'Emergency Department' && e.type !== 'Office Visit') && (
+                        <div>
+                          <div className="text-sm font-medium mb-2 text-accent-warning">Specialty Care</div>
+                          <div className="space-y-2">
+                            {patient.encounters
+                              .filter(e => e.type !== 'Emergency Department' && e.type !== 'Office Visit')
+                              .map(encounter => (
+                                <div
+                                  key={encounter.id}
+                                  className="p-2 bg-accent-warning/10 rounded-lg border border-accent-warning/20"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium">{encounter.type}</div>
+                                      <div className="text-sm">
+                                        {encounter.provider} • {encounter.summary}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center space-x-4">
+                                      <div className="text-sm text-dark-text-secondary">
+                                        {encounter.date}
+                                      </div>
+                                      {encounter.followUpNeeded && (
+                                        <Badge variant="warning">
+                                          Follow-up: {encounter.followUpDate}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recent Orders & Results */}
+                      {patient.recentActions.length > 0 && (
+                        <div>
+                          <div className="text-sm font-medium mb-2 text-accent-success">Completed Orders & Updates</div>
+                          <div className="space-y-2">
+                            {patient.recentActions.map(action => (
+                              <div
+                                key={action.id}
+                                className="p-2 bg-accent-success/10 rounded-lg border border-accent-success/20"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="font-medium">{action.type}</div>
+                                    <div className="text-sm text-dark-text-secondary">
+                                      {action.description} • {action.provider}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-4">
+                                    <div className="text-sm text-dark-text-secondary">
+                                      {action.date}
+                                    </div>
+                                    <Badge variant={action.priority === 'high' ? 'error' : 'default'}>
+                                      {action.priority}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Critical Lab Results */}
+                      {patient.labs.some(lab => lab.status === 'critical') && (
+                        <div>
+                          <div className="text-sm font-medium mb-2 text-accent-error">Critical Lab Results</div>
+                          <div className="space-y-2">
+                            {patient.labs
+                              .filter(lab => lab.status === 'critical')
+                              .map(lab => (
+                                <div
+                                  key={lab.id}
+                                  className="p-2 bg-accent-error/10 rounded-lg border border-accent-error/20"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium">{lab.name}</div>
+                                      <div className="text-sm text-dark-text-secondary">
+                                        {lab.value} {lab.unit} • Reference: {lab.referenceRange}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center space-x-4">
+                                      <div className="text-sm text-dark-text-secondary">
+                                        {lab.date}
+                                      </div>
+                                      <div className="flex items-center space-x-1">
+                                        <ChartBarIcon
+                                          className={`h-4 w-4 ${
+                                            lab.trend === 'up'
+                                              ? 'text-accent-error'
+                                              : lab.trend === 'down'
+                                              ? 'text-accent-success'
+                                              : 'text-dark-text-secondary'
+                                          }`}
+                                        />
+                                        <span className="text-sm text-dark-text-secondary">
+                                          {lab.trend}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </Section>
 

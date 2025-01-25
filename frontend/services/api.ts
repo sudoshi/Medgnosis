@@ -158,13 +158,18 @@ export interface DashboardData {
         count: number;
       }>;
     };
-    recentActivity: {
+    patientActivity: {
       events: Array<{
         id: number;
-        type: string;
+        type: 'encounter' | 'procedure' | 'order' | 'result';
         patient: string;
         description: string;
         date: string;
+        encounterType?: string;
+        provider?: string;
+        specialty?: string;
+        status?: string;
+        priority?: 'high' | 'medium' | 'low';
       }>;
     };
   };

@@ -118,27 +118,55 @@ export const mockDashboardData: DashboardData = {
         { score: "81-100", count: 70 }
       ]
     },
-    recentActivity: {
+    patientActivity: {
       events: [
         {
           id: 1,
           type: "encounter",
-          patient: "Sarah Johnson",
-          description: "Primary Care Visit",
-          date: "2024-01-22"
+          encounterType: "Emergency",
+          patient: "Maria Garcia",
+          description: "ED Visit - CHF Exacerbation",
+          provider: "Dr. Sarah Johnson",
+          specialty: "Emergency Medicine",
+          date: "2024-01-22",
+          priority: "high"
         },
         {
           id: 2,
-          type: "care_gap",
-          patient: "Michael Chen",
-          description: "New Care Gap: Annual Wellness Visit",
+          type: "encounter",
+          encounterType: "Specialty",
+          patient: "James Wilson",
+          description: "Cardiology Follow-up",
+          provider: "Dr. Lisa Wong",
+          specialty: "Cardiology",
           date: "2024-01-21"
         },
         {
           id: 3,
-          type: "risk_change",
-          patient: "James Wilson",
-          description: "Risk Score increased to 85",
+          type: "procedure",
+          patient: "Robert Smith",
+          description: "Cardiac Catheterization",
+          provider: "Dr. David Kim",
+          specialty: "Interventional Cardiology",
+          date: "2024-01-21",
+          priority: "high"
+        },
+        {
+          id: 4,
+          type: "result",
+          patient: "William Taylor",
+          description: "Critical Lab Result: Potassium 6.2",
+          provider: "Dr. Rebecca Martinez",
+          date: "2024-01-20",
+          priority: "high"
+        },
+        {
+          id: 5,
+          type: "order",
+          patient: "Linda Anderson",
+          description: "MRI Brain Completed",
+          provider: "Dr. Amanda Lee",
+          specialty: "Neurology",
           date: "2024-01-20"
         }
       ]

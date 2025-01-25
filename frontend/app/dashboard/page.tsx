@@ -18,6 +18,7 @@ import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
 import QualityMeasures from '@/components/quality/QualityMeasures';
 import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
 import CareGapSummary from '@/components/analytics/CareGapSummary';
+import PatientActivity from '@/components/patients/PatientActivity';
 
 interface StatCardProps {
   loading?: boolean;
@@ -207,6 +208,10 @@ export default function DashboardPage() {
 
           {/* Right Column - Performance & Trends */}
           <div className="space-y-6">
+            <PatientActivity
+              events={state?.analytics.patientActivity.events || []}
+              loading={loading}
+            />
             <HighRiskPatientsList
               loading={loading}
               patients={mockPatientsList}
