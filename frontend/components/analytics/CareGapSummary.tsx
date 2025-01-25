@@ -10,13 +10,13 @@ interface MetricCardProps {
 
 function MetricCard({ title, value, icon: Icon, className = '' }: MetricCardProps) {
   return (
-    <div className={`p-4 rounded-lg bg-dark-primary ${className}`}>
+    <div className={`panel-detail p-4 relative ${className}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-dark-text-secondary">{title}</p>
           <p className="mt-1 text-2xl font-semibold">{value}</p>
         </div>
-        <div className="rounded-lg bg-accent-primary/10 p-2">
+        <div className="rounded-lg bg-accent-primary/10 p-2 transition-all duration-200 hover:bg-accent-primary/20">
           <Icon className="h-5 w-5 text-accent-primary" />
         </div>
       </div>
@@ -35,7 +35,7 @@ export default function CareGapSummary({ summary, loading }: CareGapSummaryProps
   }
 
   return (
-    <div className="list-panel">
+    <div className="panel-analytics relative">
       <h3 className="text-lg font-semibold mb-4">Care Gap Summary</h3>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
@@ -43,26 +43,26 @@ export default function CareGapSummary({ summary, loading }: CareGapSummaryProps
             title="High Priority"
             value={summary.byPriority.high}
             icon={ExclamationTriangleIcon}
-            className="border-l-4 border-accent-error"
+            className="border-l-2 border-accent-error/50"
           />
           <MetricCard
             title="Medium Priority"
             value={summary.byPriority.medium}
             icon={ExclamationTriangleIcon}
-            className="border-l-4 border-accent-warning"
+            className="border-l-2 border-accent-warning/50"
           />
           <MetricCard
             title="Low Priority"
             value={summary.byPriority.low}
             icon={ExclamationTriangleIcon}
-            className="border-l-4 border-accent-success"
+            className="border-l-2 border-accent-success/50"
           />
         </div>
         <div>
           <h4 className="text-sm font-medium mb-2">By Measure Type</h4>
           <div className="space-y-2">
             {Object.entries(summary.byMeasure).map(([measure, count]) => (
-              <div key={measure} className="flex justify-between items-center">
+              <div key={measure} className="flex justify-between items-center p-2 rounded-lg bg-dark-secondary/20 hover:bg-dark-secondary/30 transition-all duration-200">
                 <span className="text-sm">{measure}</span>
                 <span className="text-sm font-medium">{count}</span>
               </div>

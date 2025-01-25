@@ -16,7 +16,7 @@ function RecentActivity({ events }: RecentActivityProps) {
       {events.map((event) => (
         <div
           key={event.id}
-          className="p-3 rounded-lg bg-dark-primary hover:bg-dark-secondary transition-colors"
+          className="p-3 rounded-lg bg-dark-secondary/20 hover:bg-dark-secondary/30 transition-all duration-200"
         >
           <div className="flex justify-between items-start">
             <div>
@@ -45,8 +45,8 @@ export default function AnalyticsOverview({ data, loading }: AnalyticsOverviewPr
   return (
     <div className="space-y-6">
       {/* Recent Activity */}
-      <div className="analytics-panel">
-        <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+      <div className="panel-analytics relative">
+        <h3 className="text-lg font-semibold mb-4 text-dark-text-primary">Recent Activity</h3>
         <RecentActivity events={recentActivity.events} />
       </div>
     </div>

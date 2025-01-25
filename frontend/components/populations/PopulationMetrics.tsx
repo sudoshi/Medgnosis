@@ -18,7 +18,7 @@ interface MetricCardProps {
 
 function MetricCard({ title, value, trend, icon: Icon, description }: MetricCardProps) {
   return (
-    <div className="stat-panel">
+    <div className="panel-stat">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-dark-text-secondary text-sm font-medium">{title}</p>
@@ -33,7 +33,7 @@ function MetricCard({ title, value, trend, icon: Icon, description }: MetricCard
             </p>
           )}
         </div>
-        <div className="rounded-lg bg-accent-primary/10 p-3">
+        <div className="rounded-lg bg-accent-primary/10 p-3 transition-all duration-200">
           <Icon className="h-6 w-6 text-accent-primary" />
         </div>
       </div>
@@ -54,8 +54,8 @@ interface ComorbidityDistributionProps {
 
 function ComorbidityDistribution({ data }: ComorbidityDistributionProps) {
   return (
-    <div className="analytics-panel">
-      <h3 className="text-lg font-semibold mb-4">Comorbidity Distribution</h3>
+    <div className="panel-analytics">
+      <h3 className="text-lg font-semibold mb-4 text-dark-text-primary">Comorbidity Distribution</h3>
       <div className="space-y-4">
         {data.map((item) => (
           <div key={item.label}>
@@ -65,10 +65,14 @@ function ComorbidityDistribution({ data }: ComorbidityDistributionProps) {
                 {item.count} ({item.percentage}%)
               </span>
             </div>
-            <div className="h-2 bg-dark-secondary rounded-full overflow-hidden">
+            <div className="h-2 bg-dark-secondary/30 rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent-primary rounded-full transition-all duration-500"
-                style={{ width: `${item.percentage}%` }}
+                className="h-full bg-accent-primary/70 rounded-full transition-all"
+                style={{ 
+                  width: `${item.percentage}%`,
+                  transitionDuration: 'var(--transition-duration)',
+                  transitionTimingFunction: 'var(--transition-timing)'
+                }}
               />
             </div>
           </div>

@@ -19,7 +19,7 @@ function PerformanceCard({ measure }: PerformanceCardProps) {
   const progressPercentage = (measure.score / measure.target) * 100;
 
   return (
-    <div className="p-4 rounded-lg bg-dark-primary">
+    <div className="panel-detail p-4 relative">
       <div className="flex justify-between items-start">
         <div>
           <h4 className="font-medium">{measure.name}</h4>
@@ -42,14 +42,14 @@ function PerformanceCard({ measure }: PerformanceCardProps) {
         </div>
       </div>
       <div className="mt-3">
-        <div className="h-2 rounded-full bg-dark-secondary overflow-hidden">
+        <div className="h-2 rounded-full bg-dark-secondary/30 overflow-hidden">
           <div
-            className={`h-full rounded-full ${
+            className={`h-full rounded-full transition-all duration-500 ${
               progressPercentage >= 100
-                ? 'bg-accent-success'
+                ? 'bg-accent-success/70'
                 : progressPercentage >= 75
-                ? 'bg-accent-warning'
-                : 'bg-accent-error'
+                ? 'bg-accent-warning/70'
+                : 'bg-accent-error/70'
             }`}
             style={{ width: `${Math.min(progressPercentage, 100)}%` }}
           />
@@ -80,7 +80,7 @@ function TrendChart({ data }: TrendChartProps) {
         >
           <div className="flex-1 w-12 flex items-end">
             <div
-              className="w-8 bg-accent-primary rounded-t"
+              className="w-8 bg-accent-primary/70 rounded-t transition-all duration-200 hover:bg-accent-primary/80"
               style={{ height: `${normalizeHeight(point.score)}%` }}
             />
           </div>
@@ -98,7 +98,7 @@ interface ImprovementCardProps {
 
 function ImprovementCard({ item }: ImprovementCardProps) {
   return (
-    <div className="p-4 rounded-lg bg-dark-primary hover:bg-dark-secondary transition-colors">
+    <div className="panel-detail p-4 relative hover:bg-dark-secondary/20 transition-all duration-200">
       <div className="flex justify-between items-start">
         <div>
           <h4 className="font-medium">{item.measure}</h4>
@@ -131,10 +131,10 @@ export default function QualityMeasures({ data, loading }: QualityMeasuresProps)
   return (
     <div className="space-y-6">
       {/* Overall Performance */}
-      <div className="analytics-panel">
+      <div className="panel-analytics relative">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Quality Performance</h3>
-          <div className="flex items-center space-x-2">
+          <h3 className="text-lg font-semibold text-dark-text-primary">Quality Performance</h3>
+          <div className="flex items-center space-x-2 bg-dark-secondary/20 rounded-lg px-3 py-2 transition-all duration-200 hover:bg-dark-secondary/30">
             <ChartBarIcon className="h-5 w-5 text-accent-primary" />
             <span className="text-2xl font-semibold">
               {performance.overall}%
@@ -149,14 +149,14 @@ export default function QualityMeasures({ data, loading }: QualityMeasuresProps)
       </div>
 
       {/* Performance Trend */}
-      <div className="analytics-panel">
-        <h3 className="text-lg font-semibold mb-4">Performance Trend</h3>
+      <div className="panel-analytics relative">
+        <h3 className="text-lg font-semibold mb-4 text-dark-text-primary">Performance Trend</h3>
         <TrendChart data={trends.monthly} />
       </div>
 
       {/* Improvement Opportunities */}
-      <div className="analytics-panel">
-        <h3 className="text-lg font-semibold mb-4">
+      <div className="panel-analytics relative">
+        <h3 className="text-lg font-semibold mb-4 text-dark-text-primary">
           Improvement Opportunities
         </h3>
         <div className="space-y-4">
