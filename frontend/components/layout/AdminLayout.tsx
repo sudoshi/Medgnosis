@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import type { ReactNode } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import Image from 'next/image';
+import type { ReactNode } from "react";
+
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   ChartBarSquareIcon,
   UserGroupIcon,
@@ -13,8 +14,10 @@ import {
   ArrowLeftOnRectangleIcon,
   ClipboardDocumentListIcon,
   ClockIcon,
-} from '@heroicons/react/24/outline';
-import Link from 'next/link';
+} from "@heroicons/react/24/outline";
+import Link from "next/link";
+
+import { AbbyAssistant } from "../ai/AbbyAssistant";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -31,22 +34,22 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: ChartBarSquareIcon },
-  { name: 'Populations', href: '/populations', icon: UserGroupIcon },
-  { name: 'Patients', href: '/patients', icon: UserIcon },
-  { 
-    name: 'Measures Library', 
-    href: '/measures', 
+  { name: "Dashboard", href: "/dashboard", icon: ChartBarSquareIcon },
+  { name: "Populations", href: "/populations", icon: UserGroupIcon },
+  { name: "Patients", href: "/patients", icon: UserIcon },
+  {
+    name: "Measures Library",
+    href: "/measures",
     icon: BeakerIcon,
     children: [
-      { name: 'Quality Measures', href: '/measures' },
-      { name: 'MIPS', href: '/measures/mips' },
-      { name: 'Reports', href: '/measures/reports' }
-    ]
+      { name: "Quality Measures", href: "/measures" },
+      { name: "MIPS", href: "/measures/mips" },
+      { name: "Reports", href: "/measures/reports" },
+    ],
   },
-  { name: 'Care Lists', href: '/care-lists', icon: ClipboardDocumentListIcon },
-  { name: 'Anticipatory Care', href: '/anticipatory-care', icon: ClockIcon },
-  { name: 'Settings', href: '/settings', icon: CogIcon },
+  { name: "Care Lists", href: "/care-lists", icon: ClipboardDocumentListIcon },
+  { name: "Anticipatory Care", href: "/anticipatory-care", icon: ClockIcon },
+  { name: "Settings", href: "/settings", icon: CogIcon },
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
@@ -55,7 +58,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   // Force dark mode
   useEffect(() => {
-    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add("dark");
   }, []);
 
   const isActive = (href: string) => pathname.startsWith(href);
@@ -68,11 +71,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {/* Logo */}
           <div className="flex h-16 items-center justify-center border-b border-dark-border">
             <Image
-              src="/images/acumenus-logo.png"
               alt="Acumenus Logo"
-              width={150}
-              height={40}
               className="object-contain"
+              height={40}
+              src="/images/acumenus-logo.png"
+              width={150}
             />
           </div>
 
@@ -80,21 +83,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navigation.map((item) => {
               const active = isActive(item.href);
+
               return (
                 <div key={item.name}>
                   <Link
-                    href={item.href}
                     className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
                       active
-                        ? 'bg-accent-primary bg-opacity-10 text-accent-primary shadow-glow'
-                        : 'text-dark-text-secondary hover:bg-dark-secondary'
+                        ? "bg-accent-primary bg-opacity-10 text-accent-primary shadow-glow"
+                        : "text-dark-text-secondary hover:bg-dark-secondary"
                     }`}
+                    href={item.href}
                   >
                     <item.icon
-                      className={`mr-3 h-5 w-5 flex-shrink-0 transition-colors ${
-                        active ? 'text-accent-primary' : 'text-dark-text-secondary'
-                      }`}
                       aria-hidden="true"
+                      className={`mr-3 h-5 w-5 flex-shrink-0 transition-colors ${
+                        active
+                          ? "text-accent-primary"
+                          : "text-dark-text-secondary"
+                      }`}
                     />
                     {item.name}
                   </Link>
@@ -103,12 +109,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       {item.children.map((child) => (
                         <Link
                           key={child.name}
-                          href={child.href}
                           className={`block rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
                             pathname === child.href
-                              ? 'text-accent-primary'
-                              : 'text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-secondary'
+                              ? "text-accent-primary"
+                              : "text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-secondary"
                           }`}
+                          href={child.href}
                         >
                           {child.name}
                         </Link>
@@ -120,12 +126,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             })}
           </nav>
 
+          {/* Abby Section */}
+          <div className="border-t border-dark-border py-6">
+            <div className="px-4">
+              <AbbyAssistant />
+            </div>
+          </div>
+
           {/* User Section */}
           <div className="border-t border-dark-border p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="h-8 w-8 rounded-full bg-accent-primary bg-opacity-10 flex items-center justify-center">
-                  <span className="text-accent-primary text-sm font-medium">JD</span>
+                  <span className="text-accent-primary text-sm font-medium">
+                    JD
+                  </span>
                 </div>
               </div>
               <div className="ml-3">
@@ -134,8 +149,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               </div>
             </div>
             <button
-              onClick={() => router.push('/login')}
               className="mt-4 flex w-full items-center rounded-lg px-3 py-2 text-sm text-dark-text-secondary hover:bg-dark-secondary"
+              onClick={() => router.push("/login")}
             >
               <ArrowLeftOnRectangleIcon className="mr-2 h-5 w-5" />
               Sign Out
@@ -150,10 +165,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <header className="sticky top-0 z-30 h-16 border-b border-dark-border bg-dark-primary/80 backdrop-blur">
           <div className="flex h-full items-center justify-between px-6">
             <h1 className="text-xl font-semibold">
-              {navigation.find((item) => isActive(item.href))?.name || 'Dashboard'}
+              {navigation.find((item) => isActive(item.href))?.name ||
+                "Dashboard"}
             </h1>
             <div className="flex items-center space-x-4">
-              {/* Add header actions here */}
+              {/* Header actions */}
             </div>
           </div>
         </header>
