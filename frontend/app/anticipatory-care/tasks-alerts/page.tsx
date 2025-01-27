@@ -8,18 +8,24 @@ import {
   CheckCircleIcon,
   ClipboardDocumentListIcon,
   FunnelIcon,
+  PlusIcon,
 } from "@heroicons/react/24/outline";
 
 import AdminLayout from "@/components/layout/AdminLayout";
 import { mockTasks, mockAlerts } from "@/services/mockTasksAlertsData";
+import CreateTaskModal from "@/components/tasks-alerts/CreateTaskModal";
+import AlertActions, {
+  handleAlertAction,
+} from "@/components/tasks-alerts/AlertActions";
 
 type TaskType = "all" | "personal" | "practice" | "patient";
 type AlertType = "all" | "general" | "specific";
 type AlertCategory = "all" | "lab" | "imaging" | "procedure";
 
 export default function TasksAlertsPage() {
-  const [tasks] = useState<Task[]>(mockTasks);
-  const [alerts] = useState<Alert[]>(mockAlerts);
+  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedTaskType, setSelectedTaskType] = useState<TaskType>("all");
   const [selectedAlertType, setSelectedAlertType] = useState<AlertType>("all");
   const [selectedAlertCategory, setSelectedAlertCategory] =
@@ -48,7 +54,7 @@ export default function TasksAlertsPage() {
       <div className="space-y-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="panel-stat">
+          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-dark-text-secondary text-sm font-medium">
@@ -64,7 +70,7 @@ export default function TasksAlertsPage() {
               Active tasks across all categories
             </p>
           </div>
-          <div className="panel-stat">
+          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-dark-text-secondary text-sm font-medium">
@@ -82,7 +88,7 @@ export default function TasksAlertsPage() {
               Tasks requiring immediate attention
             </p>
           </div>
-          <div className="panel-stat">
+          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-dark-text-secondary text-sm font-medium">
@@ -100,7 +106,7 @@ export default function TasksAlertsPage() {
               Unread alerts requiring review
             </p>
           </div>
-          <div className="panel-stat">
+          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-dark-text-secondary text-sm font-medium">
@@ -121,25 +127,34 @@ export default function TasksAlertsPage() {
         </div>
 
         {/* Tasks Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Tasks</h2>
-            <div className="flex space-x-2">
-              {(["all", "personal", "practice", "patient"] as TaskType[]).map(
-                (type) => (
-                  <button
-                    key={type}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                      selectedTaskType === type
-                        ? "bg-accent-primary text-white"
-                        : "bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
-                    }`}
-                    onClick={() => setSelectedTaskType(type)}
-                  >
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </button>
-                ),
-              )}
+            <div className="flex items-center space-x-4">
+              <button
+                className="flex items-center px-4 py-2 rounded-lg bg-accent-primary text-white hover:bg-accent-primary/90 transition-colors"
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Create Task
+              </button>
+              <div className="flex space-x-2">
+                {(["all", "personal", "practice", "patient"] as TaskType[]).map(
+                  (type) => (
+                    <button
+                      key={type}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                        selectedTaskType === type
+                          ? "bg-accent-primary text-white"
+                          : "bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                      }`}
+                      onClick={() => setSelectedTaskType(type)}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
           </div>
 
@@ -147,7 +162,7 @@ export default function TasksAlertsPage() {
             {filteredTasks.map((task) => (
               <div
                 key={task.id}
-                className="panel-detail p-4 hover:bg-dark-secondary transition-colors"
+                className="bg-dark-secondary/50 rounded-lg p-4 hover:bg-dark-secondary transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -176,7 +191,13 @@ export default function TasksAlertsPage() {
                   <button
                     className="p-2 rounded-lg bg-accent-success/10 text-accent-success hover:bg-accent-success/20 transition-colors"
                     onClick={() => {
-                      // Handle complete task
+                      const updatedTasks = tasks.map((t) =>
+                        t.id === task.id
+                          ? { ...t, status: "completed" as const }
+                          : t,
+                      );
+
+                      setTasks(updatedTasks);
                     }}
                   >
                     <CheckCircleIcon className="h-5 w-5" />
@@ -188,8 +209,8 @@ export default function TasksAlertsPage() {
         </div>
 
         {/* Alerts Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Alerts</h2>
             <div className="flex space-x-4">
               <div className="flex space-x-2">
@@ -231,7 +252,7 @@ export default function TasksAlertsPage() {
             {filteredAlerts.map((alert) => (
               <div
                 key={alert.id}
-                className="panel-detail p-4 hover:bg-dark-secondary transition-colors"
+                className="bg-dark-secondary/50 rounded-lg p-4 hover:bg-dark-secondary transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -302,20 +323,50 @@ export default function TasksAlertsPage() {
                       </div>
                     )}
                   </div>
-                  <button
-                    className="p-2 rounded-lg bg-accent-success/10 text-accent-success hover:bg-accent-success/20 transition-colors"
-                    onClick={() => {
-                      // Handle acknowledge alert
-                    }}
-                  >
-                    <CheckCircleIcon className="h-5 w-5" />
-                  </button>
+                  <div className="space-y-4">
+                    <AlertActions
+                      alert={alert}
+                      onAction={(action) =>
+                        handleAlertAction(action, alert, alert.patientId)
+                      }
+                    />
+                    <button
+                      className="p-2 rounded-lg bg-accent-success/10 text-accent-success hover:bg-accent-success/20 transition-colors"
+                      onClick={() => {
+                        const updatedAlerts = alerts.map((a) =>
+                          a.id === alert.id
+                            ? { ...a, status: "acknowledged" as const }
+                            : a,
+                        );
+
+                        setAlerts(updatedAlerts);
+                      }}
+                    >
+                      <CheckCircleIcon className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      <CreateTaskModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreateTask={(taskData) => {
+          const newTask: Task = {
+            id: `task${tasks.length + 1}`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            ...taskData,
+          };
+
+          setTasks([newTask, ...tasks]);
+          setIsCreateModalOpen(false);
+        }}
+      />
     </AdminLayout>
   );
 }
