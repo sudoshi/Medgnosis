@@ -48,7 +48,15 @@ const navigation: NavItem[] = [
     ],
   },
   { name: "Care Lists", href: "/care-lists", icon: ClipboardDocumentListIcon },
-  { name: "Anticipatory Care", href: "/anticipatory-care", icon: ClockIcon },
+  {
+    name: "Anticipatory Care",
+    href: "/anticipatory-care",
+    icon: ClockIcon,
+    children: [
+      { name: "Overview", href: "/anticipatory-care" },
+      { name: "Tasks & Alerts", href: "/anticipatory-care/tasks-alerts" },
+    ],
+  },
   { name: "Settings", href: "/settings", icon: CogIcon },
 ];
 
