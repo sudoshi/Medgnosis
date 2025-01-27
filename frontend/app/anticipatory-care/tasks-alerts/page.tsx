@@ -1,14 +1,16 @@
 "use client";
 
 import type { Task, Alert } from "@/types/tasks-alerts";
+import type { AlertPreferenceState } from "@/types/standardized-alerts";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   BellIcon,
   CheckCircleIcon,
   ClipboardDocumentListIcon,
   FunnelIcon,
   PlusIcon,
+  Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 
 import AdminLayout from "@/components/layout/AdminLayout";
@@ -17,6 +19,7 @@ import CreateTaskModal from "@/components/tasks-alerts/CreateTaskModal";
 import AlertActions, {
   handleAlertAction,
 } from "@/components/tasks-alerts/AlertActions";
+import AlertPreferencesModal from "@/components/tasks-alerts/AlertPreferencesModal";
 
 type TaskType = "all" | "personal" | "practice" | "patient";
 type AlertType = "all" | "general" | "specific";
@@ -26,10 +29,29 @@ export default function TasksAlertsPage() {
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [selectedTaskType, setSelectedTaskType] = useState<TaskType>("all");
   const [selectedAlertType, setSelectedAlertType] = useState<AlertType>("all");
   const [selectedAlertCategory, setSelectedAlertCategory] =
     useState<AlertCategory>("all");
+  const [alertPreferences, setAlertPreferences] =
+    useState<AlertPreferenceState>({
+      selectedPriorities: {
+        High: true,
+        Moderate: true,
+        Low: true,
+      },
+      selectedCategories: {},
+      enabledAlerts: new Set(),
+    });
+
+  const handleSavePreferences = useCallback(
+    (preferences: AlertPreferenceState) => {
+      setAlertPreferences(preferences);
+      // Here you would typically save to backend/localStorage
+    },
+    [],
+  );
 
   const filteredTasks = tasks.filter((task) => {
     if (selectedTaskType === "all") return true;
@@ -211,7 +233,16 @@ export default function TasksAlertsPage() {
         {/* Alerts Section */}
         <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">Alerts</h2>
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-semibold">Alerts</h2>
+              <button
+                className="flex items-center px-3 py-1.5 rounded-lg bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary transition-colors"
+                onClick={() => setIsPreferencesModalOpen(true)}
+              >
+                <Cog6ToothIcon className="h-5 w-5 mr-2" />
+                Alert Preferences
+              </button>
+            </div>
             <div className="flex space-x-4">
               <div className="flex space-x-2">
                 {(["all", "general", "specific"] as AlertType[]).map((type) => (
@@ -366,6 +397,13 @@ export default function TasksAlertsPage() {
           setTasks([newTask, ...tasks]);
           setIsCreateModalOpen(false);
         }}
+      />
+
+      <AlertPreferencesModal
+        initialPreferences={alertPreferences}
+        isOpen={isPreferencesModalOpen}
+        onClose={() => setIsPreferencesModalOpen(false)}
+        onSavePreferences={handleSavePreferences}
       />
     </AdminLayout>
   );
