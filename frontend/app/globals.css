@@ -147,8 +147,10 @@
 @layer components {
   /* Base Panel Styles */
   .panel-base {
-    @apply rounded-xl border border-accent-primary/20;
-    @apply bg-dark-primary/90 backdrop-blur-md;
+    @apply rounded-xl border;
+    @apply bg-light-primary/90 dark:bg-dark-primary/90 backdrop-blur-md;
+    @apply text-light-text-primary dark:text-dark-text-primary;
+    @apply border-light-border/20 dark:border-accent-primary/20;
     @apply transition-all;
     padding: var(--padding-card);
     box-shadow: 
@@ -159,7 +161,7 @@
   }
 
   .panel-base:hover {
-    @apply border-accent-primary/30;
+    @apply border-light-border/30 dark:border-accent-primary/30;
     box-shadow: 
       0 6px 28px -4px rgba(0, 0, 0, 0.1),
       0 4px 12px -2px rgba(0, 0, 0, 0.08),
@@ -169,8 +171,8 @@
   /* Specialized Panel Variants */
   .panel-stat {
     @apply panel-base;
-    @apply bg-gradient-to-br from-dark-primary/90 to-dark-primary/80;
-    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-white/5 before:pointer-events-none;
+    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-black/5 dark:before:to-white/5 before:pointer-events-none;
   }
 
   .panel-list {
@@ -180,8 +182,8 @@
 
   .panel-analytics {
     @apply panel-base;
-    @apply bg-gradient-to-br from-dark-primary/90 to-dark-primary/80;
-    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-white/5 before:pointer-events-none;
+    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-black/5 dark:before:to-white/5 before:pointer-events-none;
   }
 
   .panel-filter {
@@ -191,27 +193,27 @@
 
   .panel-detail {
     @apply panel-base;
-    @apply bg-gradient-to-br from-dark-primary/90 to-dark-primary/80;
-    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-white/5 before:pointer-events-none;
+    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-black/5 dark:before:to-white/5 before:pointer-events-none;
   }
 
   /* Interactive States */
   .panel-interactive {
-    @apply hover:bg-dark-primary/80;
+    @apply hover:bg-light-secondary/80 dark:hover:bg-dark-primary/80;
     transition: background-color var(--transition-duration) var(--transition-timing),
                 box-shadow var(--transition-duration) var(--transition-timing);
   }
 
   /* Modal Specific */
   .modal-backdrop {
-    @apply bg-dark-primary/60;
+    @apply bg-light-primary/60 dark:bg-dark-primary/60;
     backdrop-filter: blur(var(--blur-backdrop));
   }
 
   .modal-container {
     @apply panel-base;
-    @apply bg-gradient-to-br from-dark-primary/90 to-dark-primary/80;
-    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-white/5 before:pointer-events-none;
+    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-t before:from-transparent before:to-black/5 dark:before:to-white/5 before:pointer-events-none;
     backdrop-filter: blur(var(--blur-heavy));
   }
 
@@ -229,11 +231,11 @@
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-dark-secondary/50 rounded-sm;
+    @apply bg-light-border/50 dark:bg-dark-secondary/50 rounded-sm;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-border/60;
+    @apply bg-light-border/60 dark:bg-dark-border/60;
   }
 }
 

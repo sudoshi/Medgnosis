@@ -1,5 +1,10 @@
-import type { QualityMeasure } from '@/types/measure';
-import { ChartBarIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/outline';
+import type { QualityMeasure } from "@/types/measure";
+
+import {
+  ChartBarIcon,
+  ClockIcon,
+  BeakerIcon,
+} from "@heroicons/react/24/outline";
 
 interface MeasureListProps {
   measures: QualityMeasure[];
@@ -9,10 +14,15 @@ interface MeasureListProps {
   onToggleSelect?: (id: string) => void;
 }
 
-function getStatusColor(performance: number, target: number, benchmark: number) {
-  if (performance >= benchmark) return 'text-accent-success';
-  if (performance >= target) return 'text-accent-primary';
-  return 'text-accent-error';
+function getStatusColor(
+  performance: number,
+  target: number,
+  benchmark: number,
+) {
+  if (performance >= benchmark) return "text-accent-success";
+  if (performance >= target) return "text-accent-primary";
+
+  return "text-accent-error";
 }
 
 function MeasureCard({
@@ -33,19 +43,21 @@ function MeasureCard({
 
   return (
     <button
-      onClick={onClick}
       className={`w-full p-4 rounded-lg text-left transition-colors ${
         isSelected
-          ? 'bg-accent-primary/10 border border-accent-primary'
-          : 'bg-dark-primary hover:bg-dark-secondary border border-dark-border'
+          ? "bg-accent-primary/10 border border-accent-primary"
+          : "bg-light-primary dark:bg-dark-primary hover:bg-light-secondary dark:hover:bg-dark-secondary border border-light-border dark:border-dark-border"
       }`}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-2">
             <h3
               className={`text-lg font-medium truncate ${
-                isSelected ? 'text-accent-primary' : ''
+                isSelected
+                  ? "text-accent-primary"
+                  : "text-light-text-primary dark:text-dark-text-primary"
               }`}
             >
               {measure.title}
@@ -53,14 +65,14 @@ function MeasureCard({
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                 isSelected
-                  ? 'bg-accent-primary/10 text-accent-primary'
-                  : 'bg-dark-secondary text-dark-text-secondary'
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary"
               }`}
             >
               {measure.implementation.category}
             </span>
           </div>
-          <p className="mt-1 text-sm text-dark-text-secondary truncate">
+          <p className="mt-1 text-sm text-light-text-secondary dark:text-dark-text-secondary truncate">
             {measure.implementation.code} • {measure.steward}
           </p>
           <div className="mt-4 flex items-center space-x-4">
@@ -69,21 +81,27 @@ function MeasureCard({
                 className={`h-4 w-4 ${getStatusColor(
                   performance,
                   measure.performance?.target || 0,
-                  measure.performance?.benchmark || 0
+                  measure.performance?.benchmark || 0,
                 )}`}
               />
-              <span className="text-sm">{performance}%</span>
+              <span className="text-sm text-light-text-primary dark:text-dark-text-primary">
+                {performance}%
+              </span>
             </div>
-            {measure.domain === 'chronic' && (
+            {measure.domain === "chronic" && (
               <div className="flex items-center space-x-2">
-                <ClockIcon className="h-4 w-4 text-dark-text-secondary" />
-                <span className="text-sm">Ongoing</span>
+                <ClockIcon className="h-4 w-4 text-light-text-secondary dark:text-dark-text-secondary" />
+                <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                  Ongoing
+                </span>
               </div>
             )}
-            {measure.type === 'outcome' && (
+            {measure.type === "outcome" && (
               <div className="flex items-center space-x-2">
-                <BeakerIcon className="h-4 w-4 text-dark-text-secondary" />
-                <span className="text-sm">Outcome</span>
+                <BeakerIcon className="h-4 w-4 text-light-text-secondary dark:text-dark-text-secondary" />
+                <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                  Outcome
+                </span>
               </div>
             )}
           </div>
@@ -91,13 +109,13 @@ function MeasureCard({
         {onToggleSelect && (
           <div className="ml-4 flex-shrink-0">
             <input
-              type="checkbox"
               checked={isSelectedForCareList}
+              className="h-4 w-4 rounded border-light-border dark:border-dark-border text-accent-primary focus:ring-accent-primary bg-light-primary dark:bg-dark-primary"
+              type="checkbox"
               onChange={(e) => {
                 e.stopPropagation();
                 onToggleSelect();
               }}
-              className="h-4 w-4 rounded border-dark-border text-accent-primary focus:ring-accent-primary"
             />
           </div>
         )}
@@ -118,9 +136,9 @@ export default function MeasureList({
       {measures.map((measure) => (
         <MeasureCard
           key={measure.id}
-          measure={measure}
           isSelected={measure.id === selectedMeasureId}
           isSelectedForCareList={selectedMeasures?.has(measure.id) || false}
+          measure={measure}
           onClick={() => onSelectMeasure?.(measure)}
           onToggleSelect={
             onToggleSelect ? () => onToggleSelect(measure.id) : undefined

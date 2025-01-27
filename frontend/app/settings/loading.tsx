@@ -1,163 +1,146 @@
-import AdminLayout from '@/components/layout/AdminLayout';
-import {
-  BellIcon,
-  KeyIcon,
-  UserIcon,
-  CloudArrowUpIcon,
-  ClockIcon,
-} from '@heroicons/react/24/outline';
-
-function LoadingPulse() {
-  return <div className="animate-pulse bg-dark-secondary rounded h-4" />;
-}
-
-interface LoadingSectionProps {
-  icon: typeof BellIcon;
-  items?: number;
-}
-
-function LoadingSection({ icon: Icon, items = 4 }: LoadingSectionProps) {
+export default function SettingsLoading() {
   return (
-    <div className="card">
-      <div className="flex items-start space-x-4">
-        <div className="rounded-lg bg-accent-primary/10 p-3">
-          <Icon className="h-6 w-6 text-accent-primary" />
+    <div className="h-full overflow-y-auto">
+      <div className="space-y-6 p-6 animate-pulse">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
         </div>
-        <div className="flex-1">
-          <div className="w-32 mb-1">
-            <LoadingPulse />
-          </div>
-          <div className="w-64 mb-6">
-            <LoadingPulse />
-          </div>
-          <div className="space-y-4">
-            {[...Array(items)].map((_, i) => (
-              <div key={i} className="flex justify-between items-center">
-                <div className="w-48">
-                  <LoadingPulse />
-                </div>
-                <div className="w-16 h-8 rounded-full bg-dark-secondary animate-pulse" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function LoadingProfileSection() {
-  return (
-    <div className="card">
-      <div className="flex items-start space-x-4">
-        <div className="rounded-lg bg-accent-primary/10 p-3">
-          <UserIcon className="h-6 w-6 text-accent-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="w-32 mb-1">
-            <LoadingPulse />
-          </div>
-          <div className="w-64 mb-6">
-            <LoadingPulse />
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="w-24">
-                    <LoadingPulse />
+        {/* Notifications Section */}
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
+          <div className="flex items-start space-x-4">
+            <div className="rounded-lg bg-light-secondary dark:bg-dark-secondary p-3">
+              <div className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="h-6 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="h-4 w-96 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="mt-4 space-y-4">
+                {[1, 2, 3, 4].map((index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center"
+                  >
+                    <div className="h-4 w-32 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                    <div className="h-8 w-14 bg-light-secondary dark:bg-dark-secondary rounded-full" />
                   </div>
-                  <div className="h-10 rounded-md bg-dark-secondary animate-pulse" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ETL Settings Section */}
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
+          <div className="flex items-start space-x-4">
+            <div className="rounded-lg bg-light-secondary dark:bg-dark-secondary p-3">
+              <div className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="h-6 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="h-4 w-96 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="mt-4 space-y-4">
+                {[1, 2, 3].map((index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center"
+                  >
+                    <div>
+                      <div className="h-4 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                      <div className="h-3 w-64 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                    </div>
+                    <div className="h-8 w-14 bg-light-secondary dark:bg-dark-secondary rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Schedule Section */}
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
+          <div className="flex items-start space-x-4">
+            <div className="rounded-lg bg-light-secondary dark:bg-dark-secondary p-3">
+              <div className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="h-6 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="h-4 w-96 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[1, 2].map((index) => (
+                    <div
+                      key={index}
+                      className="bg-light-secondary/50 dark:bg-dark-secondary/50 rounded-lg border border-light-border dark:border-dark-border p-4"
+                    >
+                      <div className="h-5 w-32 bg-light-secondary dark:bg-dark-secondary rounded-lg mb-2" />
+                      <div className="h-10 w-full bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="flex justify-end">
-              <div className="w-32 h-10 rounded-md bg-dark-secondary animate-pulse" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
 
-function LoadingScheduleSection() {
-  return (
-    <div className="card">
-      <div className="flex items-start space-x-4">
-        <div className="rounded-lg bg-accent-primary/10 p-3">
-          <ClockIcon className="h-6 w-6 text-accent-primary" />
+        {/* Security Section */}
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
+          <div className="flex items-start space-x-4">
+            <div className="rounded-lg bg-light-secondary dark:bg-dark-secondary p-3">
+              <div className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="h-6 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="h-4 w-96 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="mt-4 space-y-4">
+                {[1, 2].map((index) => (
+                  <div
+                    key={index}
+                    className="bg-light-secondary/50 dark:bg-dark-secondary/50 rounded-lg border border-light-border dark:border-dark-border p-4"
+                  >
+                    <div className="h-5 w-32 bg-light-secondary dark:bg-dark-secondary rounded-lg mb-2" />
+                    {index === 1 ? (
+                      <div className="h-10 w-32 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="h-10 flex-1 mr-4 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                        <div className="h-10 w-24 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex-1">
-          <div className="w-32 mb-1">
-            <LoadingPulse />
-          </div>
-          <div className="w-64 mb-6">
-            <LoadingPulse />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[...Array(2)].map((_, i) => (
-              <div key={i} className="card bg-dark-primary space-y-2">
-                <div className="w-32">
-                  <LoadingPulse />
+
+        {/* Profile Section */}
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
+          <div className="flex items-start space-x-4">
+            <div className="rounded-lg bg-light-secondary dark:bg-dark-secondary p-3">
+              <div className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="h-6 w-48 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="h-4 w-96 mt-1 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[1, 2, 3, 4].map((index) => (
+                    <div key={index}>
+                      <div className="h-4 w-24 bg-light-secondary dark:bg-dark-secondary rounded-lg mb-1" />
+                      <div className="h-10 w-full bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                    </div>
+                  ))}
                 </div>
-                <div className="h-10 rounded-md bg-dark-secondary animate-pulse" />
+                <div className="flex justify-end">
+                  <div className="h-10 w-32 bg-light-secondary dark:bg-dark-secondary rounded-lg" />
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LoadingSecuritySection() {
-  return (
-    <div className="card">
-      <div className="flex items-start space-x-4">
-        <div className="rounded-lg bg-accent-primary/10 p-3">
-          <KeyIcon className="h-6 w-6 text-accent-primary" />
-        </div>
-        <div className="flex-1">
-          <div className="w-32 mb-1">
-            <LoadingPulse />
-          </div>
-          <div className="w-64 mb-6">
-            <LoadingPulse />
-          </div>
-          <div className="space-y-4">
-            <div className="card bg-dark-primary">
-              <div className="w-24 mb-2">
-                <LoadingPulse />
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="flex-1 h-10 rounded-md bg-dark-secondary animate-pulse" />
-                <div className="w-32 h-10 rounded-md bg-dark-secondary animate-pulse" />
-              </div>
-            </div>
-            <div className="card bg-dark-primary">
-              <div className="w-48 mb-2">
-                <LoadingPulse />
-              </div>
-              <div className="w-32 h-10 rounded-md bg-dark-secondary animate-pulse" />
             </div>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-export default function LoadingSettings() {
-  return (
-    <AdminLayout>
-      <div className="space-y-6">
-        <LoadingSection icon={BellIcon} items={4} />
-        <LoadingSection icon={CloudArrowUpIcon} items={3} />
-        <LoadingScheduleSection />
-        <LoadingSecuritySection />
-        <LoadingProfileSection />
-      </div>
-    </AdminLayout>
   );
 }

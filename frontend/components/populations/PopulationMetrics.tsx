@@ -3,7 +3,7 @@ import {
   ChartBarIcon,
   ExclamationTriangleIcon,
   ClockIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface MetricCardProps {
   title: string;
@@ -16,20 +16,31 @@ interface MetricCardProps {
   description?: string;
 }
 
-function MetricCard({ title, value, trend, icon: Icon, description }: MetricCardProps) {
+function MetricCard({
+  title,
+  value,
+  trend,
+  icon: Icon,
+  description,
+}: MetricCardProps) {
   return (
     <div className="panel-stat">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-dark-text-secondary text-sm font-medium">{title}</p>
-          <p className="mt-2 text-2xl font-semibold">{value}</p>
+          <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
+            {title}
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+            {value}
+          </p>
           {trend && (
             <p
               className={`mt-1 text-sm ${
-                trend.value >= 0 ? 'text-accent-success' : 'text-accent-error'
+                trend.value >= 0 ? "text-accent-success" : "text-accent-error"
               }`}
             >
-              {trend.value >= 0 ? '↑' : '↓'} {Math.abs(trend.value)}% {trend.label}
+              {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}%{" "}
+              {trend.label}
             </p>
           )}
         </div>
@@ -38,7 +49,9 @@ function MetricCard({ title, value, trend, icon: Icon, description }: MetricCard
         </div>
       </div>
       {description && (
-        <p className="mt-4 text-sm text-dark-text-secondary">{description}</p>
+        <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
+          {description}
+        </p>
       )}
     </div>
   );
@@ -55,23 +68,27 @@ interface ComorbidityDistributionProps {
 function ComorbidityDistribution({ data }: ComorbidityDistributionProps) {
   return (
     <div className="panel-analytics">
-      <h3 className="text-lg font-semibold mb-4 text-dark-text-primary">Comorbidity Distribution</h3>
+      <h3 className="text-lg font-semibold mb-4 text-light-text-primary dark:text-dark-text-primary">
+        Comorbidity Distribution
+      </h3>
       <div className="space-y-4">
         {data.map((item) => (
           <div key={item.label}>
             <div className="flex justify-between text-sm mb-1">
-              <span>{item.label}</span>
-              <span className="text-dark-text-secondary">
+              <span className="text-light-text-primary dark:text-dark-text-primary">
+                {item.label}
+              </span>
+              <span className="text-light-text-secondary dark:text-dark-text-secondary">
                 {item.count} ({item.percentage}%)
               </span>
             </div>
-            <div className="h-2 bg-dark-secondary/30 rounded-full overflow-hidden">
+            <div className="h-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-full overflow-hidden">
               <div
                 className="h-full bg-accent-primary/70 rounded-full transition-all"
-                style={{ 
+                style={{
                   width: `${item.percentage}%`,
-                  transitionDuration: 'var(--transition-duration)',
-                  transitionTimingFunction: 'var(--transition-timing)'
+                  transitionDuration: "var(--transition-duration)",
+                  transitionTimingFunction: "var(--transition-timing)",
                 }}
               />
             </div>
@@ -112,44 +129,44 @@ export default function PopulationMetrics({
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Total Patients"
-          value={totalPatients}
-          icon={UsersIcon}
           description="Active patients under care"
+          icon={UsersIcon}
+          title="Total Patients"
           trend={{
             value: 5.2,
-            label: 'vs last month'
+            label: "vs last month",
           }}
+          value={totalPatients}
         />
         <MetricCard
-          title="High Risk"
-          value={riskDistribution.high}
-          icon={ExclamationTriangleIcon}
           description={`${riskDistribution.trendingUp} trending up`}
+          icon={ExclamationTriangleIcon}
+          title="High Risk"
           trend={{
             value: -2.5,
-            label: 'vs last month'
+            label: "vs last month",
           }}
+          value={riskDistribution.high}
         />
         <MetricCard
-          title="Care Gaps"
-          value={careGapMetrics.total}
-          icon={ChartBarIcon}
           description={`${careGapMetrics.overdue} overdue`}
+          icon={ChartBarIcon}
+          title="Care Gaps"
           trend={{
             value: careGapMetrics.trend,
-            label: 'vs last month'
+            label: "vs last month",
           }}
+          value={careGapMetrics.total}
         />
         <MetricCard
-          title="Multi-Morbidity"
-          value={`${Math.round((comorbidityDistribution[1].count / totalPatients) * 100)}%`}
-          icon={ClockIcon}
           description="Patients with 3+ conditions"
+          icon={ClockIcon}
+          title="Multi-Morbidity"
           trend={{
             value: 8.7,
-            label: 'vs last month'
+            label: "vs last month",
           }}
+          value={`${Math.round((comorbidityDistribution[1].count / totalPatients) * 100)}%`}
         />
       </div>
 

@@ -1,5 +1,7 @@
-import { Dialog, Transition } from '@headlessui/react';
-import { Fragment } from 'react';
+import type { PatientDetails } from "@/types/patient";
+
+import { Dialog, Transition } from "@headlessui/react";
+import { Fragment } from "react";
 import {
   ClipboardDocumentListIcon,
   XMarkIcon,
@@ -9,8 +11,7 @@ import {
   BeakerIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-} from '@heroicons/react/24/outline';
-import type { PatientDetails } from '@/types/patient';
+} from "@heroicons/react/24/outline";
 
 interface PatientDetailModalProps {
   isOpen: boolean;
@@ -18,41 +19,60 @@ interface PatientDetailModalProps {
   patient: PatientDetails;
 }
 
-function Badge({ children, variant = 'default' }: { children: React.ReactNode; variant?: 'default' | 'success' | 'warning' | 'error' }) {
+function Badge({
+  children,
+  variant = "default",
+}: {
+  children: React.ReactNode;
+  variant?: "default" | "success" | "warning" | "error";
+}) {
   const colors = {
-    default: 'bg-dark-secondary text-dark-text-secondary',
-    success: 'bg-accent-success/10 text-accent-success',
-    warning: 'bg-accent-warning/10 text-accent-warning',
-    error: 'bg-accent-error/10 text-accent-error',
+    default:
+      "bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary",
+    success: "bg-accent-success/10 text-accent-success",
+    warning: "bg-accent-warning/10 text-accent-warning",
+    error: "bg-accent-error/10 text-accent-error",
   };
 
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[variant]}`}>
+    <span
+      className={`px-2 py-1 rounded-full text-xs font-medium ${colors[variant]}`}
+    >
       {children}
     </span>
   );
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon: typeof InformationCircleIcon; children: React.ReactNode }) {
+function Section({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: typeof InformationCircleIcon;
+  children: React.ReactNode;
+}) {
   return (
     <div className="panel-detail p-4">
       <div className="flex items-center space-x-2 mb-3">
-        <Icon className="h-5 w-5 text-dark-text-secondary" />
-        <h3 className="text-sm font-medium text-dark-text-primary">{title}</h3>
+        <Icon className="h-5 w-5 text-light-text-secondary dark:text-dark-text-secondary" />
+        <h3 className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+          {title}
+        </h3>
       </div>
       <div>{children}</div>
     </div>
   );
 }
 
-export default function PatientDetailModal({ isOpen, onClose, patient }: PatientDetailModalProps) {
+export default function PatientDetailModal({
+  isOpen,
+  onClose,
+  patient,
+}: PatientDetailModalProps) {
   return (
-    <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog
-        as="div"
-        className="relative z-50"
-        onClose={onClose}
-      >
+    <Transition.Root as={Fragment} show={isOpen}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -80,10 +100,10 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                 {/* Header */}
                 <div className="mb-6 flex items-start justify-between">
                   <div>
-                    <Dialog.Title className="text-2xl font-semibold text-dark-text-primary">
+                    <Dialog.Title className="text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
                       {`${patient.name.first} ${patient.name.last}`}
                     </Dialog.Title>
-                    <div className="mt-1 text-dark-text-secondary">
+                    <div className="mt-1 text-light-text-secondary dark:text-dark-text-secondary">
                       <div className="flex items-center space-x-4">
                         <div>Age: {patient.demographics.age}</div>
                         <div>Gender: {patient.demographics.gender}</div>
@@ -93,14 +113,17 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                         <div>Phone: {patient.demographics.phone}</div>
                         <div>Email: {patient.demographics.email}</div>
                         <div>
-                          Address: {patient.demographics.address ? `${patient.demographics.address.street}, ${patient.demographics.address.city}, ${patient.demographics.address.state} ${patient.demographics.address.zip}` : 'Not provided'}
+                          Address:{" "}
+                          {patient.demographics.address
+                            ? `${patient.demographics.address.street}, ${patient.demographics.address.city}, ${patient.demographics.address.state} ${patient.demographics.address.zip}`
+                            : "Not provided"}
                         </div>
                       </div>
                     </div>
                   </div>
                   <button
+                    className="rounded-lg p-1 text-light-text-secondary dark:text-dark-text-secondary hover:bg-light-secondary/80 dark:hover:bg-dark-secondary/80 transition-all duration-200"
                     onClick={onClose}
-                    className="rounded-lg p-1 text-dark-text-secondary hover:bg-dark-secondary/80 transition-all duration-200"
                   >
                     <XMarkIcon className="h-6 w-6" />
                   </button>
@@ -109,21 +132,25 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                 {/* Content */}
                 <div className="space-y-4">
                   {/* Risk Factors */}
-                  <Section title="Risk Factors" icon={ExclamationTriangleIcon}>
+                  <Section icon={ExclamationTriangleIcon} title="Risk Factors">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm text-dark-text-secondary">Risk Score</div>
-                          <div className="text-lg font-medium">{patient.riskFactors.score}</div>
+                          <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                            Risk Score
+                          </div>
+                          <div className="text-lg font-medium text-light-text-primary dark:text-dark-text-primary">
+                            {patient.riskFactors.score}
+                          </div>
                         </div>
                         <div>
                           <Badge
                             variant={
-                              patient.riskFactors.level === 'high'
-                                ? 'error'
-                                : patient.riskFactors.level === 'medium'
-                                ? 'warning'
-                                : 'success'
+                              patient.riskFactors.level === "high"
+                                ? "error"
+                                : patient.riskFactors.level === "medium"
+                                  ? "warning"
+                                  : "success"
                             }
                           >
                             {patient.riskFactors.level} risk
@@ -131,25 +158,29 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                         </div>
                       </div>
                       <div>
-                        <div className="text-sm font-medium mb-2">Contributing Factors</div>
+                        <div className="text-sm font-medium mb-2 text-light-text-primary dark:text-dark-text-primary">
+                          Contributing Factors
+                        </div>
                         <div className="space-y-2">
                           {patient.riskFactors.factors.map((factor, index) => (
                             <div
                               key={index}
-                              className="flex items-center justify-between p-2 bg-dark-secondary/30 rounded-lg"
+                              className="flex items-center justify-between p-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-lg"
                             >
-                              <div>{factor.name}</div>
+                              <div className="text-light-text-primary dark:text-dark-text-primary">
+                                {factor.name}
+                              </div>
                               <div className="flex items-center space-x-4">
-                                <div className="text-sm text-dark-text-secondary">
+                                <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                   Last assessed: {factor.lastAssessed}
                                 </div>
                                 <Badge
                                   variant={
-                                    factor.severity === 'high'
-                                      ? 'error'
-                                      : factor.severity === 'medium'
-                                      ? 'warning'
-                                      : 'success'
+                                    factor.severity === "high"
+                                      ? "error"
+                                      : factor.severity === "medium"
+                                        ? "warning"
+                                        : "success"
                                   }
                                 >
                                   {factor.severity}
@@ -163,33 +194,35 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                   </Section>
 
                   {/* Conditions */}
-                  <Section title="Active Conditions" icon={BeakerIcon}>
+                  <Section icon={BeakerIcon} title="Active Conditions">
                     <div className="space-y-2">
-                      {patient.conditions.map(condition => (
+                      {patient.conditions.map((condition) => (
                         <div
                           key={condition.id}
-                          className="p-2 bg-dark-secondary/30 rounded-lg"
+                          className="p-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-lg"
                         >
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="font-medium">{condition.name}</div>
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                {condition.name}
+                              </div>
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 Diagnosed: {condition.diagnosedDate}
                               </div>
                             </div>
                             <div className="flex items-center space-x-4">
                               <Badge
                                 variant={
-                                  condition.controlStatus === 'uncontrolled'
-                                    ? 'error'
-                                    : condition.controlStatus === 'controlled'
-                                    ? 'success'
-                                    : 'warning'
+                                  condition.controlStatus === "uncontrolled"
+                                    ? "error"
+                                    : condition.controlStatus === "controlled"
+                                      ? "success"
+                                      : "warning"
                                 }
                               >
                                 {condition.controlStatus}
                               </Badge>
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 Last assessed: {condition.lastAssessed}
                               </div>
                             </div>
@@ -200,31 +233,33 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                   </Section>
 
                   {/* Care Gaps */}
-                  <Section title="Care Gaps" icon={ClipboardDocumentListIcon}>
+                  <Section icon={ClipboardDocumentListIcon} title="Care Gaps">
                     <div className="space-y-2">
-                      {patient.careGaps.map(gap => (
+                      {patient.careGaps.map((gap) => (
                         <div
                           key={gap.id}
-                          className="p-2 bg-dark-secondary/30 rounded-lg"
+                          className="p-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-lg"
                         >
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="font-medium">{gap.measure}</div>
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                {gap.measure}
+                              </div>
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 {gap.description}
                               </div>
                             </div>
                             <div className="flex items-center space-x-4">
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 Due: {gap.dueDate}
                               </div>
                               <Badge
                                 variant={
-                                  gap.priority === 'high'
-                                    ? 'error'
-                                    : gap.priority === 'medium'
-                                    ? 'warning'
-                                    : 'success'
+                                  gap.priority === "high"
+                                    ? "error"
+                                    : gap.priority === "medium"
+                                      ? "warning"
+                                      : "success"
                                 }
                               >
                                 {gap.priority}
@@ -237,28 +272,30 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                   </Section>
 
                   {/* Labs */}
-                  <Section title="Recent Labs" icon={BeakerIcon}>
+                  <Section icon={BeakerIcon} title="Recent Labs">
                     <div className="space-y-2">
-                      {patient.labs.map(lab => (
+                      {patient.labs.map((lab) => (
                         <div
                           key={lab.id}
-                          className="p-2 bg-dark-secondary/30 rounded-lg"
+                          className="p-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-lg"
                         >
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="font-medium">{lab.name}</div>
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                {lab.name}
+                              </div>
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 {lab.value} {lab.unit} • {lab.date}
                               </div>
                             </div>
                             <div className="flex items-center space-x-4">
                               <Badge
                                 variant={
-                                  lab.status === 'critical'
-                                    ? 'error'
-                                    : lab.status === 'abnormal'
-                                    ? 'warning'
-                                    : 'success'
+                                  lab.status === "critical"
+                                    ? "error"
+                                    : lab.status === "abnormal"
+                                      ? "warning"
+                                      : "success"
                                 }
                               >
                                 {lab.status}
@@ -267,14 +304,14 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                                 <div className="flex items-center space-x-1">
                                   <ChartBarIcon
                                     className={`h-4 w-4 ${
-                                      lab.trend === 'up'
-                                        ? 'text-accent-error'
-                                        : lab.trend === 'down'
-                                        ? 'text-accent-success'
-                                        : 'text-dark-text-secondary'
+                                      lab.trend === "up"
+                                        ? "text-accent-error"
+                                        : lab.trend === "down"
+                                          ? "text-accent-success"
+                                          : "text-light-text-secondary dark:text-dark-text-secondary"
                                     }`}
                                   />
-                                  <span className="text-sm text-dark-text-secondary">
+                                  <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                     {lab.trend}
                                   </span>
                                 </div>
@@ -287,29 +324,35 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                   </Section>
 
                   {/* Patient Activity */}
-                  <Section title="Patient Activity" icon={ClockIcon}>
+                  <Section icon={ClockIcon} title="Patient Activity">
                     <div className="space-y-4">
                       {/* Emergency/Urgent Care */}
-                      {patient.encounters.some(e => e.type === 'Emergency Department') && (
+                      {patient.encounters.some(
+                        (e) => e.type === "Emergency Department",
+                      ) && (
                         <div>
-                          <div className="text-sm font-medium mb-2 text-accent-error">Emergency/Urgent Care</div>
+                          <div className="text-sm font-medium mb-2 text-accent-error">
+                            Emergency/Urgent Care
+                          </div>
                           <div className="space-y-2">
                             {patient.encounters
-                              .filter(e => e.type === 'Emergency Department')
-                              .map(encounter => (
+                              .filter((e) => e.type === "Emergency Department")
+                              .map((encounter) => (
                                 <div
                                   key={encounter.id}
                                   className="p-2 bg-accent-error/10 rounded-lg border border-accent-error/20"
                                 >
                                   <div className="flex items-center justify-between">
                                     <div>
-                                      <div className="font-medium">{encounter.provider}</div>
-                                      <div className="text-sm text-dark-text-secondary">
+                                      <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                        {encounter.provider}
+                                      </div>
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                         {encounter.summary}
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-4">
-                                      <div className="text-sm text-dark-text-secondary">
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                         {encounter.date}
                                       </div>
                                       {encounter.followUpNeeded && (
@@ -320,32 +363,45 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                                     </div>
                                   </div>
                                 </div>
-                            ))}
+                              ))}
                           </div>
                         </div>
                       )}
 
                       {/* Specialty Care */}
-                      {patient.encounters.some(e => e.type !== 'Emergency Department' && e.type !== 'Office Visit') && (
+                      {patient.encounters.some(
+                        (e) =>
+                          e.type !== "Emergency Department" &&
+                          e.type !== "Office Visit",
+                      ) && (
                         <div>
-                          <div className="text-sm font-medium mb-2 text-accent-warning">Specialty Care</div>
+                          <div className="text-sm font-medium mb-2 text-accent-warning">
+                            Specialty Care
+                          </div>
                           <div className="space-y-2">
                             {patient.encounters
-                              .filter(e => e.type !== 'Emergency Department' && e.type !== 'Office Visit')
-                              .map(encounter => (
+                              .filter(
+                                (e) =>
+                                  e.type !== "Emergency Department" &&
+                                  e.type !== "Office Visit",
+                              )
+                              .map((encounter) => (
                                 <div
                                   key={encounter.id}
                                   className="p-2 bg-accent-warning/10 rounded-lg border border-accent-warning/20"
                                 >
                                   <div className="flex items-center justify-between">
                                     <div>
-                                      <div className="font-medium">{encounter.type}</div>
-                                      <div className="text-sm">
-                                        {encounter.provider} • {encounter.summary}
+                                      <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                        {encounter.type}
+                                      </div>
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                                        {encounter.provider} •{" "}
+                                        {encounter.summary}
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-4">
-                                      <div className="text-sm text-dark-text-secondary">
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                         {encounter.date}
                                       </div>
                                       {encounter.followUpNeeded && (
@@ -356,7 +412,7 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                                     </div>
                                   </div>
                                 </div>
-                            ))}
+                              ))}
                           </div>
                         </div>
                       )}
@@ -364,25 +420,35 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                       {/* Recent Orders & Results */}
                       {patient.recentActions.length > 0 && (
                         <div>
-                          <div className="text-sm font-medium mb-2 text-accent-success">Completed Orders & Updates</div>
+                          <div className="text-sm font-medium mb-2 text-accent-success">
+                            Completed Orders & Updates
+                          </div>
                           <div className="space-y-2">
-                            {patient.recentActions.map(action => (
+                            {patient.recentActions.map((action) => (
                               <div
                                 key={action.id}
                                 className="p-2 bg-accent-success/10 rounded-lg border border-accent-success/20"
                               >
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="font-medium">{action.type}</div>
-                                    <div className="text-sm text-dark-text-secondary">
+                                    <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                      {action.type}
+                                    </div>
+                                    <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                       {action.description} • {action.provider}
                                     </div>
                                   </div>
                                   <div className="flex items-center space-x-4">
-                                    <div className="text-sm text-dark-text-secondary">
+                                    <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                       {action.date}
                                     </div>
-                                    <Badge variant={action.priority === 'high' ? 'error' : 'default'}>
+                                    <Badge
+                                      variant={
+                                        action.priority === "high"
+                                          ? "error"
+                                          : "default"
+                                      }
+                                    >
                                       {action.priority}
                                     </Badge>
                                   </div>
@@ -394,46 +460,53 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                       )}
 
                       {/* Critical Lab Results */}
-                      {patient.labs.some(lab => lab.status === 'critical') && (
+                      {patient.labs.some(
+                        (lab) => lab.status === "critical",
+                      ) && (
                         <div>
-                          <div className="text-sm font-medium mb-2 text-accent-error">Critical Lab Results</div>
+                          <div className="text-sm font-medium mb-2 text-accent-error">
+                            Critical Lab Results
+                          </div>
                           <div className="space-y-2">
                             {patient.labs
-                              .filter(lab => lab.status === 'critical')
-                              .map(lab => (
+                              .filter((lab) => lab.status === "critical")
+                              .map((lab) => (
                                 <div
                                   key={lab.id}
                                   className="p-2 bg-accent-error/10 rounded-lg border border-accent-error/20"
                                 >
                                   <div className="flex items-center justify-between">
                                     <div>
-                                      <div className="font-medium">{lab.name}</div>
-                                      <div className="text-sm text-dark-text-secondary">
-                                        {lab.value} {lab.unit} • Reference: {lab.referenceRange}
+                                      <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                        {lab.name}
+                                      </div>
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                                        {lab.value} {lab.unit} • Reference:{" "}
+                                        {lab.referenceRange}
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-4">
-                                      <div className="text-sm text-dark-text-secondary">
+                                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                         {lab.date}
                                       </div>
                                       <div className="flex items-center space-x-1">
                                         <ChartBarIcon
                                           className={`h-4 w-4 ${
-                                            lab.trend === 'up'
-                                              ? 'text-accent-error'
-                                              : lab.trend === 'down'
-                                              ? 'text-accent-success'
-                                              : 'text-dark-text-secondary'
+                                            lab.trend === "up"
+                                              ? "text-accent-error"
+                                              : lab.trend === "down"
+                                                ? "text-accent-success"
+                                                : "text-light-text-secondary dark:text-dark-text-secondary"
                                           }`}
                                         />
-                                        <span className="text-sm text-dark-text-secondary">
+                                        <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                           {lab.trend}
                                         </span>
                                       </div>
                                     </div>
                                   </div>
                                 </div>
-                            ))}
+                              ))}
                           </div>
                         </div>
                       )}
@@ -441,17 +514,19 @@ export default function PatientDetailModal({ isOpen, onClose, patient }: Patient
                   </Section>
 
                   {/* Care Team */}
-                  <Section title="Care Team" icon={UserGroupIcon}>
+                  <Section icon={UserGroupIcon} title="Care Team">
                     <div className="space-y-2">
-                      {patient.careTeam.map(member => (
+                      {patient.careTeam.map((member) => (
                         <div
                           key={member.id}
-                          className="p-2 bg-dark-secondary/30 rounded-lg"
+                          className="p-2 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded-lg"
                         >
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="font-medium">{member.name}</div>
-                              <div className="text-sm text-dark-text-secondary">
+                              <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                {member.name}
+                              </div>
+                              <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                                 {member.role}
                                 {member.specialty && ` • ${member.specialty}`}
                               </div>

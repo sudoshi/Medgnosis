@@ -1,18 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useMemo } from 'react';
-import AdminLayout from '@/components/layout/AdminLayout';
+import type { PatientDetails } from "@/types/patient";
+
+import { useState, useMemo } from "react";
 import {
   UserGroupIcon,
   ExclamationTriangleIcon,
   ChartBarIcon,
   ClockIcon,
-} from '@heroicons/react/24/outline';
-import { mockPatientsList } from '@/services/mockPatientData';
-import PatientRow from '@/components/patients/PatientRow';
-import PatientFilters from '@/components/patients/PatientFilters';
-import PatientDetailModal from '@/components/patients/PatientDetailModal';
-import type { PatientDetails } from '@/types/patient';
+} from "@heroicons/react/24/outline";
+
+import AdminLayout from "@/components/layout/AdminLayout";
+import { mockPatientsList } from "@/services/mockPatientData";
+import PatientRow from "@/components/patients/PatientRow";
+import PatientFilters from "@/components/patients/PatientFilters";
+import PatientDetailModal from "@/components/patients/PatientDetailModal";
 
 interface StatCardProps {
   title: string;
@@ -25,20 +27,31 @@ interface StatCardProps {
   };
 }
 
-function StatCard({ title, value, description, icon: Icon, trend }: StatCardProps) {
+function StatCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  trend,
+}: StatCardProps) {
   return (
     <div className="stat-panel">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-dark-text-secondary text-sm font-medium">{title}</p>
-          <p className="mt-2 text-2xl font-semibold">{value}</p>
+          <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
+            {title}
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+            {value}
+          </p>
           {trend && (
             <p
               className={`mt-1 text-sm ${
-                trend.value >= 0 ? 'text-accent-success' : 'text-accent-error'
+                trend.value >= 0 ? "text-accent-success" : "text-accent-error"
               }`}
             >
-              {trend.value >= 0 ? '↑' : '↓'} {Math.abs(trend.value)}% {trend.label}
+              {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}%{" "}
+              {trend.label}
             </p>
           )}
         </div>
@@ -46,13 +59,17 @@ function StatCard({ title, value, description, icon: Icon, trend }: StatCardProp
           <Icon className="h-6 w-6 text-accent-primary" />
         </div>
       </div>
-      <p className="mt-4 text-sm text-dark-text-secondary">{description}</p>
+      <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
+        {description}
+      </p>
     </div>
   );
 }
 
 export default function PatientsPage() {
-  const [selectedPatient, setSelectedPatient] = useState<PatientDetails | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientDetails | null>(
+    null,
+  );
   const [filters, setFilters] = useState<{
     conditions?: string[];
     riskLevel?: string;
@@ -62,23 +79,29 @@ export default function PatientsPage() {
   }>({});
 
   const filteredPatients = useMemo(() => {
-    return mockPatientsList.filter(patient => {
+    return mockPatientsList.filter((patient) => {
       // Filter by conditions
       if (filters.conditions && filters.conditions.length > 0) {
-        const hasCondition = patient.conditions.some(condition =>
-          filters.conditions!.includes(condition.name.toLowerCase().replace(' ', '_'))
+        const hasCondition = patient.conditions.some((condition) =>
+          filters.conditions!.includes(
+            condition.name.toLowerCase().replace(" ", "_"),
+          ),
         );
+
         if (!hasCondition) return false;
       }
 
       // Filter by risk level
-      if (filters.riskLevel && patient.riskFactors.level !== filters.riskLevel) {
+      if (
+        filters.riskLevel &&
+        patient.riskFactors.level !== filters.riskLevel
+      ) {
         return false;
       }
 
       // Filter by care gaps
       if (filters.careGaps && filters.careGaps.length > 0) {
-        if (filters.careGaps.includes('overdue') && !patient.careGaps.length) {
+        if (filters.careGaps.includes("overdue") && !patient.careGaps.length) {
           return false;
         }
       }
@@ -87,16 +110,20 @@ export default function PatientsPage() {
       if (filters.lastVisit) {
         const lastVisitDate = new Date(patient.encounters[0]?.date);
         const daysAgo = Math.floor(
-          (Date.now() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24)
+          (Date.now() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24),
         );
+
         if (daysAgo > filters.lastVisit) return false;
       }
 
       // Filter by provider
       if (filters.provider && filters.provider.length > 0) {
-        const hasProvider = patient.careTeam.some(member =>
-          filters.provider!.includes(member.role.toLowerCase().replace(' ', '_'))
+        const hasProvider = patient.careTeam.some((member) =>
+          filters.provider!.includes(
+            member.role.toLowerCase().replace(" ", "_"),
+          ),
         );
+
         if (!hasProvider) return false;
       }
 
@@ -111,24 +138,27 @@ export default function PatientsPage() {
     const byCareGap: Record<string, number> = {};
     const byProvider: Record<string, number> = {};
 
-    mockPatientsList.forEach(patient => {
+    mockPatientsList.forEach((patient) => {
       // Count conditions
-      patient.conditions.forEach(condition => {
-        const key = condition.name.toLowerCase().replace(' ', '_');
+      patient.conditions.forEach((condition) => {
+        const key = condition.name.toLowerCase().replace(" ", "_");
+
         byCondition[key] = (byCondition[key] || 0) + 1;
       });
 
       // Count risk levels
-      byRiskLevel[patient.riskFactors.level] = (byRiskLevel[patient.riskFactors.level] || 0) + 1;
+      byRiskLevel[patient.riskFactors.level] =
+        (byRiskLevel[patient.riskFactors.level] || 0) + 1;
 
       // Count care gaps
       if (patient.careGaps.length > 0) {
-        byCareGap['overdue'] = (byCareGap['overdue'] || 0) + 1;
+        byCareGap["overdue"] = (byCareGap["overdue"] || 0) + 1;
       }
 
       // Count providers
-      patient.careTeam.forEach(member => {
-        const key = member.role.toLowerCase().replace(' ', '_');
+      patient.careTeam.forEach((member) => {
+        const key = member.role.toLowerCase().replace(" ", "_");
+
         byProvider[key] = (byProvider[key] || 0) + 1;
       });
     });
@@ -141,11 +171,17 @@ export default function PatientsPage() {
     };
   }, []);
 
-  const highRiskCount = mockPatientsList.filter(p => p.riskFactors.level === 'high').length;
-  const totalCareGaps = mockPatientsList.reduce((sum, p) => sum + p.careGaps.length, 0);
-  const recentEncounters = mockPatientsList.filter(p => {
+  const highRiskCount = mockPatientsList.filter(
+    (p) => p.riskFactors.level === "high",
+  ).length;
+  const totalCareGaps = mockPatientsList.reduce(
+    (sum, p) => sum + p.careGaps.length,
+    0,
+  );
+  const recentEncounters = mockPatientsList.filter((p) => {
     const lastEncounter = new Date(p.encounters[0]?.date);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
     return lastEncounter > thirtyDaysAgo;
   }).length;
 
@@ -153,53 +189,55 @@ export default function PatientsPage() {
     <AdminLayout>
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Left Sidebar - Filters */}
-        <PatientFilters onFiltersChange={setFilters} counts={counts} />
+        <PatientFilters counts={counts} onFiltersChange={setFilters} />
 
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <h1 className="text-2xl font-semibold">Patient Management</h1>
+          <h1 className="text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+            Patient Management
+          </h1>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              title="Total Patients"
-              value={mockPatientsList.length.toString()}
               description="Active patients under care"
               icon={UserGroupIcon}
+              title="Total Patients"
               trend={{
                 value: 5.2,
-                label: 'vs last month'
+                label: "vs last month",
               }}
+              value={mockPatientsList.length.toString()}
             />
             <StatCard
-              title="High Risk"
-              value={highRiskCount.toString()}
               description="Patients requiring attention"
               icon={ExclamationTriangleIcon}
+              title="High Risk"
               trend={{
                 value: -2.5,
-                label: 'vs last month'
+                label: "vs last month",
               }}
+              value={highRiskCount.toString()}
             />
             <StatCard
-              title="Care Gaps"
-              value={totalCareGaps.toString()}
               description="Open care gaps"
               icon={ChartBarIcon}
+              title="Care Gaps"
               trend={{
                 value: -12.3,
-                label: 'vs last month'
+                label: "vs last month",
               }}
+              value={totalCareGaps.toString()}
             />
             <StatCard
-              title="Recent Encounters"
-              value={recentEncounters.toString()}
               description="Last 30 days"
               icon={ClockIcon}
+              title="Recent Encounters"
               trend={{
                 value: 8.7,
-                label: 'vs last month'
+                label: "vs last month",
               }}
+              value={recentEncounters.toString()}
             />
           </div>
 
@@ -219,8 +257,8 @@ export default function PatientsPage() {
       {selectedPatient && (
         <PatientDetailModal
           isOpen={true}
-          onClose={() => setSelectedPatient(null)}
           patient={selectedPatient}
+          onClose={() => setSelectedPatient(null)}
         />
       )}
     </AdminLayout>

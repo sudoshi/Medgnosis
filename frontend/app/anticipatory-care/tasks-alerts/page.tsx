@@ -76,29 +76,31 @@ export default function TasksAlertsPage() {
       <div className="space-y-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-dark-text-secondary text-sm font-medium">
+                <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
                   Total Tasks
                 </p>
-                <p className="mt-2 text-2xl font-semibold">{tasks.length}</p>
+                <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+                  {tasks.length}
+                </p>
               </div>
               <div className="rounded-lg bg-accent-primary/10 p-3">
                 <ClipboardDocumentListIcon className="h-6 w-6 text-accent-primary" />
               </div>
             </div>
-            <p className="mt-4 text-sm text-dark-text-secondary">
+            <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
               Active tasks across all categories
             </p>
           </div>
-          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-dark-text-secondary text-sm font-medium">
+                <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
                   High Priority
                 </p>
-                <p className="mt-2 text-2xl font-semibold">
+                <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
                   {tasks.filter((t) => t.priority === "high").length}
                 </p>
               </div>
@@ -106,17 +108,17 @@ export default function TasksAlertsPage() {
                 <CheckCircleIcon className="h-6 w-6 text-accent-error" />
               </div>
             </div>
-            <p className="mt-4 text-sm text-dark-text-secondary">
+            <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
               Tasks requiring immediate attention
             </p>
           </div>
-          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-dark-text-secondary text-sm font-medium">
+                <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
                   New Alerts
                 </p>
-                <p className="mt-2 text-2xl font-semibold">
+                <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
                   {alerts.filter((a) => a.status === "unread").length}
                 </p>
               </div>
@@ -124,17 +126,17 @@ export default function TasksAlertsPage() {
                 <BellIcon className="h-6 w-6 text-accent-warning" />
               </div>
             </div>
-            <p className="mt-4 text-sm text-dark-text-secondary">
+            <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
               Unread alerts requiring review
             </p>
           </div>
-          <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+          <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-dark-text-secondary text-sm font-medium">
+                <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm font-medium">
                   Critical Results
                 </p>
-                <p className="mt-2 text-2xl font-semibold">
+                <p className="mt-2 text-2xl font-semibold text-light-text-primary dark:text-dark-text-primary">
                   {alerts.filter((a) => a.priority === "high").length}
                 </p>
               </div>
@@ -142,16 +144,18 @@ export default function TasksAlertsPage() {
                 <FunnelIcon className="h-6 w-6 text-accent-error" />
               </div>
             </div>
-            <p className="mt-4 text-sm text-dark-text-secondary">
+            <p className="mt-4 text-sm text-light-text-secondary dark:text-dark-text-secondary">
               High priority alerts to address
             </p>
           </div>
         </div>
 
         {/* Tasks Section */}
-        <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">Tasks</h2>
+            <h2 className="text-xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+              Tasks
+            </h2>
             <div className="flex items-center space-x-4">
               <button
                 className="flex items-center px-4 py-2 rounded-lg bg-accent-primary text-white hover:bg-accent-primary/90 transition-colors"
@@ -168,7 +172,7 @@ export default function TasksAlertsPage() {
                       className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                         selectedTaskType === type
                           ? "bg-accent-primary text-white"
-                          : "bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                          : "bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
                       }`}
                       onClick={() => setSelectedTaskType(type)}
                     >
@@ -184,12 +188,14 @@ export default function TasksAlertsPage() {
             {filteredTasks.map((task) => (
               <div
                 key={task.id}
-                className="bg-dark-secondary/50 rounded-lg p-4 hover:bg-dark-secondary transition-colors"
+                className="bg-light-secondary/50 dark:bg-dark-secondary/50 rounded-lg p-4 hover:bg-light-secondary dark:hover:bg-dark-secondary transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-medium">{task.title}</h3>
-                    <p className="text-sm text-dark-text-secondary mt-1">
+                    <h3 className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                      {task.title}
+                    </h3>
+                    <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mt-1">
                       {task.description}
                     </p>
                     <div className="flex items-center space-x-4 mt-2">
@@ -205,7 +211,7 @@ export default function TasksAlertsPage() {
                         {task.priority.charAt(0).toUpperCase() +
                           task.priority.slice(1)}
                       </span>
-                      <span className="text-sm text-dark-text-secondary">
+                      <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         Due: {new Date(task.dueDate).toLocaleDateString()}
                       </span>
                     </div>
@@ -231,12 +237,14 @@ export default function TasksAlertsPage() {
         </div>
 
         {/* Alerts Section */}
-        <div className="bg-dark-primary rounded-lg border border-dark-border p-6 shadow-md">
+        <div className="bg-light-primary dark:bg-dark-primary rounded-lg border border-light-border dark:border-dark-border p-6 shadow-md">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-semibold">Alerts</h2>
+              <h2 className="text-xl font-semibold text-light-text-primary dark:text-dark-text-primary">
+                Alerts
+              </h2>
               <button
-                className="flex items-center px-3 py-1.5 rounded-lg bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary transition-colors"
+                className="flex items-center px-3 py-1.5 rounded-lg bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary transition-colors"
                 onClick={() => setIsPreferencesModalOpen(true)}
               >
                 <Cog6ToothIcon className="h-5 w-5 mr-2" />
@@ -251,7 +259,7 @@ export default function TasksAlertsPage() {
                     className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                       selectedAlertType === type
                         ? "bg-accent-primary text-white"
-                        : "bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                        : "bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
                     }`}
                     onClick={() => setSelectedAlertType(type)}
                   >
@@ -268,7 +276,7 @@ export default function TasksAlertsPage() {
                     className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                       selectedAlertCategory === category
                         ? "bg-accent-primary text-white"
-                        : "bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                        : "bg-light-secondary dark:bg-dark-secondary text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
                     }`}
                     onClick={() => setSelectedAlertCategory(category)}
                   >
@@ -283,17 +291,19 @@ export default function TasksAlertsPage() {
             {filteredAlerts.map((alert) => (
               <div
                 key={alert.id}
-                className="bg-dark-secondary/50 rounded-lg p-4 hover:bg-dark-secondary transition-colors"
+                className="bg-light-secondary/50 dark:bg-dark-secondary/50 rounded-lg p-4 hover:bg-light-secondary dark:hover:bg-dark-secondary transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center space-x-2">
-                      <h3 className="font-medium">{alert.title}</h3>
+                      <h3 className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                        {alert.title}
+                      </h3>
                       {alert.status === "unread" && (
                         <span className="h-2 w-2 rounded-full bg-accent-primary" />
                       )}
                     </div>
-                    <p className="text-sm text-dark-text-secondary mt-1">
+                    <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mt-1">
                       {alert.description}
                     </p>
                     <div className="flex items-center space-x-4 mt-2">
@@ -309,45 +319,51 @@ export default function TasksAlertsPage() {
                         {alert.priority.charAt(0).toUpperCase() +
                           alert.priority.slice(1)}
                       </span>
-                      <span className="text-sm text-dark-text-secondary">
+                      <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         {new Date(alert.createdAt).toLocaleString()}
                       </span>
                     </div>
                     {alert.metadata && (
-                      <div className="mt-2 p-2 bg-dark-secondary rounded-lg">
+                      <div className="mt-2 p-2 bg-light-secondary dark:bg-dark-secondary rounded-lg">
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           {alert.metadata.testName && (
                             <div>
-                              <span className="text-dark-text-secondary">
+                              <span className="text-light-text-secondary dark:text-dark-text-secondary">
                                 Test:{" "}
                               </span>
-                              <span>{alert.metadata.testName}</span>
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
+                                {alert.metadata.testName}
+                              </span>
                             </div>
                           )}
                           {alert.metadata.value && (
                             <div>
-                              <span className="text-dark-text-secondary">
+                              <span className="text-light-text-secondary dark:text-dark-text-secondary">
                                 Value:{" "}
                               </span>
-                              <span>
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
                                 {alert.metadata.value} {alert.metadata.unit}
                               </span>
                             </div>
                           )}
                           {alert.metadata.referenceRange && (
                             <div>
-                              <span className="text-dark-text-secondary">
+                              <span className="text-light-text-secondary dark:text-dark-text-secondary">
                                 Reference Range:{" "}
                               </span>
-                              <span>{alert.metadata.referenceRange}</span>
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
+                                {alert.metadata.referenceRange}
+                              </span>
                             </div>
                           )}
                           {alert.metadata.orderingProvider && (
                             <div>
-                              <span className="text-dark-text-secondary">
+                              <span className="text-light-text-secondary dark:text-dark-text-secondary">
                                 Ordering Provider:{" "}
                               </span>
-                              <span>{alert.metadata.orderingProvider}</span>
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
+                                {alert.metadata.orderingProvider}
+                              </span>
                             </div>
                           )}
                         </div>
