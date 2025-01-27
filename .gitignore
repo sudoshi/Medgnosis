@@ -28,6 +28,7 @@ yarn-error.log*
 /backend/storage/logs/star-schema-refresh.log
 /backend/storage/logs/synthea-import.log
 /backend/storage/logs/audit.log
+*.pid
 
 # System files
 .DS_Store
