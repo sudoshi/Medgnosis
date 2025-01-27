@@ -5,10 +5,10 @@ import type {
   DroppableProvided,
   DroppableStateSnapshot,
   DropResult,
-} from "@hello-pangea/dnd";
+} from "react-beautiful-dnd";
 
 import { useState, useEffect } from "react";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 
 export interface DashboardPanel {
@@ -39,8 +39,8 @@ const DroppableColumn = ({
         {...provided.droppableProps}
         className={`space-y-6 min-h-[200px] p-4 rounded-lg transition-colors duration-200 ${
           snapshot.isDraggingOver
-            ? "bg-dark-secondary/20"
-            : "bg-dark-secondary/5"
+            ? "bg-light-secondary/20 dark:bg-dark-secondary/20"
+            : "bg-light-secondary/5 dark:bg-dark-secondary/5"
         }`}
       >
         {items.map((item, index) => (
@@ -61,7 +61,7 @@ const DroppableColumn = ({
                 <div
                   {...provided.dragHandleProps}
                   aria-label="Drag handle"
-                  className="absolute top-2 right-2 p-2 rounded-lg bg-dark-secondary/10 hover:bg-dark-secondary/20 cursor-grab active:cursor-grabbing transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                  className="absolute top-2 right-2 p-2 rounded-lg bg-light-secondary/10 hover:bg-light-secondary/20 dark:bg-dark-secondary/10 dark:hover:bg-dark-secondary/20 cursor-grab active:cursor-grabbing transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
                   role="button"
                   tabIndex={0}
                   title="Drag to reorder"
@@ -80,7 +80,7 @@ const DroppableColumn = ({
                     }
                   }}
                 >
-                  <Bars3Icon className="h-5 w-5 text-dark-text-secondary" />
+                  <Bars3Icon className="h-5 w-5 text-light-text-secondary dark:text-dark-text-secondary" />
                 </div>
                 {item.component}
               </div>
@@ -116,10 +116,14 @@ export default function DraggableDashboard({
           const panelMap = new Map(allPanels.map((panel) => [panel.id, panel]));
 
           setLeftPanels(
-            left.map((id: string) => panelMap.get(id)).filter(Boolean),
+            left
+              .map((id: string) => panelMap.get(id))
+              .filter(Boolean) as DashboardPanel[],
           );
           setRightPanels(
-            right.map((id: string) => panelMap.get(id)).filter(Boolean),
+            right
+              .map((id: string) => panelMap.get(id))
+              .filter(Boolean) as DashboardPanel[],
           );
         } else {
           // If no saved layout, use initial panels
@@ -204,8 +208,8 @@ export default function DraggableDashboard({
   return (
     <div className="relative">
       {isLoading && (
-        <div className="absolute inset-0 bg-dark-secondary/5 rounded-lg flex items-center justify-center">
-          <div className="animate-pulse text-dark-text-secondary">
+        <div className="absolute inset-0 bg-light-secondary/5 dark:bg-dark-secondary/5 rounded-lg flex items-center justify-center">
+          <div className="animate-pulse text-light-text-secondary dark:text-dark-text-secondary">
             Loading...
           </div>
         </div>

@@ -17,18 +17,30 @@ module.exports = {
           text: {
             primary: '#F8FAFC',  // Slate 50
             secondary: '#94A3B8', // Slate 400
-          }
+          },
+        },
+        // Light theme colors
+        light: {
+          primary: '#FFFFFF',    // White
+          secondary: '#F8FAFC',  // Slate 50
+          card: '#F1F5F9',       // Slate 100
+          border: '#D1D5DB',     // Slate 300
+          text: {
+            primary: '#0F172A',  // Slate 900
+            secondary: '#6B7280', // Gray 500
+          },
         },
         accent: {
           primary: '#2563EB',    // Blue 600
           success: '#059669',    // Emerald 600
           warning: '#D97706',    // Amber 600
           error: '#DC2626',      // Red 600
-        }
+        },
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-dark': 'linear-gradient(to bottom right, #0F172A, #1E293B)',
+        'gradient-light': 'linear-gradient(to bottom right, #FFFFFF, #F1F5F9)',
       },
       boxShadow: {
         'glow': '0 0 15px rgba(37, 99, 235, 0.3)',
@@ -66,4 +78,4 @@ module.exports = {
   plugins: [
     require('@heroicons/react/24/solid'),
   ],
-}
+};

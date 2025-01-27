@@ -1,48 +1,18 @@
 "use client";
 
+import type {
+  SpeechRecognition,
+  SpeechRecognitionEvent,
+  SpeechRecognitionErrorEvent,
+} from "@/types/web-speech";
+
 import { useEffect, useRef, useState } from "react";
+
+import { abbyAnalytics } from "@/services/AbbyAnalytics";
 
 interface VoiceControllerProps {
   onWakeWord: () => void;
   enabled: boolean;
-}
-
-// Web Speech API type definitions
-interface SpeechRecognitionEvent extends Event {
-  results: {
-    length: number;
-    item(index: number): {
-      item(index: number): {
-        transcript: string;
-      };
-    };
-  };
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  start(): void;
-  stop(): void;
-  onstart: (event: Event) => void;
-  onend: (event: Event) => void;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: (event: SpeechRecognitionErrorEvent) => void;
-}
-
-interface SpeechRecognitionConstructor {
-  new (): SpeechRecognition;
-}
-
-declare global {
-  interface Window {
-    webkitSpeechRecognition: SpeechRecognitionConstructor;
-    SpeechRecognition: SpeechRecognitionConstructor;
-  }
 }
 
 export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
@@ -65,7 +35,13 @@ export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
     const SpeechRecognition =
       window.webkitSpeechRecognition || window.SpeechRecognition;
 
-    recognitionRef.current = new SpeechRecognition();
+    if (!SpeechRecognition) {
+      console.warn("SpeechRecognition is not defined.");
+
+      return;
+    }
+
+    recognitionRef.current = new SpeechRecognition!();
 
     const recognition = recognitionRef.current;
 
@@ -85,11 +61,7 @@ export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const last = event.results.length - 1;
-      const text = event.results
-        .item(last)
-        .item(0)
-        .transcript.trim()
-        .toLowerCase();
+      const text = event.results[last][0].transcript.trim().toLowerCase() || "";
 
       if (text.includes("hey abby")) {
         onWakeWord();
@@ -106,13 +78,67 @@ export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
     // Request microphone permission
     if (enabled) {
       navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then(() => {
-          setHasPermission(true);
-          recognition.start();
+        .enumerateDevices()
+        .then((devices) => {
+          const hasAudioInput = devices.some(
+            (device) => device.kind === "audioinput",
+          );
+
+          if (!hasAudioInput) {
+            console.error(
+              "No microphone found. Please connect a microphone and try again.",
+            );
+            setHasPermission(false);
+
+            return;
+          }
+
+          return navigator.mediaDevices.getUserMedia({ audio: true });
         })
-        .catch(() => {
+        .then((stream) => {
+          if (stream) {
+            setHasPermission(true);
+            if (hasPermission) {
+              recognition.start();
+            }
+            // Clean up the stream since we don't need it anymore
+            stream.getTracks().forEach((track) => track.stop());
+          }
+        })
+        .catch((error) => {
+          console.error(
+            "Microphone permission error:",
+            error.name,
+            error.message,
+          );
           setHasPermission(false);
+
+          // Provide specific error messages based on the error type
+          switch (error.name) {
+            case "NotFoundError":
+              abbyAnalytics.trackError(
+                "voice_permission_error",
+                "No microphone found",
+              );
+              break;
+            case "NotAllowedError":
+              abbyAnalytics.trackError(
+                "voice_permission_error",
+                "Microphone access denied",
+              );
+              break;
+            case "NotReadableError":
+              abbyAnalytics.trackError(
+                "voice_permission_error",
+                "Microphone is already in use",
+              );
+              break;
+            default:
+              abbyAnalytics.trackError(
+                "voice_permission_error",
+                `${error.name}: ${error.message}`,
+              );
+          }
         });
     }
 

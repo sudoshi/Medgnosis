@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 
-import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -18,6 +17,7 @@ import {
 import Link from "next/link";
 
 import { AbbyAssistant } from "../ai/AbbyAssistant";
+import { ThemeSwitch } from "../theme-switch";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -56,20 +56,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Force dark mode
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <div className="min-h-screen bg-gradient-dark text-dark-text-primary">
+    <div className="min-h-screen bg-gradient-light text-light-text-primary dark:bg-gradient-dark dark:text-dark-text-primary">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-dark-border bg-dark-primary transition-transform">
+      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-light-border bg-light-primary transition-transform dark:border-dark-border dark:bg-dark-primary">
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center justify-center border-b border-dark-border">
+          <div className="flex h-16 items-center justify-center border-b border-light-border dark:border-dark-border">
             <Image
               alt="Acumenus Logo"
               className="object-contain"
@@ -90,7 +85,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
                       active
                         ? "bg-accent-primary bg-opacity-10 text-accent-primary shadow-glow"
-                        : "text-dark-text-secondary hover:bg-dark-secondary"
+                        : "text-light-text-secondary hover:bg-light-secondary dark:text-dark-text-secondary dark:hover:bg-dark-secondary"
                     }`}
                     href={item.href}
                   >
@@ -99,7 +94,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       className={`mr-3 h-5 w-5 flex-shrink-0 transition-colors ${
                         active
                           ? "text-accent-primary"
-                          : "text-dark-text-secondary"
+                          : "text-light-text-secondary dark:text-dark-text-secondary"
                       }`}
                     />
                     {item.name}
@@ -112,7 +107,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                           className={`block rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
                             pathname === child.href
                               ? "text-accent-primary"
-                              : "text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-secondary"
+                              : "text-light-text-secondary hover:text-light-text-primary hover:bg-light-secondary dark:text-dark-text-secondary dark:hover:text-dark-text-primary dark:hover:bg-dark-secondary"
                           }`}
                           href={child.href}
                         >
@@ -127,14 +122,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </nav>
 
           {/* Abby Section */}
-          <div className="border-t border-dark-border py-6">
+          <div className="border-t border-light-border py-6 dark:border-dark-border">
             <div className="px-4">
               <AbbyAssistant />
             </div>
           </div>
 
           {/* User Section */}
-          <div className="border-t border-dark-border p-4">
+          <div className="border-t border-light-border p-4 dark:border-dark-border">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="h-8 w-8 rounded-full bg-accent-primary bg-opacity-10 flex items-center justify-center">
@@ -145,11 +140,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               </div>
               <div className="ml-3">
                 <p className="text-sm font-medium">Dr. John Doe</p>
-                <p className="text-xs text-dark-text-secondary">Primary Care</p>
+                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                  Primary Care
+                </p>
               </div>
             </div>
             <button
-              className="mt-4 flex w-full items-center rounded-lg px-3 py-2 text-sm text-dark-text-secondary hover:bg-dark-secondary"
+              className="mt-4 flex w-full items-center rounded-lg px-3 py-2 text-sm text-light-text-secondary hover:bg-light-secondary dark:text-dark-text-secondary dark:hover:bg-dark-secondary"
               onClick={() => router.push("/login")}
             >
               <ArrowLeftOnRectangleIcon className="mr-2 h-5 w-5" />
@@ -162,7 +159,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Main Content */}
       <div className="pl-64">
         {/* Header */}
-        <header className="sticky top-0 z-30 h-16 border-b border-dark-border bg-dark-primary/80 backdrop-blur">
+        <header className="sticky top-0 z-30 h-16 border-b border-light-border bg-light-primary/80 backdrop-blur dark:border-dark-border dark:bg-dark-primary/80">
           <div className="flex h-full items-center justify-between px-6">
             <h1 className="text-xl font-semibold">
               {navigation.find((item) => isActive(item.href))?.name ||
@@ -170,6 +167,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </h1>
             <div className="flex items-center space-x-4">
               {/* Header actions */}
+              <ThemeSwitch />
             </div>
           </div>
         </header>

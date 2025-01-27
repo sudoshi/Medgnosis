@@ -13,7 +13,7 @@ export function ErrorMessage({
   isRetrying,
 }: ErrorMessageProps) {
   return (
-    <div className="p-4 bg-accent-error/10 text-accent-error rounded-lg flex items-center justify-between">
+    <div className="p-4 bg-light-error/10 text-light-error dark:bg-dark-error/10 dark:text-dark-error rounded-lg flex items-center justify-between">
       <div className="flex items-center space-x-2">
         <ExclamationTriangleIcon className="h-5 w-5" />
         <span>{message}</span>
@@ -22,8 +22,8 @@ export function ErrorMessage({
         <button
           className={`px-3 py-1 rounded text-sm transition-colors duration-200 ${
             isRetrying
-              ? "bg-accent-error/10 cursor-not-allowed"
-              : "bg-accent-error/20 hover:bg-accent-error/30"
+              ? "bg-light-error/10 dark:bg-dark-error/10 cursor-not-allowed"
+              : "bg-light-error/20 hover:bg-light-error/30 dark:bg-dark-error/20 dark:hover:bg-dark-error/30"
           }`}
           disabled={isRetrying}
           onClick={onRetry}

@@ -40,7 +40,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
         setMessages([
           {
             role: "assistant",
-            content: "Sir? What do you need?",
+            content: "How can I help?",
             timestamp: new Date(),
           },
         ]);
