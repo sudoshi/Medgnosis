@@ -38,7 +38,7 @@ const visitTypes = [
 ] as const;
 
 export default function SuperNotePage() {
-  const [note, setNote] = useState<SOAPNote>(superNoteService.createNewNote());
+  const [note, setNote] = useState<SOAPNote | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [notification, setNotification] = useState<{
@@ -49,7 +49,7 @@ export default function SuperNotePage() {
     useVoiceInteraction(false);
 
   const handleExport = async () => {
-    if (!selectedPatient) {
+    if (!selectedPatient || !note) {
       setNotification({
         type: "error",
         message: "Please select a patient before exporting",
@@ -60,12 +60,13 @@ export default function SuperNotePage() {
 
     try {
       setIsExporting(true);
-      const noteWithPatient = {
+      const noteWithPatient: SOAPNote = {
         ...note,
         metadata: {
           ...note.metadata,
           patientId: selectedPatient.id,
         },
+        visitType: note.visitType,
       };
 
       await superNoteService.exportToFHIR(noteWithPatient);
@@ -86,17 +87,15 @@ export default function SuperNotePage() {
 
   const handlePatientSelect = (patient: Patient) => {
     setSelectedPatient(patient);
-    setNote((prev) => ({
-      ...prev,
-      metadata: {
-        ...prev.metadata,
-        patientId: patient.id,
-      },
-    }));
   };
 
   const handleVisitTypeSelect = (type: SOAPNote["visitType"]) => {
-    setNote(superNoteService.createNewNote(type));
+    if (selectedPatient) {
+      const newNote = superNoteService.createNewNote(type);
+
+      newNote.metadata.patientId = selectedPatient.id;
+      setNote(newNote);
+    }
   };
 
   return (
@@ -109,10 +108,32 @@ export default function SuperNotePage() {
           </h2>
         </div>
 
-        {/* Visit Type Selection */}
-        {!note.visitType && (
+        {/* Patient Selection First */}
+        {!selectedPatient && (
           <div className="panel-analytics">
-            <h3 className="text-lg font-semibold mb-4">Visit Type</h3>
+            <h3 className="text-lg font-semibold mb-4">Patient Selection</h3>
+            <PatientSelector onSelect={handlePatientSelect} />
+          </div>
+        )}
+
+        {/* Patient Info */}
+        {selectedPatient && (
+          <div className="mt-4 p-4 bg-dark-secondary/10 rounded-lg">
+            <div className="font-medium">
+              Selected Patient: {selectedPatient.name.first}{" "}
+              {selectedPatient.name.last}
+            </div>
+            <div className="text-sm text-dark-text-secondary">
+              MRN: {selectedPatient.mrn} • DOB:{" "}
+              {new Date(selectedPatient.dateOfBirth).toLocaleDateString()}
+            </div>
+          </div>
+        )}
+
+        {/* Template Selection - Only shown after patient selection */}
+        {selectedPatient && !note && (
+          <div className="panel-analytics mt-6">
+            <h3 className="text-lg font-semibold mb-4">Visit Template</h3>
             <div className="grid grid-cols-2 gap-4">
               {visitTypes.map((type) => (
                 <Button
@@ -131,32 +152,10 @@ export default function SuperNotePage() {
           </div>
         )}
 
-        {/* Patient Selection - Only shown after visit type is selected */}
-        {note.visitType && !selectedPatient && (
-          <div className="panel-analytics">
-            <h3 className="text-lg font-semibold mb-4">Patient Selection</h3>
-            <PatientSelector onSelect={handlePatientSelect} />
-          </div>
-        )}
-
-        {/* Show patient info after selection */}
-        {selectedPatient && (
-          <div className="mt-4 p-4 bg-dark-secondary/10 rounded-lg">
-            <div className="font-medium">
-              Selected Patient: {selectedPatient.name.first}{" "}
-              {selectedPatient.name.last}
-            </div>
-            <div className="text-sm text-dark-text-secondary">
-              MRN: {selectedPatient.mrn} • DOB:{" "}
-              {new Date(selectedPatient.dateOfBirth).toLocaleDateString()}
-            </div>
-          </div>
-        )}
-
-        {/* Visit Documentation */}
-        {note.visitType && selectedPatient && (
+        {/* Visit Documentation - Only shown after both patient and template are selected */}
+        {selectedPatient && note && note.visitType && (
           <>
-            {note.visitType === "initial" ? (
+            {note?.visitType === "initial" ? (
               <SuperNoteInitialVisit
                 isRecording={isListening}
                 note={note}
@@ -165,7 +164,7 @@ export default function SuperNotePage() {
                 onStartRecording={startListening}
                 onStopRecording={stopListening}
               />
-            ) : note.visitType === "followup" ? (
+            ) : note?.visitType === "followup" ? (
               <SuperNoteFollowUp
                 isRecording={isListening}
                 note={note}
@@ -177,8 +176,8 @@ export default function SuperNotePage() {
             ) : (
               <div className="panel-analytics">
                 <h3 className="text-lg font-semibold mb-4">
-                  {note.visitType.charAt(0).toUpperCase() +
-                    note.visitType.slice(1)}{" "}
+                  {note?.visitType.charAt(0).toUpperCase() +
+                    note?.visitType.slice(1)}{" "}
                   Visit
                 </h3>
                 <p className="text-dark-text-secondary">
