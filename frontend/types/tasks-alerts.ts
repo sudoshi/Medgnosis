@@ -1,3 +1,23 @@
+export type AlertType = "all" | "general" | "specific";
+export type AlertCategory =
+  | "all"
+  | "Cardiovascular"
+  | "Endocrine"
+  | "Renal"
+  | "Respiratory"
+  | "Mental Health"
+  | "Neurological"
+  | "Musculoskeletal"
+  | "Oncology"
+  | "Metabolic"
+  | "CBC"
+  | "BMP"
+  | "Imaging"
+  | "Preventive"
+  | "Vital Signs"
+  | "Medication"
+  | "Chronic Disease";
+
 export interface Task {
   id: string;
   title: string;
@@ -17,7 +37,7 @@ export interface Alert {
   description: string;
   type: "general" | "specific";
   priority: "low" | "medium" | "high";
-  category: "lab" | "imaging" | "procedure";
+  category: Exclude<AlertCategory, "all">;
   status: "unread" | "read" | "acknowledged";
   patientId?: string;
   resultId?: string;
@@ -28,11 +48,24 @@ export interface Alert {
     unit?: string;
     referenceRange?: string;
     orderingProvider?: string;
+    diseaseMetadata?: {
+      condition: string;
+      metrics?: Array<{
+        name: string;
+        value: number;
+        unit: string;
+        trend: "improving" | "stable" | "worsening";
+      }>;
+      complications?: string[];
+      medications?: string[];
+      lastAssessment: string;
+      nextFollowUp: string;
+    };
   };
 }
 
 export interface AlertPreference {
-  category: "lab" | "imaging" | "procedure";
+  category: Exclude<AlertCategory, "all">;
   testType: string;
   enabled: boolean;
   thresholds?: {

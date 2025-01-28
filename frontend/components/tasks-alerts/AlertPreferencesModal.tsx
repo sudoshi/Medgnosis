@@ -3,6 +3,7 @@
 import type {
   AlertPriority,
   AlertPreferenceState,
+  AlertCategoryType,
 } from "@/types/standardized-alerts";
 
 import { useState } from "react";
@@ -23,18 +24,35 @@ export default function AlertPreferencesModal({
   onSavePreferences,
   initialPreferences,
 }: AlertPreferencesModalProps) {
+  const defaultPreferences: AlertPreferenceState = {
+    selectedPriorities: {
+      High: true,
+      Moderate: true,
+      Low: true,
+    } as Record<AlertPriority, boolean>,
+    selectedCategories: {
+      CBC: true,
+      BMP: true,
+      Imaging: true,
+      Preventive: true,
+      "Vital Signs": true,
+      Medication: true,
+      "Chronic Disease": true,
+      Cardiovascular: true,
+      Endocrine: true,
+      Renal: true,
+      Respiratory: true,
+      "Mental Health": true,
+      Neurological: true,
+      Musculoskeletal: true,
+      Oncology: true,
+      Metabolic: true,
+    } as Record<AlertCategoryType, boolean>,
+    enabledAlerts: new Set<number>(),
+  };
+
   const [preferences, setPreferences] = useState<AlertPreferenceState>(
-    initialPreferences || {
-      selectedPriorities: {
-        High: true,
-        Moderate: true,
-        Low: true,
-      },
-      selectedCategories: Object.fromEntries(
-        alertCategories.map((category) => [category.name, true]),
-      ),
-      enabledAlerts: new Set(),
-    },
+    initialPreferences || defaultPreferences,
   );
 
   const priorities: AlertPriority[] = ["High", "Moderate", "Low"];
@@ -49,7 +67,7 @@ export default function AlertPreferencesModal({
     }));
   };
 
-  const toggleCategory = (categoryName: string) => {
+  const toggleCategory = (categoryName: AlertCategoryType) => {
     setPreferences((prev) => ({
       ...prev,
       selectedCategories: {

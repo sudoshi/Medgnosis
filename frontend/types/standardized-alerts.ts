@@ -1,6 +1,39 @@
+export type AlertCategoryType =
+  | "CBC"
+  | "BMP"
+  | "Imaging"
+  | "Preventive"
+  | "Vital Signs"
+  | "Medication"
+  | "Chronic Disease"
+  | "Cardiovascular"
+  | "Endocrine"
+  | "Renal"
+  | "Respiratory"
+  | "Mental Health"
+  | "Neurological"
+  | "Musculoskeletal"
+  | "Oncology"
+  | "Metabolic";
+
+export interface DiseaseMetadata {
+  condition: string;
+  metrics: {
+    name: string;
+    value: number | string;
+    unit?: string;
+    referenceRange?: string;
+    trend?: "improving" | "stable" | "worsening";
+  }[];
+  lastAssessment?: string;
+  nextFollowUp?: string;
+  complications?: string[];
+  medications?: string[];
+}
+
 export interface StandardAlert {
   id: number;
-  category: string;
+  category: AlertCategoryType;
   testParameter: string;
   alertType:
     | "Normal"
@@ -12,26 +45,27 @@ export interface StandardAlert {
     | "Flagged"
     | "Overdue"
     | "Suspected";
-  priority: "High" | "Moderate" | "Low";
+  priority: AlertPriority;
   comment: string;
+  diseaseMetadata?: DiseaseMetadata;
 }
 
 export interface ProviderAlertPreference {
   providerId: string;
   enabledAlerts: number[];
-  categoryPreferences: Record<string, boolean>;
-  priorityPreferences: Record<string, boolean>;
+  categoryPreferences: Record<AlertCategoryType, boolean>;
+  priorityPreferences: Record<AlertPriority, boolean>;
 }
 
-export interface AlertCategory {
-  name: string;
+export interface AlertCategoryGroup {
+  name: AlertCategoryType;
   description: string;
   alerts: StandardAlert[];
 }
 
 export interface AlertPreferenceState {
-  selectedPriorities: Record<string, boolean>;
-  selectedCategories: Record<string, boolean>;
+  selectedPriorities: Record<AlertPriority, boolean>;
+  selectedCategories: Record<AlertCategoryType, boolean>;
   enabledAlerts: Set<number>;
 }
 

@@ -44,7 +44,7 @@ export const mockAlerts: Alert[] = [
     description: "Potassium level critically high",
     type: "specific",
     priority: "high",
-    category: "lab",
+    category: "BMP",
     status: "unread",
     patientId: "patient123",
     resultId: "result456",
@@ -55,6 +55,27 @@ export const mockAlerts: Alert[] = [
       unit: "mEq/L",
       referenceRange: "3.5-5.0",
       orderingProvider: "Dr. Smith",
+      diseaseMetadata: {
+        condition: "Chronic Kidney Disease",
+        metrics: [
+          {
+            name: "eGFR",
+            value: 45,
+            unit: "mL/min",
+            trend: "worsening",
+          },
+          {
+            name: "Creatinine",
+            value: 2.1,
+            unit: "mg/dL",
+            trend: "worsening",
+          },
+        ],
+        complications: ["Hyperkalemia", "Anemia", "Secondary Hypertension"],
+        medications: ["Kayexalate", "Losartan", "Calcium Carbonate"],
+        lastAssessment: "2025-01-20T00:00:00Z",
+        nextFollowUp: "2025-02-03T00:00:00Z",
+      },
     },
   },
   {
@@ -63,9 +84,32 @@ export const mockAlerts: Alert[] = [
     description: "10% increase in uncontrolled diabetes cases",
     type: "general",
     priority: "medium",
-    category: "lab",
+    category: "Endocrine",
     status: "unread",
     createdAt: "2025-01-26T08:45:00Z",
+    metadata: {
+      diseaseMetadata: {
+        condition: "Type 2 Diabetes",
+        metrics: [
+          {
+            name: "HbA1c",
+            value: 8.5,
+            unit: "%",
+            trend: "worsening",
+          },
+          {
+            name: "Fasting Glucose",
+            value: 180,
+            unit: "mg/dL",
+            trend: "stable",
+          },
+        ],
+        complications: ["Peripheral Neuropathy", "Retinopathy"],
+        medications: ["Metformin", "Glipizide", "Jardiance"],
+        lastAssessment: "2025-01-15T00:00:00Z",
+        nextFollowUp: "2025-02-01T00:00:00Z",
+      },
+    },
   },
   {
     id: "alert3",
@@ -73,17 +117,80 @@ export const mockAlerts: Alert[] = [
     description: "Chest X-ray results ready for review",
     type: "specific",
     priority: "medium",
-    category: "imaging",
+    category: "Imaging",
     status: "unread",
     patientId: "patient456",
     resultId: "result789",
     createdAt: "2025-01-26T10:15:00Z",
+    metadata: {
+      diseaseMetadata: {
+        condition: "COPD",
+        metrics: [
+          {
+            name: "FEV1",
+            value: 65,
+            unit: "%",
+            trend: "stable",
+          },
+          {
+            name: "O2 Saturation",
+            value: 94,
+            unit: "%",
+            trend: "improving",
+          },
+        ],
+        complications: ["Chronic Bronchitis", "Emphysema"],
+        medications: ["Albuterol", "Tiotropium", "Fluticasone"],
+        lastAssessment: "2025-01-18T00:00:00Z",
+        nextFollowUp: "2025-02-05T00:00:00Z",
+      },
+    },
+  },
+  {
+    id: "alert4",
+    title: "Cardiac Alert",
+    description: "Elevated troponin levels detected",
+    type: "specific",
+    priority: "high",
+    category: "Cardiovascular",
+    status: "unread",
+    patientId: "patient789",
+    resultId: "result101",
+    createdAt: "2025-01-26T11:00:00Z",
+    metadata: {
+      testName: "Troponin I",
+      value: 0.5,
+      unit: "ng/mL",
+      referenceRange: "<0.04",
+      orderingProvider: "Dr. Johnson",
+      diseaseMetadata: {
+        condition: "Acute Coronary Syndrome",
+        metrics: [
+          {
+            name: "Blood Pressure",
+            value: 160,
+            unit: "mmHg",
+            trend: "worsening",
+          },
+          {
+            name: "Heart Rate",
+            value: 98,
+            unit: "bpm",
+            trend: "stable",
+          },
+        ],
+        complications: ["Hypertension", "Arrhythmia"],
+        medications: ["Aspirin", "Metoprolol", "Lisinopril"],
+        lastAssessment: "2025-01-25T00:00:00Z",
+        nextFollowUp: "2025-01-28T00:00:00Z",
+      },
+    },
   },
 ];
 
 export const mockAlertPreferences: AlertPreference[] = [
   {
-    category: "lab",
+    category: "BMP",
     testType: "Potassium",
     enabled: true,
     thresholds: {
@@ -100,7 +207,7 @@ export const mockAlertPreferences: AlertPreference[] = [
     notificationMethod: "immediate",
   },
   {
-    category: "lab",
+    category: "Endocrine",
     testType: "Glucose",
     enabled: true,
     thresholds: {
@@ -117,10 +224,25 @@ export const mockAlertPreferences: AlertPreference[] = [
     notificationMethod: "immediate",
   },
   {
-    category: "imaging",
+    category: "Imaging",
     testType: "Chest X-ray",
     enabled: true,
     priority: "medium",
     notificationMethod: "daily",
+  },
+  {
+    category: "Cardiovascular",
+    testType: "Troponin",
+    enabled: true,
+    thresholds: {
+      critical: {
+        high: 0.4,
+      },
+      abnormal: {
+        high: 0.04,
+      },
+    },
+    priority: "high",
+    notificationMethod: "immediate",
   },
 ];
