@@ -4,38 +4,39 @@ export interface Patient {
     first: string;
     last: string;
   };
+  mrn: string;
   dateOfBirth: string;
   gender: string;
   riskFactors: {
-    level: 'low' | 'medium' | 'high';
+    level: "low" | "medium" | "high";
     score: number;
     factors: Array<{
       name: string;
-      severity: 'low' | 'medium' | 'high';
+      severity: "low" | "medium" | "high";
       lastAssessed: string;
     }>;
-    trending?: 'up' | 'down' | 'stable';
+    trending?: "up" | "down" | "stable";
   };
   careGaps: Array<{
-  id: string;
-  measure: string;
-  dueDate: string;
-  status: 'open' | 'closed' | 'in_progress';
-  priority: 'low' | 'medium' | 'high';
-  description: string;
-  type?: 'lab' | 'imaging' | 'procedure' | 'referral' | 'immunization';
-  orderType?: string;
-  orderCode?: string;
+    id: string;
+    measure: string;
+    dueDate: string;
+    status: "open" | "closed" | "in_progress";
+    priority: "low" | "medium" | "high";
+    description: string;
+    type?: "lab" | "imaging" | "procedure" | "referral" | "immunization";
+    orderType?: string;
+    orderCode?: string;
   }>;
   conditions: Array<{
     id: string;
     code: string;
     name: string;
-    status: 'active' | 'resolved' | 'inactive';
+    status: "active" | "resolved" | "inactive";
     onsetDate: string;
     diagnosedDate: string;
     lastAssessed: string;
-    controlStatus: 'controlled' | 'uncontrolled' | 'unknown';
+    controlStatus: "controlled" | "uncontrolled" | "unknown";
   }>;
   encounters: Array<{
     id: string;
@@ -126,8 +127,8 @@ export interface PatientDetails extends Patient {
     value: number;
     unit: string;
     date: string;
-    status: 'normal' | 'abnormal' | 'critical';
-    trend?: 'up' | 'down' | 'stable';
+    status: "normal" | "abnormal" | "critical";
+    trend?: "up" | "down" | "stable";
     referenceRange?: string;
     components?: Array<{
       name: string;
@@ -141,10 +142,10 @@ export interface PatientDetails extends Patient {
 
 export interface ClinicalAlert {
   id: string;
-  type: 'warning' | 'info' | 'critical';
+  type: "warning" | "info" | "critical";
   message: string;
   date: string;
-  status: 'active' | 'resolved';
+  status: "active" | "resolved";
   category: string;
 }
 
@@ -154,6 +155,6 @@ export interface PatientAction {
   description: string;
   date: string;
   provider: string;
-  status: 'pending' | 'completed' | 'cancelled';
-  priority: 'low' | 'medium' | 'high';
+  status: "pending" | "completed" | "cancelled";
+  priority: "low" | "medium" | "high";
 }

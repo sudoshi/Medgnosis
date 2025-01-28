@@ -1,6 +1,15 @@
+export type AlertStatus = "unread" | "read" | "acknowledged";
+export type AlertPriority = "high" | "medium" | "low";
 export type AlertType = "all" | "general" | "specific";
 export type AlertCategory =
   | "all"
+  | "CBC"
+  | "BMP"
+  | "Imaging"
+  | "Preventive"
+  | "Vital Signs"
+  | "Medication"
+  | "Chronic Disease"
   | "Cardiovascular"
   | "Endocrine"
   | "Renal"
@@ -9,50 +18,31 @@ export type AlertCategory =
   | "Neurological"
   | "Musculoskeletal"
   | "Oncology"
-  | "Metabolic"
-  | "CBC"
-  | "BMP"
-  | "Imaging"
-  | "Preventive"
-  | "Vital Signs"
-  | "Medication"
-  | "Chronic Disease";
-
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  type: "personal" | "practice" | "patient";
-  status: "pending" | "in-progress" | "completed";
-  priority: "low" | "medium" | "high";
-  dueDate: string;
-  patientId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+  | "Metabolic";
 
 export interface Alert {
   id: string;
   title: string;
   description: string;
-  type: "general" | "specific";
-  priority: "low" | "medium" | "high";
-  category: Exclude<AlertCategory, "all">;
-  status: "unread" | "read" | "acknowledged";
-  patientId?: string;
-  resultId?: string;
+  status: AlertStatus;
+  priority: AlertPriority;
+  type: AlertType;
+  category: AlertCategory;
+  patientId: string;
   createdAt: string;
+  updatedAt: string;
   metadata?: {
     testName?: string;
-    value?: string | number;
+    value?: string;
     unit?: string;
     referenceRange?: string;
     orderingProvider?: string;
+    trend?: "improving" | "stable" | "worsening";
     diseaseMetadata?: {
       condition: string;
       metrics?: Array<{
         name: string;
-        value: number;
+        value: string;
         unit: string;
         trend: "improving" | "stable" | "worsening";
       }>;
@@ -64,20 +54,15 @@ export interface Alert {
   };
 }
 
-export interface AlertPreference {
-  category: Exclude<AlertCategory, "all">;
-  testType: string;
-  enabled: boolean;
-  thresholds?: {
-    critical: {
-      low?: number;
-      high?: number;
-    };
-    abnormal: {
-      low?: number;
-      high?: number;
-    };
-  };
-  priority: "low" | "medium" | "high";
-  notificationMethod: "immediate" | "daily" | "weekly";
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  type: "personal" | "practice" | "patient";
+  priority: AlertPriority;
+  status: "pending" | "completed";
+  dueDate: string;
+  patientId?: string;
+  createdAt: string;
+  updatedAt: string;
 }

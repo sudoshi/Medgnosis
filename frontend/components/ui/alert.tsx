@@ -1,77 +1,66 @@
-import { HTMLAttributes, forwardRef } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
-import { cn } from '@/lib/utils';
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  InformationCircleIcon,
-  XCircleIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import { forwardRef } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  'relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground',
+  "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-dark-text-secondary",
   {
     variants: {
       variant: {
-        default: 'bg-dark-secondary text-dark-text-primary border-dark-border',
-        info: 'bg-accent-primary/10 text-accent-primary border-accent-primary/20',
-        success: 'bg-accent-success/10 text-accent-success border-accent-success/20',
-        warning: 'bg-accent-warning/10 text-accent-warning border-accent-warning/20',
-        error: 'bg-accent-error/10 text-accent-error border-accent-error/20',
+        default: "bg-light-primary text-dark-text-primary dark:bg-dark-primary",
+        destructive:
+          "border-accent-error/50 text-accent-error dark:border-accent-error [&>svg]:text-accent-error",
+        success:
+          "border-accent-success/50 text-accent-success dark:border-accent-success [&>svg]:text-accent-success",
+        warning:
+          "border-accent-warning/50 text-accent-warning dark:border-accent-warning [&>svg]:text-accent-warning",
       },
     },
     defaultVariants: {
-      variant: 'default',
+      variant: "default",
     },
-  }
+  },
 );
 
-const icons = {
-  default: InformationCircleIcon,
-  info: InformationCircleIcon,
-  success: CheckCircleIcon,
-  warning: ExclamationTriangleIcon,
-  error: XCircleIcon,
-};
+const Alert = forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants>
+>(({ className, variant, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(alertVariants({ variant }), className)}
+    role="alert"
+    {...props}
+  />
+));
 
-export interface AlertProps
-  extends HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof alertVariants> {
-  title?: string;
-  onClose?: () => void;
-}
+Alert.displayName = "Alert";
 
-const Alert = forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant, title, children, onClose, ...props }, ref) => {
-    const Icon = icons[variant || 'default'];
+const AlertTitle = forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h5
+    ref={ref}
+    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    {...props}
+  />
+));
 
-    return (
-      <div
-        ref={ref}
-        role="alert"
-        className={cn(alertVariants({ variant }), className)}
-        {...props}
-      >
-        <Icon className="h-5 w-5" />
-        <div className="flex-1">
-          {title && <h5 className="mb-1 font-medium leading-none tracking-tight">{title}</h5>}
-          <div className="text-sm [&_p]:leading-relaxed">{children}</div>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          >
-            <XMarkIcon className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </button>
-        )}
-      </div>
-    );
-  }
-);
+AlertTitle.displayName = "AlertTitle";
 
-Alert.displayName = 'Alert';
+const AlertDescription = forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    {...props}
+  />
+));
 
-export { Alert, alertVariants };
+AlertDescription.displayName = "AlertDescription";
+
+export { Alert, AlertTitle, AlertDescription };

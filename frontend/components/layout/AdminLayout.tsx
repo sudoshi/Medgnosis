@@ -13,6 +13,7 @@ import {
   ArrowLeftOnRectangleIcon,
   ClipboardDocumentListIcon,
   ClockIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
@@ -57,6 +58,7 @@ const navigation: NavItem[] = [
       { name: "Tasks & Alerts", href: "/anticipatory-care/tasks-alerts" },
     ],
   },
+  { name: "SuperNote", href: "/super-note", icon: DocumentTextIcon },
   { name: "Settings", href: "/settings", icon: CogIcon },
 ];
 

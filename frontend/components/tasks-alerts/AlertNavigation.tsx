@@ -1,29 +1,42 @@
+"use client";
+
 import type { AlertType, AlertCategory } from "@/types/tasks-alerts";
 
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
 
 interface AlertNavigationProps {
+  alertCounts: {
+    total: number;
+    byType: {
+      all: number;
+      general: number;
+      specific: number;
+    };
+    byCategory: Record<string, number>;
+  };
   selectedType: AlertType;
   selectedCategory: AlertCategory;
   onTypeSelect: (type: AlertType) => void;
   onCategorySelect: (category: AlertCategory) => void;
-  alertCounts: {
-    total: number;
-    byType: Record<AlertType, number>;
-    byCategory: Record<AlertCategory, number>;
+  severityCounts?: {
+    critical: number;
+    high: number;
+    moderate: number;
+    low: number;
   };
 }
 
 export default function AlertNavigation({
+  alertCounts,
   selectedType,
   selectedCategory,
   onTypeSelect,
   onCategorySelect,
-  alertCounts,
+  severityCounts,
 }: AlertNavigationProps) {
-  const [isDiseaseExpanded, setIsDiseaseExpanded] = useState(true);
-  const [isClinicalExpanded, setIsClinicalExpanded] = useState(true);
+  const [showDiseaseCategories, setShowDiseaseCategories] = useState(true);
+  const [showClinicalCategories, setShowClinicalCategories] = useState(true);
 
   const diseaseCategories: AlertCategory[] = [
     "Cardiovascular",
@@ -47,130 +60,135 @@ export default function AlertNavigation({
     "Chronic Disease",
   ];
 
-  const NavItem = ({
-    label,
-    isSelected,
-    count,
-    onClick,
-  }: {
-    label: string;
-    isSelected: boolean;
-    count: number;
-    onClick: () => void;
-  }) => (
-    <button
-      className={`w-full px-4 py-2 text-left flex items-center justify-between hover:bg-light-secondary dark:hover:bg-dark-secondary transition-colors ${
-        isSelected
-          ? "bg-accent-primary/10 text-accent-primary"
-          : "text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
-      }`}
-      onClick={onClick}
-    >
-      <span>{label}</span>
-      <span
-        className={`px-2 py-0.5 text-xs rounded-full ${
-          isSelected
-            ? "bg-accent-primary text-white"
-            : "bg-light-secondary dark:bg-dark-secondary"
-        }`}
-      >
-        {count}
-      </span>
-    </button>
-  );
-
-  const GroupHeader = ({
-    label,
-    isExpanded,
-    onToggle,
-  }: {
-    label: string;
-    isExpanded: boolean;
-    onToggle: () => void;
-  }) => (
-    <button
-      className="w-full px-4 py-2 text-left flex items-center justify-between text-light-text-primary dark:text-dark-text-primary font-medium hover:bg-light-secondary dark:hover:bg-dark-secondary transition-colors"
-      onClick={onToggle}
-    >
-      <span>{label}</span>
-      <ChevronDownIcon
-        className={`h-4 w-4 transition-transform ${
-          isExpanded ? "" : "-rotate-90"
-        }`}
-      />
-    </button>
-  );
-
   return (
-    <div className="h-full border-r border-light-border dark:border-dark-border">
-      <div className="space-y-1">
-        {/* Primary Categories */}
-        <NavItem
-          count={alertCounts.total}
-          isSelected={selectedType === "all" && selectedCategory === "all"}
-          label="All Alerts"
-          onClick={() => {
-            onTypeSelect("all");
-            onCategorySelect("all");
-          }}
-        />
-        <NavItem
-          count={alertCounts.byType.general}
-          isSelected={selectedType === "general"}
-          label="General Alerts"
-          onClick={() => onTypeSelect("general")}
-        />
-        <NavItem
-          count={alertCounts.byType.specific}
-          isSelected={selectedType === "specific"}
-          label="Specific Alerts"
-          onClick={() => onTypeSelect("specific")}
-        />
-
-        {/* Disease Categories */}
-        <div className="mt-4">
-          <GroupHeader
-            isExpanded={isDiseaseExpanded}
-            label="Disease Categories"
-            onToggle={() => setIsDiseaseExpanded(!isDiseaseExpanded)}
-          />
-          {isDiseaseExpanded && (
-            <div className="space-y-1">
-              {diseaseCategories.map((category) => (
-                <NavItem
-                  key={category}
-                  count={alertCounts.byCategory[category] || 0}
-                  isSelected={selectedCategory === category}
-                  label={category}
-                  onClick={() => onCategorySelect(category)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Clinical Categories */}
-        <div className="mt-4">
-          <GroupHeader
-            isExpanded={isClinicalExpanded}
-            label="Clinical Categories"
-            onToggle={() => setIsClinicalExpanded(!isClinicalExpanded)}
-          />
-          {isClinicalExpanded && (
-            <div className="space-y-1">
-              {clinicalCategories.map((category) => (
-                <NavItem
-                  key={category}
-                  count={alertCounts.byCategory[category] || 0}
-                  isSelected={selectedCategory === category}
-                  label={category}
-                  onClick={() => onCategorySelect(category)}
-                />
-              ))}
-            </div>
-          )}
+    <nav className="space-y-6">
+      {/* Primary Filters */}
+      <div>
+        <h3 className="text-sm font-medium text-dark-text-secondary mb-2">
+          Primary Filters
+        </h3>
+        <div className="space-y-1">
+          {(["all", "general", "specific"] as AlertType[]).map((type) => (
+            <button
+              key={type}
+              className={`w-full px-3 py-2 text-left rounded-lg transition-colors ${
+                selectedType === type
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+              }`}
+              onClick={() => onTypeSelect(type)}
+            >
+              <div className="flex justify-between items-center">
+                <span>
+                  {type.charAt(0).toUpperCase() + type.slice(1)} Alerts
+                </span>
+                <span className="text-sm">{alertCounts.byType[type]}</span>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+
+      {/* Severity Distribution */}
+      {severityCounts && (
+        <div>
+          <h3 className="text-sm font-medium text-dark-text-secondary mb-2">
+            Severity Distribution
+          </h3>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="text-accent-error">Critical</span>
+              <span className="text-sm">{severityCounts.critical}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="text-orange-500">High</span>
+              <span className="text-sm">{severityCounts.high}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="text-accent-warning">Moderate</span>
+              <span className="text-sm">{severityCounts.moderate}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="text-accent-success">Low</span>
+              <span className="text-sm">{severityCounts.low}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disease Categories */}
+      <div>
+        <button
+          className="w-full flex items-center justify-between text-sm font-medium text-dark-text-secondary mb-2"
+          onClick={() => setShowDiseaseCategories(!showDiseaseCategories)}
+        >
+          <span>Disease Categories</span>
+          <ChevronDownIcon
+            className={`h-4 w-4 transition-transform ${
+              showDiseaseCategories ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {showDiseaseCategories && (
+          <div className="space-y-1">
+            {diseaseCategories.map((category) => (
+              <button
+                key={category}
+                className={`w-full px-3 py-2 text-left rounded-lg transition-colors ${
+                  selectedCategory === category
+                    ? "bg-accent-primary text-white"
+                    : "hover:bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                }`}
+                onClick={() => onCategorySelect(category)}
+              >
+                <div className="flex justify-between items-center">
+                  <span>{category}</span>
+                  <span className="text-sm">
+                    {alertCounts.byCategory[category] || 0}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Clinical Categories */}
+      <div>
+        <button
+          className="w-full flex items-center justify-between text-sm font-medium text-dark-text-secondary mb-2"
+          onClick={() => setShowClinicalCategories(!showClinicalCategories)}
+        >
+          <span>Clinical Categories</span>
+          <ChevronDownIcon
+            className={`h-4 w-4 transition-transform ${
+              showClinicalCategories ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {showClinicalCategories && (
+          <div className="space-y-1">
+            {clinicalCategories.map((category) => (
+              <button
+                key={category}
+                className={`w-full px-3 py-2 text-left rounded-lg transition-colors ${
+                  selectedCategory === category
+                    ? "bg-accent-primary text-white"
+                    : "hover:bg-dark-secondary text-dark-text-secondary hover:text-dark-text-primary"
+                }`}
+                onClick={() => onCategorySelect(category)}
+              >
+                <div className="flex justify-between items-center">
+                  <span>{category}</span>
+                  <span className="text-sm">
+                    {alertCounts.byCategory[category] || 0}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </nav>
   );
 }

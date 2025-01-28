@@ -6,7 +6,7 @@ import type {
   AlertCategoryType,
 } from "@/types/standardized-alerts";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 
 import { alertCategories } from "@/services/standardizedAlerts";
@@ -29,7 +29,7 @@ export default function AlertPreferencesModal({
       High: true,
       Moderate: true,
       Low: true,
-    } as Record<AlertPriority, boolean>,
+    },
     selectedCategories: {
       CBC: true,
       BMP: true,
@@ -47,8 +47,8 @@ export default function AlertPreferencesModal({
       Musculoskeletal: true,
       Oncology: true,
       Metabolic: true,
-    } as Record<AlertCategoryType, boolean>,
-    enabledAlerts: new Set<number>(),
+    },
+    enabledAlerts: new Set<string>(),
   };
 
   const [preferences, setPreferences] = useState<AlertPreferenceState>(
@@ -56,6 +56,43 @@ export default function AlertPreferencesModal({
   );
 
   const priorities: AlertPriority[] = ["High", "Moderate", "Low"];
+
+  const [previewCounts, setPreviewCounts] = useState({
+    total: 0,
+    byPriority: {} as Record<AlertPriority, number>,
+    byCategory: {} as Record<AlertCategoryType, number>,
+  });
+
+  // Calculate preview counts whenever preferences change
+  useEffect(() => {
+    const counts = {
+      total: 0,
+      byPriority: {} as Record<AlertPriority, number>,
+      byCategory: {} as Record<AlertCategoryType, number>,
+    };
+
+    alertCategories.forEach((category) => {
+      const enabledAlerts = category.alerts.filter((alert) => {
+        const priorityEnabled = preferences.selectedPriorities[alert.priority];
+        const categoryEnabled = preferences.selectedCategories[category.name];
+
+        return priorityEnabled && categoryEnabled;
+      });
+
+      counts.byCategory[category.name] = enabledAlerts.length;
+      counts.total += enabledAlerts.length;
+
+      // Count by priority
+      enabledAlerts.forEach((alert) => {
+        if (!counts.byPriority[alert.priority]) {
+          counts.byPriority[alert.priority] = 0;
+        }
+        counts.byPriority[alert.priority]++;
+      });
+    });
+
+    setPreviewCounts(counts);
+  }, [preferences]);
 
   const togglePriority = (priority: AlertPriority) => {
     setPreferences((prev) => ({
@@ -77,7 +114,7 @@ export default function AlertPreferencesModal({
     }));
   };
 
-  const toggleAlert = (alertId: number) => {
+  const toggleAlert = (alertId: string) => {
     setPreferences((prev) => {
       const newEnabledAlerts = new Set(prev.enabledAlerts);
 
@@ -122,24 +159,34 @@ export default function AlertPreferencesModal({
           <h3 className="text-sm font-medium text-dark-text-secondary mb-2">
             Priority Filters
           </h3>
-          <div className="flex space-x-4">
-            {priorities.map((priority) => (
-              <button
-                key={priority}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  preferences.selectedPriorities[priority]
-                    ? priority === "High"
-                      ? "bg-accent-error/10 text-accent-error"
-                      : priority === "Moderate"
-                        ? "bg-accent-warning/10 text-accent-warning"
-                        : "bg-accent-success/10 text-accent-success"
-                    : "bg-dark-secondary text-dark-text-secondary"
-                }`}
-                onClick={() => togglePriority(priority)}
-              >
-                {priority}
-              </button>
-            ))}
+          <div className="flex flex-col space-y-4">
+            <div className="flex space-x-4">
+              {priorities.map((priority) => (
+                <button
+                  key={priority}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    preferences.selectedPriorities[priority]
+                      ? priority === "High"
+                        ? "bg-accent-error/10 text-accent-error"
+                        : priority === "Moderate"
+                          ? "bg-accent-warning/10 text-accent-warning"
+                          : "bg-accent-success/10 text-accent-success"
+                      : "bg-dark-secondary text-dark-text-secondary"
+                  }`}
+                  onClick={() => togglePriority(priority)}
+                >
+                  <div className="flex flex-col items-center">
+                    <span>{priority}</span>
+                    <span className="text-xs mt-1">
+                      {previewCounts.byPriority[priority] || 0} alerts
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="text-sm text-dark-text-secondary">
+              Total Enabled Alerts: {previewCounts.total}
+            </div>
           </div>
         </div>
 
@@ -157,18 +204,23 @@ export default function AlertPreferencesModal({
                     {category.description}
                   </p>
                 </div>
-                <button
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    preferences.selectedCategories[category.name]
-                      ? "bg-accent-primary text-white"
-                      : "bg-dark-secondary text-dark-text-secondary"
-                  }`}
-                  onClick={() => toggleCategory(category.name)}
-                >
-                  {preferences.selectedCategories[category.name]
-                    ? "Enabled"
-                    : "Disabled"}
-                </button>
+                <div className="flex items-center space-x-4">
+                  <button
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      preferences.selectedCategories[category.name]
+                        ? "bg-accent-primary text-white"
+                        : "bg-dark-secondary text-dark-text-secondary"
+                    }`}
+                    onClick={() => toggleCategory(category.name)}
+                  >
+                    {preferences.selectedCategories[category.name]
+                      ? "Enabled"
+                      : "Disabled"}
+                  </button>
+                  <span className="text-sm text-dark-text-secondary">
+                    {previewCounts.byCategory[category.name] || 0} alerts
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -180,7 +232,7 @@ export default function AlertPreferencesModal({
                     <div>
                       <div className="flex items-center space-x-2">
                         <span className="font-medium">
-                          {alert.testParameter}
+                          {alert.details.title}
                         </span>
                         <span
                           className={`px-2 py-0.5 text-xs font-medium rounded-full ${
@@ -195,7 +247,7 @@ export default function AlertPreferencesModal({
                         </span>
                       </div>
                       <p className="text-sm text-dark-text-secondary">
-                        {alert.comment}
+                        {alert.details.description}
                       </p>
                     </div>
                     <button
