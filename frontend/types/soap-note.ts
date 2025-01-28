@@ -11,6 +11,82 @@ export interface SOAPNote {
     lastUpdated: string;
   };
   initialVisitDetails?: InitialVisitDetails;
+  followUpDetails?: FollowUpDetails;
+}
+
+export interface FollowUpDetails {
+  visitInfo: {
+    lastVisit: string;
+    followUpReason: string;
+    appointmentType: string;
+  };
+  intervalHistory: {
+    symptomsProgress: string;
+    newSymptoms: string;
+    overallStatus: string;
+  };
+  treatmentResponse: {
+    medicationResponse: string;
+    sideEffects: string;
+    adherence: string;
+    complications: string;
+  };
+  medicationReview: {
+    currentMeds: string;
+    changes: string;
+    refillsNeeded: string;
+  };
+  vitalSigns: {
+    bp: string;
+    hr: string;
+    rr: string;
+    temp: string;
+    weight: string;
+    bmi: string;
+    painScore: string;
+  };
+  targetedROS: {
+    pertinentPositive: string;
+    pertinentNegative: string;
+    relatedSystems: string;
+  };
+  focusedExam: {
+    relevantSystems: string;
+    significantFindings: string;
+    changesFromLast: string;
+  };
+  testResults: {
+    newResults: string;
+    pendingTests: string;
+    orderedTests: string;
+  };
+  assessment: {
+    problemStatus: string;
+    newProblems: string;
+    riskFactors: string;
+  };
+  plan: {
+    medicationChanges: string;
+    newOrders: string;
+    referrals: string;
+    procedures: string;
+  };
+  goalProgress: {
+    clinicalGoals: string;
+    patientGoals: string;
+    barriers: string;
+  };
+  patientEducation: {
+    topics: string;
+    understanding: string;
+    concerns: string;
+  };
+  followUpPlan: {
+    timing: string;
+    conditions: string;
+    warningSign: string;
+  };
+  ebmGuidelines: string;
 }
 
 export interface InitialVisitDetails {

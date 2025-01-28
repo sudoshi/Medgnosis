@@ -1,6 +1,6 @@
 "use client";
 
-import type { SOAPNote } from "@/types/soap-note";
+import type { SOAPNote, FollowUpDetails } from "@/types/soap-note";
 
 import { useState } from "react";
 import { Mic, MicOff, Save, Edit, AlertCircle } from "lucide-react";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface SuperNoteInitialVisitProps {
+interface SuperNoteFollowUpProps {
   note: SOAPNote;
   isRecording: boolean;
   onStartRecording: () => void;
@@ -25,213 +25,142 @@ interface Section {
   subsections?: string[];
 }
 
-const sections: Record<string, Section> = {
-  demographics: {
-    title: "Demographics & Registration",
-    prompt:
-      "Patient demographics, contact info, emergency contacts, preferred pharmacy",
-    icon: "👤",
+const sections: Record<keyof FollowUpDetails, Section> = {
+  visitInfo: {
+    title: "Visit Information",
+    prompt: "Date of last visit, reason for follow-up, appointment type",
+    subsections: ["lastVisit", "followUpReason", "appointmentType"],
+    icon: "📅",
   },
-  insuranceInfo: {
-    title: "Insurance Information",
-    prompt: "Primary and secondary insurance, guarantor information",
-    icon: "📄",
+  intervalHistory: {
+    title: "Interval History",
+    prompt: "Changes since last visit, symptom progression, new concerns",
+    subsections: ["symptomsProgress", "newSymptoms", "overallStatus"],
+    icon: "⏱️",
   },
-  chiefComplaint: {
-    title: "Chief Complaint",
-    prompt: "Primary reason for visit in patient's own words",
-    icon: "🗣️",
+  treatmentResponse: {
+    title: "Treatment Response",
+    prompt: "Response to current treatment plan, side effects, adherence",
+    subsections: [
+      "medicationResponse",
+      "sideEffects",
+      "adherence",
+      "complications",
+    ],
+    icon: "📈",
   },
-  hpi: {
-    title: "History of Present Illness",
-    prompt:
-      "Onset, Location, Duration, Characterization, Aggravating/Alleviating Factors, Radiation, Temporal Factors, Severity",
-    icon: "📝",
-  },
-  allergies: {
-    title: "Allergies & Reactions",
-    prompt:
-      "Medications, foods, environmental allergens and specific reactions",
-    icon: "⚠️",
-  },
-  medications: {
-    title: "Medication History",
-    prompt:
-      "Current medications, past medications, adherence patterns, side effects",
-    subsections: ["current", "past", "adherence"],
+  medicationReview: {
+    title: "Medication Review",
+    prompt: "Current medications, changes, refill needs",
+    subsections: ["currentMeds", "changes", "refillsNeeded"],
     icon: "💊",
-  },
-  pmh: {
-    title: "Past Medical History",
-    prompt:
-      "Chronic conditions, surgeries, hospitalizations, major illnesses/injuries",
-    subsections: ["medical", "surgical", "hospitalizations", "trauma"],
-    icon: "📚",
-  },
-  familyHistory: {
-    title: "Family History",
-    prompt:
-      "Health conditions in immediate and extended family, age of onset, genetic testing",
-    subsections: ["immediate", "extended", "genetic"],
-    icon: "👨‍👩‍👧‍👦",
-  },
-  socialHistory: {
-    title: "Social History",
-    prompt: "Occupation, lifestyle, habits, diet, exercise, substance use",
-    subsections: [
-      "occupation",
-      "lifestyle",
-      "habits",
-      "diet",
-      "exercise",
-      "substances",
-    ],
-    icon: "🏠",
-  },
-  preventiveCare: {
-    title: "Preventive Care History",
-    prompt: "Immunizations, health screenings, last physical examination",
-    subsections: ["immunizations", "screenings", "lastPhysical"],
-    icon: "🛡️",
-  },
-  ros: {
-    title: "Review of Systems",
-    prompt: "Comprehensive review of all body systems",
-    subsections: [
-      "constitutional",
-      "heent",
-      "cardiovascular",
-      "respiratory",
-      "gi",
-      "gu",
-      "musculoskeletal",
-      "skin",
-      "neurological",
-      "psychiatric",
-      "endocrine",
-      "hematologic",
-      "allergic",
-    ],
-    icon: "🔍",
   },
   vitalSigns: {
     title: "Vital Signs",
-    prompt: "Complete set of vital signs including BMI calculation",
-    subsections: [
-      "bp",
-      "hr",
-      "rr",
-      "temp",
-      "height",
-      "weight",
-      "bmi",
-      "painScore",
-    ],
+    prompt: "Current vital signs and comparison to last visit",
+    subsections: ["bp", "hr", "rr", "temp", "weight", "bmi", "painScore"],
     icon: "📊",
   },
-  physicalExam: {
-    title: "Physical Examination",
-    prompt: "Comprehensive physical examination by system",
-    subsections: [
-      "general",
-      "heent",
-      "neck",
-      "chest",
-      "cardiac",
-      "abdomen",
-      "extremities",
-      "skin",
-      "neuro",
-      "psychiatric",
-    ],
+  targetedROS: {
+    title: "Targeted Review of Systems",
+    prompt: "Focused review of relevant systems",
+    subsections: ["pertinentPositive", "pertinentNegative", "relatedSystems"],
+    icon: "🔍",
+  },
+  focusedExam: {
+    title: "Focused Physical Exam",
+    prompt: "Examination of relevant systems and significant changes",
+    subsections: ["relevantSystems", "significantFindings", "changesFromLast"],
     icon: "👨‍⚕️",
+  },
+  testResults: {
+    title: "Test Results",
+    prompt: "New results, pending tests, ordered tests",
+    subsections: ["newResults", "pendingTests", "orderedTests"],
+    icon: "🔬",
   },
   assessment: {
     title: "Assessment",
-    prompt:
-      "Clinical impressions, diagnostic certainty, differential diagnoses",
+    prompt: "Problem status updates, new problems, risk factors",
+    subsections: ["problemStatus", "newProblems", "riskFactors"],
     icon: "📋",
   },
-  problemList: {
-    title: "Problem List",
-    prompt: "Comprehensive list of active and inactive problems",
-    icon: "📑",
-  },
   plan: {
-    title: "Treatment Plan",
-    prompt: "Diagnostic tests, treatments, medications, referrals, procedures",
-    subsections: [
-      "diagnostics",
-      "treatments",
-      "medications",
-      "referrals",
-      "procedures",
-    ],
+    title: "Plan Updates",
+    prompt: "Medication changes, new orders, referrals, procedures",
+    subsections: ["medicationChanges", "newOrders", "referrals", "procedures"],
     icon: "📝",
+  },
+  goalProgress: {
+    title: "Goal Progress",
+    prompt: "Progress toward clinical and patient-specific goals",
+    subsections: ["clinicalGoals", "patientGoals", "barriers"],
+    icon: "🎯",
   },
   patientEducation: {
     title: "Patient Education",
-    prompt: "Education provided, materials given, understanding assessed",
+    prompt: "Topics discussed, understanding, concerns addressed",
+    subsections: ["topics", "understanding", "concerns"],
     icon: "📖",
   },
   followUpPlan: {
     title: "Follow-up Plan",
-    prompt: "Next appointment, monitoring plan, return precautions",
+    prompt: "Next visit timing, conditions for earlier return",
+    subsections: ["timing", "conditions", "warningSign"],
     icon: "📅",
   },
   ebmGuidelines: {
     title: "EBM Guidelines",
-    prompt: "Evidence-based measures and guidelines addressed during visit",
+    prompt: "Evidence-based measures addressed during visit",
     icon: "📊",
   },
 };
 
-export function SuperNoteInitialVisit({
+export function SuperNoteFollowUp({
   note,
   isRecording,
   onStartRecording,
   onStopRecording,
   onSave,
   onNoteChange,
-}: SuperNoteInitialVisitProps) {
-  const [activeSection, setActiveSection] = useState("demographics");
+}: SuperNoteFollowUpProps) {
+  const [activeSection, setActiveSection] =
+    useState<keyof FollowUpDetails>("visitInfo");
   const [editMode, setEditMode] = useState(false);
 
   const handleSectionChange = (
-    sectionKey: keyof typeof sections,
+    sectionKey: keyof FollowUpDetails,
     value: string,
     subsection?: string,
   ) => {
-    if (!note.initialVisitDetails) return;
+    if (!note.followUpDetails) return;
 
     const newNote = { ...note };
 
-    if (!newNote.initialVisitDetails) return;
+    if (!newNote.followUpDetails) return;
 
     if (subsection) {
       const section =
-        newNote.initialVisitDetails[
-          sectionKey as keyof typeof note.initialVisitDetails
+        newNote.followUpDetails[
+          sectionKey as keyof typeof note.followUpDetails
         ];
 
       if (typeof section === "object" && section !== null) {
         (section as any)[subsection] = value;
       }
     } else {
-      (newNote.initialVisitDetails as any)[sectionKey] = value;
+      (newNote.followUpDetails as any)[sectionKey] = value;
     }
 
     onNoteChange(newNote);
   };
 
-  const renderSectionContent = (sectionKey: keyof typeof sections) => {
-    if (!note.initialVisitDetails) return null;
+  const renderSectionContent = (sectionKey: keyof FollowUpDetails) => {
+    if (!note.followUpDetails) return null;
 
-    const section = sections[sectionKey];
+    const section = sections[sectionKey as keyof typeof sections];
     const content =
-      note.initialVisitDetails?.[
-        sectionKey as keyof typeof note.initialVisitDetails
-      ];
+      note.followUpDetails?.[sectionKey as keyof typeof note.followUpDetails];
 
     if (section.subsections) {
       return (
@@ -276,7 +205,7 @@ export function SuperNoteInitialVisit({
       <CardHeader className="bg-gray-50 border-b dark:bg-dark-secondary/10">
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            <CardTitle>Initial Visit Documentation</CardTitle>
+            <CardTitle>Follow-Up Visit Documentation</CardTitle>
             {isRecording && (
               <div className="flex items-center text-accent-error">
                 <span className="animate-pulse mr-2">●</span>
@@ -319,7 +248,7 @@ export function SuperNoteInitialVisit({
       </CardHeader>
 
       <CardContent className="p-6">
-        <div className="flex gap-4 min-h-[800px]">
+        <div className="flex gap-4">
           <div
             className="w-[30%] space-y-2 overflow-y-auto"
             style={{ maxHeight: "calc(100vh - 300px)" }}
@@ -331,7 +260,7 @@ export function SuperNoteInitialVisit({
                   activeSection === key ? "bg-accent-primary/10" : ""
                 }`}
                 variant={activeSection === key ? "default" : "ghost"}
-                onClick={() => setActiveSection(key)}
+                onClick={() => setActiveSection(key as keyof typeof sections)}
               >
                 <span className="mr-2">{section.icon}</span>
                 {section.title}

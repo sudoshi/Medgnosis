@@ -4,19 +4,14 @@ import type { Patient } from "@/types/patient";
 import type { SOAPNote } from "@/types/soap-note";
 
 import { useState } from "react";
-import {
-  DocumentArrowUpIcon,
-  PauseIcon,
-  MicrophoneIcon,
-} from "@heroicons/react/24/outline";
 
 import AdminLayout from "@/components/layout/AdminLayout";
 import { useVoiceInteraction } from "@/hooks/useVoiceInteraction";
 import { superNoteService } from "@/services/superNoteService";
 import { PatientSelector } from "@/components/super-note/PatientSelector";
-import { VoiceIndicator } from "@/components/super-note/VoiceIndicator";
 import { NotificationToast } from "@/components/super-note/NotificationToast";
 import { SuperNoteInitialVisit } from "@/components/super-note/SuperNoteInitialVisit";
+import { SuperNoteFollowUp } from "@/components/super-note/SuperNoteFollowUp";
 import { Button } from "@/components/ui/button";
 
 const visitTypes = [
@@ -114,49 +109,53 @@ export default function SuperNotePage() {
           </h2>
         </div>
 
-        {/* Patient Selection */}
-        <div className="panel-analytics">
-          <h3 className="text-lg font-semibold mb-4">Patient Selection</h3>
-          <PatientSelector onSelect={handlePatientSelect} />
-          {selectedPatient && (
-            <div className="mt-4 p-4 bg-dark-secondary/10 rounded-lg">
-              <div className="font-medium">
-                Selected Patient: {selectedPatient.name.first}{" "}
-                {selectedPatient.name.last}
-              </div>
-              <div className="text-sm text-dark-text-secondary">
-                MRN: {selectedPatient.mrn} • DOB:{" "}
-                {new Date(selectedPatient.dateOfBirth).toLocaleDateString()}
-              </div>
+        {/* Visit Type Selection */}
+        {!note.visitType && (
+          <div className="panel-analytics">
+            <h3 className="text-lg font-semibold mb-4">Visit Type</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {visitTypes.map((type) => (
+                <Button
+                  key={type.id}
+                  className="h-auto p-4 flex flex-col items-start space-y-2"
+                  variant="outline"
+                  onClick={() => handleVisitTypeSelect(type.id)}
+                >
+                  <span className="font-medium">{type.label}</span>
+                  <span className="text-sm text-dark-text-secondary">
+                    {type.description}
+                  </span>
+                </Button>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
+        {/* Patient Selection - Only shown after visit type is selected */}
+        {note.visitType && !selectedPatient && (
+          <div className="panel-analytics">
+            <h3 className="text-lg font-semibold mb-4">Patient Selection</h3>
+            <PatientSelector onSelect={handlePatientSelect} />
+          </div>
+        )}
+
+        {/* Show patient info after selection */}
         {selectedPatient && (
-          <>
-            {/* Visit Type Selection */}
-            {!note.visitType && (
-              <div className="panel-analytics">
-                <h3 className="text-lg font-semibold mb-4">Visit Type</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {visitTypes.map((type) => (
-                    <Button
-                      key={type.id}
-                      className="h-auto p-4 flex flex-col items-start space-y-2"
-                      variant="outline"
-                      onClick={() => handleVisitTypeSelect(type.id)}
-                    >
-                      <span className="font-medium">{type.label}</span>
-                      <span className="text-sm text-dark-text-secondary">
-                        {type.description}
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="mt-4 p-4 bg-dark-secondary/10 rounded-lg">
+            <div className="font-medium">
+              Selected Patient: {selectedPatient.name.first}{" "}
+              {selectedPatient.name.last}
+            </div>
+            <div className="text-sm text-dark-text-secondary">
+              MRN: {selectedPatient.mrn} • DOB:{" "}
+              {new Date(selectedPatient.dateOfBirth).toLocaleDateString()}
+            </div>
+          </div>
+        )}
 
-            {/* Visit Documentation */}
+        {/* Visit Documentation */}
+        {note.visitType && selectedPatient && (
+          <>
             {note.visitType === "initial" ? (
               <SuperNoteInitialVisit
                 isRecording={isListening}
@@ -166,67 +165,27 @@ export default function SuperNotePage() {
                 onStartRecording={startListening}
                 onStopRecording={stopListening}
               />
+            ) : note.visitType === "followup" ? (
+              <SuperNoteFollowUp
+                isRecording={isListening}
+                note={note}
+                onNoteChange={setNote}
+                onSave={handleExport}
+                onStartRecording={startListening}
+                onStopRecording={stopListening}
+              />
             ) : (
-              note.visitType && (
-                <div className="space-y-6">
-                  {/* Voice Indicator */}
-                  {isListening && (
-                    <div className="panel-analytics">
-                      <VoiceIndicator
-                        confidence={0.95}
-                        isListening={isListening}
-                      />
-                    </div>
-                  )}
-
-                  {/* Basic SOAP Note */}
-                  <div className="space-y-6">
-                    {["subjective", "objective", "assessment", "plan"].map(
-                      (section) => (
-                        <div key={section} className="panel-analytics">
-                          <h3 className="text-lg font-semibold mb-4 capitalize">
-                            {section}
-                          </h3>
-                          <textarea
-                            className="w-full h-40 p-4 rounded-lg bg-dark-secondary/10 border border-dark-border focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 resize-none"
-                            placeholder={`Enter ${section} details...`}
-                            value={note[section as keyof SOAPNote] as string}
-                            onChange={(e) =>
-                              setNote((prev) => ({
-                                ...prev,
-                                [section]: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      ),
-                    )}
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex justify-end space-x-4">
-                    <Button
-                      variant={isListening ? "destructive" : "default"}
-                      onClick={isListening ? stopListening : startListening}
-                    >
-                      {isListening ? (
-                        <PauseIcon className="mr-2 h-4 w-4" />
-                      ) : (
-                        <MicrophoneIcon className="mr-2 h-4 w-4" />
-                      )}
-                      {isListening ? "Stop Recording" : "Start Recording"}
-                    </Button>
-                    <Button
-                      disabled={isExporting}
-                      variant="default"
-                      onClick={handleExport}
-                    >
-                      <DocumentArrowUpIcon className="mr-2 h-4 w-4" />
-                      {isExporting ? "Exporting..." : "Export to EHR"}
-                    </Button>
-                  </div>
-                </div>
-              )
+              <div className="panel-analytics">
+                <h3 className="text-lg font-semibold mb-4">
+                  {note.visitType.charAt(0).toUpperCase() +
+                    note.visitType.slice(1)}{" "}
+                  Visit
+                </h3>
+                <p className="text-dark-text-secondary">
+                  Documentation template not yet implemented for this visit
+                  type.
+                </p>
+              </div>
             )}
           </>
         )}

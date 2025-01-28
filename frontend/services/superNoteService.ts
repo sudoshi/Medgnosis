@@ -174,6 +174,81 @@ class SuperNoteService {
         followUpPlan: "",
         ebmGuidelines: "",
       };
+    } else if (visitType === "followup") {
+      note.followUpDetails = {
+        visitInfo: {
+          lastVisit: "",
+          followUpReason: "",
+          appointmentType: "",
+        },
+        intervalHistory: {
+          symptomsProgress: "",
+          newSymptoms: "",
+          overallStatus: "",
+        },
+        treatmentResponse: {
+          medicationResponse: "",
+          sideEffects: "",
+          adherence: "",
+          complications: "",
+        },
+        medicationReview: {
+          currentMeds: "",
+          changes: "",
+          refillsNeeded: "",
+        },
+        vitalSigns: {
+          bp: "",
+          hr: "",
+          rr: "",
+          temp: "",
+          weight: "",
+          bmi: "",
+          painScore: "",
+        },
+        targetedROS: {
+          pertinentPositive: "",
+          pertinentNegative: "",
+          relatedSystems: "",
+        },
+        focusedExam: {
+          relevantSystems: "",
+          significantFindings: "",
+          changesFromLast: "",
+        },
+        testResults: {
+          newResults: "",
+          pendingTests: "",
+          orderedTests: "",
+        },
+        assessment: {
+          problemStatus: "",
+          newProblems: "",
+          riskFactors: "",
+        },
+        plan: {
+          medicationChanges: "",
+          newOrders: "",
+          referrals: "",
+          procedures: "",
+        },
+        goalProgress: {
+          clinicalGoals: "",
+          patientGoals: "",
+          barriers: "",
+        },
+        patientEducation: {
+          topics: "",
+          understanding: "",
+          concerns: "",
+        },
+        followUpPlan: {
+          timing: "",
+          conditions: "",
+          warningSign: "",
+        },
+        ebmGuidelines: "",
+      };
     }
 
     return note;
