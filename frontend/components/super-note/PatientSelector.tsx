@@ -25,7 +25,7 @@ export function PatientSelector({ onSelect }: PatientSelectorProps) {
       <div className="flex items-center space-x-2">
         <div className="relative flex-1">
           <input
-            className="w-full px-4 py-2 rounded-lg bg-dark-secondary/10 border border-dark-border focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200"
+            className="w-full px-4 py-2 rounded-lg bg-light-secondary/20 dark:bg-dark-secondary/20 border border-light-border/20 dark:border-dark-border/20 text-light-text-primary dark:text-dark-text-primary focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 placeholder-light-text-secondary/70 dark:placeholder-dark-text-secondary/70"
             placeholder="Search patients by name or MRN..."
             type="text"
             value={searchQuery}
@@ -35,23 +35,23 @@ export function PatientSelector({ onSelect }: PatientSelectorProps) {
             }}
             onFocus={() => setIsOpen(true)}
           />
-          <MagnifyingGlassIcon className="absolute right-3 top-2.5 h-5 w-5 text-dark-text-secondary" />
+          <MagnifyingGlassIcon className="absolute right-3 top-2.5 h-5 w-5 text-light-text-secondary dark:text-dark-text-secondary" />
         </div>
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-light-primary dark:bg-dark-primary border border-dark-border rounded-lg shadow-lg">
+        <div className="absolute z-50 w-full mt-1 bg-light-primary/95 dark:bg-dark-primary/95 border border-light-border/20 dark:border-dark-border/20 rounded-lg shadow-lg backdrop-blur-sm">
           <div className="max-h-64 overflow-y-auto">
             {filteredPatients.length === 0 ? (
-              <div className="p-4 text-center text-dark-text-secondary">
+              <div className="p-4 text-center text-light-text-secondary dark:text-dark-text-secondary">
                 No patients found
               </div>
             ) : (
-              <div className="divide-y divide-dark-border">
+              <div className="divide-y divide-light-border/20 dark:divide-dark-border/20">
                 {filteredPatients.map((patient) => (
                   <button
                     key={patient.id}
-                    className="w-full px-4 py-3 text-left hover:bg-dark-secondary/10 transition-all duration-200"
+                    className="w-full px-4 py-3 text-left hover:bg-light-secondary/20 dark:hover:bg-dark-secondary/20 text-light-text-primary dark:text-dark-text-primary transition-all duration-200"
                     onClick={() => {
                       onSelect(patient);
                       setIsOpen(false);
@@ -62,15 +62,15 @@ export function PatientSelector({ onSelect }: PatientSelectorProps) {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium">
+                        <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
                           {patient.name.first} {patient.name.last}
                         </div>
-                        <div className="text-sm text-dark-text-secondary">
+                        <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                           MRN: {patient.mrn} • DOB:{" "}
                           {new Date(patient.dateOfBirth).toLocaleDateString()}
                         </div>
                       </div>
-                      <div className="text-sm text-dark-text-secondary">
+                      <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         {patient.gender}
                       </div>
                     </div>

@@ -12,7 +12,6 @@ import { PatientSelector } from "@/components/super-note/PatientSelector";
 import { NotificationToast } from "@/components/super-note/NotificationToast";
 import { SuperNoteInitialVisit } from "@/components/super-note/SuperNoteInitialVisit";
 import { SuperNoteFollowUp } from "@/components/super-note/SuperNoteFollowUp";
-import { Button } from "@/components/ui/button";
 
 const visitTypes = [
   {
@@ -110,20 +109,24 @@ export default function SuperNotePage() {
 
         {/* Patient Selection First */}
         {!selectedPatient && (
-          <div className="panel-analytics">
-            <h3 className="text-lg font-semibold mb-4">Patient Selection</h3>
+          <div className="panel-base relative">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
+                Patient Selection
+              </h3>
+            </div>
             <PatientSelector onSelect={handlePatientSelect} />
           </div>
         )}
 
         {/* Patient Info */}
         {selectedPatient && (
-          <div className="mt-4 p-4 bg-dark-secondary/10 rounded-lg">
-            <div className="font-medium">
+          <div className="panel-base bg-light-secondary/20 dark:bg-dark-secondary/20 mt-4">
+            <div className="font-medium text-light-text-primary dark:text-dark-text-primary">
               Selected Patient: {selectedPatient.name.first}{" "}
               {selectedPatient.name.last}
             </div>
-            <div className="text-sm text-dark-text-secondary">
+            <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
               MRN: {selectedPatient.mrn} • DOB:{" "}
               {new Date(selectedPatient.dateOfBirth).toLocaleDateString()}
             </div>
@@ -132,21 +135,28 @@ export default function SuperNotePage() {
 
         {/* Template Selection - Only shown after patient selection */}
         {selectedPatient && !note && (
-          <div className="panel-analytics mt-6">
-            <h3 className="text-lg font-semibold mb-4">Visit Template</h3>
+          <div className="panel-base relative mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
+                Visit Template
+              </h3>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               {visitTypes.map((type) => (
-                <Button
+                <div
                   key={type.id}
-                  className="h-auto p-4 flex flex-col items-start space-y-2"
-                  variant="outline"
+                  className="panel-base bg-light-secondary/20 dark:bg-dark-secondary/20 hover:bg-light-secondary/30 dark:hover:bg-dark-secondary/30 transition-all duration-200 cursor-pointer"
                   onClick={() => handleVisitTypeSelect(type.id)}
                 >
-                  <span className="font-medium">{type.label}</span>
-                  <span className="text-sm text-dark-text-secondary">
-                    {type.description}
-                  </span>
-                </Button>
+                  <div className="flex flex-col space-y-2">
+                    <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                      {type.label}
+                    </span>
+                    <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                      {type.description}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -174,13 +184,13 @@ export default function SuperNotePage() {
                 onStopRecording={stopListening}
               />
             ) : (
-              <div className="panel-analytics">
-                <h3 className="text-lg font-semibold mb-4">
+              <div className="panel-base">
+                <h3 className="text-lg font-semibold mb-4 text-light-text-primary dark:text-dark-text-primary">
                   {note?.visitType.charAt(0).toUpperCase() +
                     note?.visitType.slice(1)}{" "}
                   Visit
                 </h3>
-                <p className="text-dark-text-secondary">
+                <p className="text-light-text-secondary dark:text-dark-text-secondary">
                   Documentation template not yet implemented for this visit
                   type.
                 </p>

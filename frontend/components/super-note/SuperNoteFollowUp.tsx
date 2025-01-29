@@ -5,7 +5,6 @@ import type { SOAPNote, FollowUpDetails } from "@/types/soap-note";
 import { useState } from "react";
 import { Mic, MicOff, Save, Edit, AlertCircle } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -167,11 +166,11 @@ export function SuperNoteFollowUp({
         <div className="space-y-4">
           {section.subsections.map((subsection) => (
             <div key={subsection} className="border-l-4 border-blue-200 pl-4">
-              <h4 className="font-semibold mb-2 capitalize">
+              <h4 className="font-semibold mb-2 capitalize text-light-text-primary dark:text-dark-text-primary">
                 {subsection.replace(/([A-Z])/g, " $1").trim()}
               </h4>
               <textarea
-                className="w-full p-2 rounded-lg bg-dark-secondary/10 border border-dark-border focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 resize-none"
+                className="w-full p-2 rounded-lg bg-light-secondary/20 dark:bg-dark-secondary/20 border border-light-border/20 dark:border-dark-border/20 text-light-text-primary dark:text-dark-text-primary focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 resize-none placeholder-light-text-secondary/70 dark:placeholder-dark-text-secondary/70"
                 disabled={!editMode}
                 placeholder={`Enter ${subsection} details...`}
                 value={
@@ -191,7 +190,7 @@ export function SuperNoteFollowUp({
 
     return (
       <textarea
-        className="w-full h-40 p-4 rounded-lg bg-dark-secondary/10 border border-dark-border focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 resize-none"
+        className="w-full h-40 p-4 rounded-lg bg-light-secondary/20 dark:bg-dark-secondary/20 border border-light-border/20 dark:border-dark-border/20 text-light-text-primary dark:text-dark-text-primary focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none transition-all duration-200 resize-none placeholder-light-text-secondary/70 dark:placeholder-dark-text-secondary/70"
         disabled={!editMode}
         placeholder={`Enter ${section.title.toLowerCase()} details...`}
         value={typeof content === "string" ? content : ""}
@@ -201,11 +200,13 @@ export function SuperNoteFollowUp({
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader className="bg-gray-50 border-b dark:bg-dark-secondary/10">
-        <div className="flex justify-between items-center">
+    <div className="panel-analytics relative w-full">
+      <div className="bg-gradient-light dark:bg-gradient-dark border-b border-light-border/20 dark:border-accent-primary/20 p-4">
+        <div className="flex justify-between items-center text-light-text-primary dark:text-dark-text-primary">
           <div className="flex items-center space-x-4">
-            <CardTitle>Follow-Up Visit Documentation</CardTitle>
+            <h2 className="text-xl font-semibold">
+              Follow-Up Visit Documentation
+            </h2>
             {isRecording && (
               <div className="flex items-center text-accent-error">
                 <span className="animate-pulse mr-2">●</span>
@@ -245,21 +246,23 @@ export function SuperNoteFollowUp({
             </Button>
           </div>
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="p-6">
+      <div className="p-6">
         <div className="flex gap-4">
           <div
-            className="w-[30%] space-y-2 overflow-y-auto"
+            className="panel-base w-[30%] space-y-2 overflow-y-auto scrollbar-thin"
             style={{ maxHeight: "calc(100vh - 300px)" }}
           >
             {Object.entries(sections).map(([key, section]) => (
               <Button
                 key={key}
-                className={`w-full justify-start text-left ${
-                  activeSection === key ? "bg-accent-primary/10" : ""
+                className={`w-full justify-start text-left transition-all duration-200 ${
+                  activeSection === key
+                    ? "bg-accent-primary/10 text-light-text-primary dark:text-dark-text-primary"
+                    : "hover:bg-light-secondary/20 dark:hover:bg-dark-secondary/20 text-light-text-secondary dark:text-dark-text-secondary"
                 }`}
-                variant={activeSection === key ? "default" : "ghost"}
+                variant="ghost"
                 onClick={() => setActiveSection(key as keyof typeof sections)}
               >
                 <span className="mr-2">{section.icon}</span>
@@ -268,23 +271,23 @@ export function SuperNoteFollowUp({
             ))}
           </div>
 
-          <div className="w-[70%] space-y-4">
+          <div className="panel-base w-[70%] space-y-4">
             <Alert>
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
+              <AlertDescription className="text-light-text-primary dark:text-dark-text-primary">
                 {sections[activeSection as keyof typeof sections].prompt}
               </AlertDescription>
             </Alert>
 
             <div
-              className="border rounded-lg p-4 bg-white dark:bg-dark-primary flex-1 overflow-y-auto"
+              className="panel-base flex-1 overflow-y-auto scrollbar-thin bg-light-secondary/10 dark:bg-dark-secondary/10"
               style={{ minHeight: "calc(100vh - 400px)" }}
             >
               {renderSectionContent(activeSection)}
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
