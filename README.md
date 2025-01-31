@@ -1,6 +1,6 @@
 # Population Health Management (PHM) Database Foundation
 
-A comprehensive healthcare data platform combining enterprise data management with analytical capabilities, designed to support population health initiatives for healthcare organizations serving 700,000 to 1.5 million patients.
+A comprehensive healthcare data platform combining enterprise data management with analytical capabilities, designed to support population health initiatives for medium to large healthcare organizations.
 
 ## Overview
 
