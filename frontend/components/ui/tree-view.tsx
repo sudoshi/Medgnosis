@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef, useState, useCallback } from 'react';
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
+import { forwardRef, useState, useCallback } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface TreeItem {

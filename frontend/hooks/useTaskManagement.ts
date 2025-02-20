@@ -1,8 +1,8 @@
-import type { Task } from "@/types/tasks-alerts";
 
 import { useState, useCallback } from "react";
 
 import { mockTasks } from "@/services/mockTasksAlertsData";
+import type { Task } from "@/types/tasks-alerts";
 
 export type TaskType = "all" | "personal" | "practice" | "patient";
 

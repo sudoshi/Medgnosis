@@ -14,164 +14,45 @@ export interface SOAPNote {
   followUpDetails?: FollowUpDetails;
 }
 
-export interface FollowUpDetails {
-  visitInfo: {
-    lastVisit: string;
-    followUpReason: string;
-    appointmentType: string;
-  };
-  intervalHistory: {
-    symptomsProgress: string;
-    newSymptoms: string;
-    overallStatus: string;
-  };
-  treatmentResponse: {
-    medicationResponse: string;
-    sideEffects: string;
-    adherence: string;
-    complications: string;
-  };
-  medicationReview: {
-    currentMeds: string;
-    changes: string;
-    refillsNeeded: string;
-  };
-  vitalSigns: {
-    bp: string;
-    hr: string;
-    rr: string;
-    temp: string;
-    weight: string;
-    bmi: string;
-    painScore: string;
-  };
-  targetedROS: {
-    pertinentPositive: string;
-    pertinentNegative: string;
-    relatedSystems: string;
-  };
-  focusedExam: {
-    relevantSystems: string;
-    significantFindings: string;
-    changesFromLast: string;
-  };
-  testResults: {
-    newResults: string;
-    pendingTests: string;
-    orderedTests: string;
-  };
-  assessment: {
-    problemStatus: string;
-    newProblems: string;
-    riskFactors: string;
-  };
-  plan: {
-    medicationChanges: string;
-    newOrders: string;
-    referrals: string;
-    procedures: string;
-  };
-  goalProgress: {
-    clinicalGoals: string;
-    patientGoals: string;
-    barriers: string;
-  };
-  patientEducation: {
-    topics: string;
-    understanding: string;
-    concerns: string;
-  };
-  followUpPlan: {
-    timing: string;
-    conditions: string;
-    warningSign: string;
-  };
-  ebmGuidelines: string;
-}
+export type InitialVisitDetailValue = string | Record<string, string>;
 
 export interface InitialVisitDetails {
-  demographics: string;
-  insuranceInfo: string;
-  chiefComplaint: string;
-  hpi: string;
-  allergies: string;
-  medications: {
-    current: string;
-    past: string;
-    adherence: string;
-  };
-  pmh: {
-    medical: string;
-    surgical: string;
-    hospitalizations: string;
-    trauma: string;
-  };
-  familyHistory: {
-    immediate: string;
-    extended: string;
-    genetic: string;
-  };
-  socialHistory: {
-    occupation: string;
-    lifestyle: string;
-    habits: string;
-    diet: string;
-    exercise: string;
-    substances: string;
-  };
-  preventiveCare: {
-    immunizations: string;
-    screenings: string;
-    lastPhysical: string;
-  };
-  ros: {
-    constitutional: string;
-    heent: string;
-    cardiovascular: string;
-    respiratory: string;
-    gi: string;
-    gu: string;
-    musculoskeletal: string;
-    skin: string;
-    neurological: string;
-    psychiatric: string;
-    endocrine: string;
-    hematologic: string;
-    allergic: string;
-  };
-  vitalSigns: {
-    bp: string;
-    hr: string;
-    rr: string;
-    temp: string;
-    height: string;
-    weight: string;
-    bmi: string;
-    painScore: string;
-  };
-  physicalExam: {
-    general: string;
-    heent: string;
-    neck: string;
-    chest: string;
-    cardiac: string;
-    abdomen: string;
-    extremities: string;
-    skin: string;
-    neuro: string;
-    psychiatric: string;
-  };
-  problemList: string;
-  plan: {
-    diagnostics: string;
-    treatments: string;
-    medications: string;
-    referrals: string;
-    procedures: string;
-  };
-  patientEducation: string;
-  followUpPlan: string;
-  ebmGuidelines: string;
+  demographics?: InitialVisitDetailValue;
+  insuranceInfo?: InitialVisitDetailValue;
+  chiefComplaint?: InitialVisitDetailValue;
+  hpi?: InitialVisitDetailValue;
+  allergies?: InitialVisitDetailValue;
+  medications?: InitialVisitDetailValue;
+  pmh?: InitialVisitDetailValue;
+  familyHistory?: InitialVisitDetailValue;
+  socialHistory?: InitialVisitDetailValue;
+  preventiveCare?: InitialVisitDetailValue;
+  ros?: InitialVisitDetailValue;
+  vitalSigns?: InitialVisitDetailValue;
+  physicalExam?: InitialVisitDetailValue;
+  assessment?: InitialVisitDetailValue;
+  problemList?: InitialVisitDetailValue;
+  plan?: InitialVisitDetailValue;
+  patientEducation?: InitialVisitDetailValue;
+  followUpPlan?: InitialVisitDetailValue;
+  ebmGuidelines?: InitialVisitDetailValue;
+}
+
+export interface FollowUpDetails {
+  visitInfo?: Record<string, string>;
+  intervalHistory?: Record<string, string>;
+  treatmentResponse?: Record<string, string>;
+  medicationReview?: Record<string, string>;
+  vitalSigns?: Record<string, string>;
+  targetedROS?: Record<string, string>;
+  focusedExam?: Record<string, string>;
+  testResults?: Record<string, string>;
+  assessment?: Record<string, string>;
+  plan?: Record<string, string>;
+  goalProgress?: Record<string, string>;
+  patientEducation?: Record<string, string>;
+  followUpPlan?: Record<string, string>;
+  ebmGuidelines?: string;
 }
 
 export interface SOAPNoteSection {

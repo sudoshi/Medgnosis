@@ -1,6 +1,6 @@
+import { calculateAlertSeverity } from "@/services/alertSeverityService";
 import type { StandardizedAlert } from "@/types/standardized-alerts";
 
-import { calculateAlertSeverity } from "@/services/alertSeverityService";
 
 interface AlertSeverityIndicatorProps {
   alert: StandardizedAlert;

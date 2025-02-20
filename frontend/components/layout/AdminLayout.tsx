@@ -1,9 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
 
-import { usePathname, useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   ChartBarSquareIcon,
   UserGroupIcon,
@@ -15,7 +12,10 @@ import {
   ClockIcon,
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { AbbyAssistant } from "../ai/AbbyAssistant";
 import { ThemeSwitch } from "../theme-switch";

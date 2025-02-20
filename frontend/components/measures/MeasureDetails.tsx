@@ -1,8 +1,3 @@
-import type {
-  QualityMeasure,
-  MeasurePopulationAnalysis,
-} from "@/types/measure";
-
 import {
   ClipboardDocumentListIcon,
   InformationCircleIcon,
@@ -11,6 +6,12 @@ import {
   UserGroupIcon,
   PlusIcon,
 } from "@heroicons/react/24/outline";
+
+import type {
+  QualityMeasure,
+  MeasurePopulationAnalysis,
+} from "@/types/measure";
+
 
 interface MeasureDetailsProps {
   measure: QualityMeasure;

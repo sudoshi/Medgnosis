@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef, type ReactNode } from 'react';
 import * as AspectRatioPrimitive from '@radix-ui/react-aspect-ratio';
+import { forwardRef, type ReactNode } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface AspectRatioProps {

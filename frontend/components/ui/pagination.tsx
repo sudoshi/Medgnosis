@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
+import { useMemo } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface PaginationProps {

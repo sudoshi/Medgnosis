@@ -1,7 +1,8 @@
+import { VOICE_CONFIG } from "@/config/voice";
+
 import { abbyAnalytics } from "./AbbyAnalytics";
 import { abbyCache } from "./AbbyCache";
 
-import { VOICE_CONFIG } from "@/config/voice";
 
 interface VoiceOptions {
   emotion?: string;

@@ -1,7 +1,8 @@
 'use client';
 
-import { Providers } from './providers';
 import { AuthProvider } from '@/lib/auth';
+
+import { Providers } from './providers';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   return (

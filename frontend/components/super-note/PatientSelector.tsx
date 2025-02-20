@@ -1,9 +1,9 @@
-import type { Patient } from "@/types/patient";
 
-import { useState } from "react";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
 
 import { mockPatientsList } from "@/services/mockPatientData";
+import type { Patient } from "@/types/patient";
 
 interface PatientSelectorProps {
   onSelect: (patient: Patient) => void;

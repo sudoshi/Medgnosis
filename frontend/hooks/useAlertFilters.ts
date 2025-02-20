@@ -1,7 +1,8 @@
-import type { Alert, AlertType, AlertCategory } from "@/types/tasks-alerts";
-import type { AlertPreferenceState } from "@/types/standardized-alerts";
-
 import { useMemo } from "react";
+
+import type { AlertPreferenceState } from "@/types/standardized-alerts";
+import type { Alert, AlertType, AlertCategory } from "@/types/tasks-alerts";
+
 
 interface AlertCounts {
   total: number;

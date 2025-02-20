@@ -1,12 +1,13 @@
 'use client';
 
 import { forwardRef, useState, useCallback } from 'react';
-import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypePrism from 'rehype-prism-plus';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+
+import { cn } from '@/lib/utils';
 import 'katex/dist/katex.min.css';
 
 export interface MarkdownEditorProps {

@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef } from 'react';
 import * as ToolbarPrimitive from '@radix-ui/react-toolbar';
+import { forwardRef } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface ToolbarProps {

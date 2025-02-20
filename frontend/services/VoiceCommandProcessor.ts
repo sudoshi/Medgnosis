@@ -1,12 +1,12 @@
-import type { CommandResult } from "@/config/voice";
-
 import { useRouter } from "next/navigation";
 
-import { audioFeedback } from "./AudioFeedbackService";
-import { abbyVoice } from "./AbbyVoice";
-import { abbyAnalytics } from "./AbbyAnalytics";
-
+import type { CommandResult } from "@/config/voice";
 import { VOICE_CONFIG } from "@/config/voice";
+
+import { abbyAnalytics } from "./AbbyAnalytics";
+import { abbyVoice } from "./AbbyVoice";
+import { audioFeedback } from "./AudioFeedbackService";
+
 
 export class VoiceCommandProcessor {
   private router: ReturnType<typeof useRouter>;

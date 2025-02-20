@@ -1,5 +1,3 @@
-import type { Alert } from "@/types/tasks-alerts";
-
 import {
   BeakerIcon,
   CalendarIcon,
@@ -12,6 +10,9 @@ import {
   SparklesIcon,
   ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
+
+import type { Alert } from "@/types/tasks-alerts";
+
 
 interface AlertActionsProps {
   alert: Alert;

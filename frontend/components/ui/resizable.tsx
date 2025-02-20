@@ -1,6 +1,7 @@
 'use client';
 
 import { forwardRef, useState, useCallback, useEffect } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface ResizablePanelProps {

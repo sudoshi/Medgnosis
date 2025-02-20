@@ -1,6 +1,7 @@
+import { useState } from "react";
+
 import type { PatientDetails } from "@/types/patient";
 
-import { useState } from "react";
 
 import PatientDetailModal from "./PatientDetailModal";
 

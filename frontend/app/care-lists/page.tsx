@@ -1,8 +1,6 @@
 "use client";
 
-import type { CareList } from "@/services/mockCareListData";
 
-import { useState, useEffect } from "react";
 import {
   UserGroupIcon,
   ClipboardDocumentListIcon,
@@ -14,11 +12,13 @@ import {
   XMarkIcon,
   CommandLineIcon,
 } from "@heroicons/react/24/outline";
+import { useState, useEffect } from "react";
 
-import { mockCareLists, mockPatientsList } from "@/services/mockCareListData";
 import CareListDetails from "@/components/care-lists/CareListDetails";
 import CreateListModal from "@/components/care-lists/CreateListModal";
 import AdminLayout from "@/components/layout/AdminLayout";
+import { mockCareLists, mockPatientsList } from "@/services/mockCareListData";
+import type { CareList } from "@/services/mockCareListData";
 
 interface StatCardProps {
   title: string;
@@ -54,8 +54,7 @@ function StatCard({
                 trend.value >= 0 ? "text-accent-success" : "text-accent-error"
               }`}
             >
-              {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}%{" "}
-              {trend.label}
+              {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.label}
             </p>
           )}
         </div>
@@ -78,10 +77,10 @@ function CareListCard({
   onSelect: () => void;
 }) {
   const patients = mockPatientsList.filter((p) =>
-    list.patients.includes(p.id.toString()),
+    list.patients.includes(p.id.toString())
   );
   const highRiskCount = patients.filter(
-    (p) => p.riskFactors.level === "high",
+    (p) => p.riskFactors.level === "high"
   ).length;
   const careGapsCount = patients.reduce((sum, p) => sum + p.careGaps.length, 0);
 
@@ -211,18 +210,18 @@ export default function CareListsPage() {
 
   const totalPatients = mockCareLists.reduce(
     (sum, list) => sum + list.patients.length,
-    0,
+    0
   );
 
   const totalCareGaps = mockPatientsList
     .filter((p) =>
-      mockCareLists.some((list) => list.patients.includes(p.id.toString())),
+      mockCareLists.some((list) => list.patients.includes(p.id.toString()))
     )
     .reduce((sum, p) => sum + p.careGaps.length, 0);
 
   const highRiskPatients = mockPatientsList
     .filter((p) =>
-      mockCareLists.some((list) => list.patients.includes(p.id.toString())),
+      mockCareLists.some((list) => list.patients.includes(p.id.toString()))
     )
     .filter((p) => p.riskFactors.level === "high").length;
 
@@ -301,7 +300,8 @@ export default function CareListsPage() {
                     />
                     {!searchTerm && (
                       <kbd className="hidden sm:block px-1.5 py-0.5 text-xs text-light-text-secondary dark:text-dark-text-secondary bg-light-secondary dark:bg-dark-secondary rounded">
-                        <CommandLineIcon className="h-3 w-3 inline mr-1" />K
+                        <CommandLineIcon className="h-3 w-3 inline mr-1" />
+                        K
                       </kbd>
                     )}
                   </div>
@@ -347,7 +347,9 @@ export default function CareListsPage() {
                   aria-label="Filter by list type"
                   className="input min-w-[150px] bg-light-primary dark:bg-dark-primary text-light-text-primary dark:text-dark-text-primary border-light-border dark:border-dark-border focus:border-accent-primary focus:ring-accent-primary"
                   value={filter}
-                  onChange={(e) => setFilter(e.target.value as any)}
+                  onChange={(e) =>
+                    setFilter(e.target.value as "all" | "measure" | "manual")
+                  }
                 >
                   <option value="all">All Lists</option>
                   <option value="measure">Measure Based</option>

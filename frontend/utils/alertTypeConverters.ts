@@ -1,5 +1,5 @@
-import type { Alert } from "@/types/tasks-alerts";
 import type { StandardizedAlert } from "@/types/standardized-alerts";
+import type { Alert } from "@/types/tasks-alerts";
 
 export function convertToStandardAlert(alert: Alert): StandardizedAlert {
   const severity = getSeverityFromPriority(alert.priority);

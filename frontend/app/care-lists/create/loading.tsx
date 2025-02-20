@@ -1,5 +1,6 @@
-import AdminLayout from '@/components/layout/AdminLayout';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+
+import AdminLayout from '@/components/layout/AdminLayout';
 
 export default function LoadingCreateCareListPage() {
   return (

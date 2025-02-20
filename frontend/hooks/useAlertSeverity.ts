@@ -1,8 +1,8 @@
-import type { Alert } from "@/types/tasks-alerts";
 
 import { useMemo } from "react";
 
 import { calculateAlertSeverity } from "@/services/alertSeverityService";
+import type { Alert } from "@/types/tasks-alerts";
 import { convertToStandardAlert } from "@/utils/alertTypeConverters";
 
 export interface SeverityCounts {

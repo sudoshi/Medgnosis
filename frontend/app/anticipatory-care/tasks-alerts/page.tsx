@@ -1,10 +1,6 @@
 "use client";
 
-import type { Task } from "@/types/tasks-alerts";
-import type { AlertType, AlertCategory } from "@/types/tasks-alerts";
-import type { TaskType } from "@/hooks/useTaskManagement";
 
-import { useState, useMemo } from "react";
 import {
   BellIcon,
   CheckCircleIcon,
@@ -13,20 +9,23 @@ import {
   PlusIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
+import { useState, useMemo } from "react";
 
-import { useAlertFilters } from "@/hooks/useAlertFilters";
-import AlertNavigation from "@/components/tasks-alerts/AlertNavigation";
 import AdminLayout from "@/components/layout/AdminLayout";
-import CreateTaskModal from "@/components/tasks-alerts/CreateTaskModal";
 import AlertActions, {
   handleAlertAction,
 } from "@/components/tasks-alerts/AlertActions";
+import AlertNavigation from "@/components/tasks-alerts/AlertNavigation";
 import AlertPreferencesModal from "@/components/tasks-alerts/AlertPreferencesModal";
 import AlertSeverityIndicator from "@/components/tasks-alerts/AlertSeverityIndicator";
-import { useAlertSeverity } from "@/hooks/useAlertSeverity";
-import { useAlertPreferences } from "@/hooks/useAlertPreferences";
-import { useTaskManagement } from "@/hooks/useTaskManagement";
+import CreateTaskModal from "@/components/tasks-alerts/CreateTaskModal";
+import { useAlertFilters } from "@/hooks/useAlertFilters";
 import { useAlertManagement } from "@/hooks/useAlertManagement";
+import { useAlertPreferences } from "@/hooks/useAlertPreferences";
+import { useAlertSeverity } from "@/hooks/useAlertSeverity";
+import { useTaskManagement } from "@/hooks/useTaskManagement";
+import type { TaskType } from "@/hooks/useTaskManagement";
+import type { AlertType, AlertCategory , Task } from "@/types/tasks-alerts";
 import { convertToStandardAlert } from "@/utils/alertTypeConverters";
 
 export default function TasksAlertsPage() {
@@ -272,7 +271,7 @@ export default function TasksAlertsPage() {
         </div>
       </div>
     ));
-  }, [filteredAlertSeverity.sortedAlerts]);
+  }, [filteredAlertSeverity.sortedAlerts, acknowledgeAlert]);
 
   return (
     <AdminLayout>

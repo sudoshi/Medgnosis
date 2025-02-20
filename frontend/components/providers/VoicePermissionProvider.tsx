@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { MicrophonePermission } from "../ai/MicrophonePermission";

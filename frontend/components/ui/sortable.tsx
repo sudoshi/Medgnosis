@@ -10,6 +10,7 @@ import {
   useContext,
 } from 'react';
 import { createPortal } from 'react-dom';
+
 import { cn } from '@/lib/utils';
 
 interface Position {
@@ -17,8 +18,8 @@ interface Position {
   y: number;
 }
 
-interface SortableContextValue {
-  items: any[];
+interface SortableContextValue<T extends { id: string }> {
+  items: T[];
   activeId: string | null;
   overIndex: number;
   onDragStart: (id: string, event: React.PointerEvent) => void;
@@ -26,9 +27,9 @@ interface SortableContextValue {
   onDragOver: (index: number) => void;
 }
 
-const SortableContext = createContext<SortableContextValue | null>(null);
+const SortableContext = createContext<SortableContextValue<any> | null>(null);
 
-export interface SortableProps<T> {
+export interface SortableProps<T extends { id: string }> {
   items: T[];
   onChange: (items: T[]) => void;
   children: React.ReactNode;
@@ -94,7 +95,7 @@ export function Sortable<T extends { id: string }>({
     }
   }, [activeId]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!activeId) return;
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -159,7 +160,8 @@ export function Sortable<T extends { id: string }>({
   );
 }
 
-export interface SortableItemProps {
+// Make SortableItemProps generic, using the same type T as Sortable
+export interface SortableItemProps<T extends { id: string }> {
   id: string;
   index: number;
   children: React.ReactNode;
@@ -167,9 +169,10 @@ export interface SortableItemProps {
   dragHandleClassName?: string;
 }
 
-export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps>(
+// Update SortableItem to use SortableItemProps<T> and get context type from SortableContext
+export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps<any>>(
   ({ id, index, children, className, dragHandleClassName }, ref) => {
-    const context = useContext(SortableContext);
+    const context = useContext(SortableContext) as SortableContextValue<any>;
     if (!context) {
       throw new Error('SortableItem must be used within a Sortable');
     }
@@ -187,16 +190,11 @@ export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps>(
         )}
         onPointerEnter={() => onDragOver(index)}
       >
-        <div
-          className={cn(
-            'absolute inset-0 cursor-move',
-            dragHandleClassName
-          )}
-          onPointerDown={(e) => onDragStart(id, e)}
-        />
+        <div className={cn('absolute inset-0 cursor-move', dragHandleClassName)} onPointerDown={(e) => onDragStart(id, e)} />
         {children}
       </div>
     );
   }
 );
+
 SortableItem.displayName = 'SortableItem';

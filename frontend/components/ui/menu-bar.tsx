@@ -1,8 +1,9 @@
 'use client';
 
-import { forwardRef } from 'react';
-import * as MenubarPrimitive from '@radix-ui/react-menubar';
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
+import * as MenubarPrimitive from '@radix-ui/react-menubar';
+import { forwardRef } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface MenuBarProps {

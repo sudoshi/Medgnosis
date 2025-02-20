@@ -1,8 +1,8 @@
-import { useState } from "react";
 import {
   AdjustmentsHorizontalIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
+import { useState } from "react";
 
 interface FilterGroup {
   id: string;

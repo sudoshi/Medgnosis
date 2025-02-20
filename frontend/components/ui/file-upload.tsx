@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
 import { ArrowUpTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useRef, useState, useCallback } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface FileUploadProps {

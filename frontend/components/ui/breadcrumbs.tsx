@@ -1,8 +1,9 @@
 'use client';
 
+import { ChevronRightIcon, HomeIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronRightIcon, HomeIcon } from '@heroicons/react/24/outline';
+
 import { cn } from '@/lib/utils';
 
 export interface BreadcrumbItem {
@@ -112,12 +113,12 @@ export function Breadcrumbs({
 }
 
 export interface BreadcrumbsWithIconsProps extends BreadcrumbsProps {
-  iconClassName?: string;
+  _iconClassName?: string;
 }
 
 export function BreadcrumbsWithIcons({
   items = [],
-  iconClassName,
+  _iconClassName,
   ...props
 }: BreadcrumbsWithIconsProps) {
   // Add default icons based on position

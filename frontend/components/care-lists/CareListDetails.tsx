@@ -8,9 +8,10 @@ import {
   DocumentDuplicateIcon,
   ArchiveBoxIcon,
 } from '@heroicons/react/24/outline';
+
+import PatientRow from '@/components/patients/PatientRow';
 import type { CareList } from '@/services/mockCareListData';
 import { mockPatientsList } from '@/services/mockCareListData';
-import PatientRow from '@/components/patients/PatientRow';
 
 interface CareListDetailsProps {
   list: CareList;

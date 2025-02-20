@@ -1,9 +1,3 @@
-import type {
-  MeasureDomain,
-  MeasureType,
-  MeasureFilter,
-} from "@/types/measure";
-
 import {
   MagnifyingGlassIcon,
   ChartBarIcon,
@@ -11,6 +5,13 @@ import {
   BeakerIcon,
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+
+import type {
+  MeasureDomain,
+  MeasureType,
+  MeasureFilter,
+} from "@/types/measure";
+
 
 interface MeasureFiltersProps {
   filters: MeasureFilter;

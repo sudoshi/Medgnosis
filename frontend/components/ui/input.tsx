@@ -2,6 +2,7 @@
 
 import { forwardRef } from 'react';
 import type { InputHTMLAttributes } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

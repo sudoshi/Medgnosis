@@ -1,13 +1,13 @@
 "use client";
 
-import type { FilterState } from "@/components/populations/PopulationFilters";
 
 import { useState, useMemo } from "react";
 
 import AdminLayout from "@/components/layout/AdminLayout";
+import type { FilterState } from "@/components/populations/PopulationFilters";
 import PopulationFilters from "@/components/populations/PopulationFilters";
-import PopulationMetrics from "@/components/populations/PopulationMetrics";
 import PopulationGrid from "@/components/populations/PopulationGrid";
+import PopulationMetrics from "@/components/populations/PopulationMetrics";
 import { mockPatientsList } from "@/services/mockPatientData";
 
 export default function PopulationsPage() {

@@ -34,7 +34,7 @@ export function MicrophonePermission({
           </div>
           <p className="text-center text-dark-text-secondary">
             Abby needs microphone access to enable voice commands. This allows
-            you to activate Abby by saying "Hey Abby" and use voice
+            you to activate Abby by saying {"\"Hey Abby\""} and use voice
             interactions.
           </p>
         </div>

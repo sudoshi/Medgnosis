@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, Fragment } from 'react';
 import { Dialog, Combobox, Transition } from '@headlessui/react';
 import {
   CommandLineIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface CommandItem {

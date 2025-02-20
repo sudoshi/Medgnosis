@@ -1,12 +1,12 @@
 "use client";
 
-import type { FC } from "react";
-import { VisuallyHidden } from "@react-aria/visually-hidden";
 import type { SwitchProps } from "@heroui/switch";
 import { useSwitch } from "@heroui/switch";
-import { useTheme } from "next-themes";
 import { useIsSSR } from "@react-aria/ssr";
+import { VisuallyHidden } from "@react-aria/visually-hidden";
 import clsx from "clsx";
+import { useTheme } from "next-themes";
+import type { FC } from "react";
 
 import { SunFilledIcon, MoonFilledIcon } from "@/components/icons";
 
@@ -23,7 +23,11 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({
   const isSSR = useIsSSR();
 
   const onChange = () => {
-    theme === "light" ? setTheme("dark") : setTheme("light");
+    if (theme === "light") {
+      setTheme("dark");
+    } else {
+      setTheme("light");
+    }
   };
 
   const {

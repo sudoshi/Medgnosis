@@ -1,15 +1,15 @@
 "use client";
 
+
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect } from "react";
+
+import { alertCategories } from "@/services/standardizedAlerts";
 import type {
   AlertPriority,
   AlertPreferenceState,
   AlertCategoryType,
 } from "@/types/standardized-alerts";
-
-import { useState, useEffect } from "react";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
-
-import { alertCategories } from "@/services/standardizedAlerts";
 
 interface AlertPreferencesModalProps {
   isOpen: boolean;

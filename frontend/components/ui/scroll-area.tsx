@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef, type ReactNode } from 'react';
 import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area';
+import { forwardRef, type ReactNode } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface ScrollAreaProps {

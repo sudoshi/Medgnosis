@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Popover } from './popover';
-import { Input } from './input';
-import { cn } from '@/lib/utils';
 import { ChevronUpDownIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { useState, useRef, useCallback } from 'react';
+
+import { cn } from '@/lib/utils';
+
+import { Input } from './input';
+import { Popover } from './popover';
 
 export interface ComboboxOption {
   value: string;

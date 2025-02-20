@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,7 +17,9 @@ import type {
   ChartOptions,
   ChartType,
 } from 'chart.js';
+import { useEffect, useRef } from 'react';
 import { Chart as ChartComponent } from 'react-chartjs-2';
+
 import { cn } from '@/lib/utils';
 
 // Register ChartJS components

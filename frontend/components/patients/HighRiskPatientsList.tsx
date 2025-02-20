@@ -1,10 +1,12 @@
-import { useState } from 'react';
 import {
   ChartBarIcon,
   ExclamationTriangleIcon,
   ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+
 import type { PatientDetails, PatientAction } from '@/types/patient';
+
 import PatientDetailModal from './PatientDetailModal';
 
 interface HighRiskPatientsListProps {

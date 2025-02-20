@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useEffect } from "react";
 
 import AdminLayout from "@/components/layout/AdminLayout";
 

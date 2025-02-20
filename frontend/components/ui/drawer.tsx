@@ -1,8 +1,9 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { Fragment, type ReactNode } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface DrawerProps {

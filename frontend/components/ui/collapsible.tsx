@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface CollapsibleProps {

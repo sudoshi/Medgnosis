@@ -1,6 +1,7 @@
-import AdminLayout from '@/components/layout/AdminLayout';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+
+import AdminLayout from '@/components/layout/AdminLayout';
 
 function LoadingPulse() {
   return <div className="animate-pulse bg-dark-secondary rounded h-4" />;

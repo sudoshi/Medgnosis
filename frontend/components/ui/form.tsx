@@ -2,6 +2,7 @@
 
 import { forwardRef } from 'react';
 import type { HTMLAttributes, LabelHTMLAttributes } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface FormLabelProps extends LabelHTMLAttributes<HTMLLabelElement> {
@@ -27,13 +28,11 @@ export const FormLabel = forwardRef<HTMLLabelElement, FormLabelProps>(
 );
 FormLabel.displayName = 'FormLabel';
 
-export interface FormDescriptionProps extends HTMLAttributes<HTMLParagraphElement> {}
-
 export function FormDescription({
   className,
   children,
   ...props
-}: FormDescriptionProps) {
+}: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
       className={cn('text-sm text-dark-text-secondary', className)}
@@ -137,13 +136,11 @@ export function FormSection({
   );
 }
 
-export interface FormFooterProps extends HTMLAttributes<HTMLDivElement> {}
-
 export function FormFooter({
   className,
   children,
   ...props
-}: FormFooterProps) {
+}: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(

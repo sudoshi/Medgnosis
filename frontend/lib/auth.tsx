@@ -1,10 +1,11 @@
 'use client';
 
-import axios from 'axios';
+import { createContext, useContext, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { isAxiosError } from 'axios';
+
 import { auth as authApi } from '@/services/api';
 import type { User } from '@/services/api';
-import { useRouter } from 'next/navigation';
-import { createContext, useContext, useState } from 'react';
 
 interface LoginCredentials {
   email: string;
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(response.data.user);
       router.push('/dashboard');
     } catch (err) {
-      const message = axios.isAxiosError(err) 
+      const message = isAxiosError(err)
         ? err.response?.data?.message || err.message
         : 'Login failed';
       setError(message);

@@ -1,6 +1,5 @@
 'use client';
 
-import AdminLayout from '@/components/layout/AdminLayout';
 import {
   ChartBarIcon,
   ClockIcon,
@@ -10,6 +9,8 @@ import {
   PencilIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+
+import AdminLayout from '@/components/layout/AdminLayout';
 
 interface TimelineEvent {
   id: number;

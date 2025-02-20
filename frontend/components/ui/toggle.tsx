@@ -2,9 +2,11 @@
 
 import { forwardRef } from 'react';
 import type { InputHTMLAttributes } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface ToggleProps extends InputHTMLAttributes<HTMLInputElement> {
+  _className?: string;
   label?: string;
   description?: string;
   error?: boolean;
@@ -12,7 +14,7 @@ export interface ToggleProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Toggle = forwardRef<HTMLInputElement, ToggleProps>(
-  ({ className, label, description, error, helperText, ...props }, ref) => {
+  ({ _className, label, description, error, helperText, ...props }, ref) => {
     return (
       <div className="flex flex-col space-y-1.5">
         <label className="relative inline-flex cursor-pointer items-start">

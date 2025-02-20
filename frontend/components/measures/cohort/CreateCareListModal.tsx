@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Dialog } from '@headlessui/react';
 import {
   ClipboardDocumentListIcon,
@@ -6,6 +5,8 @@ import {
   UserGroupIcon,
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+
 import type { QualityMeasure } from '@/types/measure';
 import type { Patient } from '@/types/patient';
 

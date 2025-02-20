@@ -1,6 +1,7 @@
+import { VOICE_CONFIG } from "@/config/voice";
+
 import { abbyAnalytics } from "./AbbyAnalytics";
 
-import { VOICE_CONFIG } from "@/config/voice";
 
 class AudioFeedbackService {
   private audioContext: AudioContext | null = null;

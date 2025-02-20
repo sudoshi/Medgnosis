@@ -1,20 +1,20 @@
 "use client";
 
-import type { PatientDetails } from "@/types/patient";
 
-import { useState, useMemo } from "react";
 import {
   UserGroupIcon,
   ExclamationTriangleIcon,
   ChartBarIcon,
   ClockIcon,
 } from "@heroicons/react/24/outline";
+import { useState, useMemo } from "react";
 
 import AdminLayout from "@/components/layout/AdminLayout";
-import { mockPatientsList } from "@/services/mockPatientData";
-import PatientRow from "@/components/patients/PatientRow";
-import PatientFilters from "@/components/patients/PatientFilters";
 import PatientDetailModal from "@/components/patients/PatientDetailModal";
+import PatientFilters from "@/components/patients/PatientFilters";
+import PatientRow from "@/components/patients/PatientRow";
+import { mockPatientsList } from "@/services/mockPatientData";
+import type { PatientDetails } from "@/types/patient";
 
 interface StatCardProps {
   title: string;

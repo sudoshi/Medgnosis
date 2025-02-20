@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import AdminLayout from '@/components/layout/AdminLayout';
 import {
   ChartBarIcon,
   UserGroupIcon,
@@ -10,13 +8,16 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+
+import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
+import CareGapSummary from '@/components/analytics/CareGapSummary';
+import AdminLayout from '@/components/layout/AdminLayout';
+import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
+import PatientActivity from '@/components/patients/PatientActivity';
 import type { DashboardData } from '@/services/api';
 import { mockDashboardData } from '@/services/mockData';
 import { mockPatientsList } from '@/services/mockPatientData';
-import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
-import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
-import CareGapSummary from '@/components/analytics/CareGapSummary';
-import PatientActivity from '@/components/patients/PatientActivity';
 
 interface StatCardProps {
   loading?: boolean;

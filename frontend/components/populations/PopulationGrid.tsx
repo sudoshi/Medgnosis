@@ -1,14 +1,14 @@
-import type { PatientDetails } from "@/types/patient";
 
-import { useState } from "react";
 import {
   ChartBarIcon,
   ExclamationTriangleIcon,
   ClipboardDocumentListIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
+import { useState } from "react";
 
 import PatientDetailModal from "@/components/patients/PatientDetailModal";
+import type { PatientDetails } from "@/types/patient";
 
 interface PopulationGridProps {
   patients: PatientDetails[];

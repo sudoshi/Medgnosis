@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function ResetPasswordPage() {
       setTimeout(() => {
         router.push('/login');
       }, 3000);
-    } catch (err) {
+    } catch (_) {
       setError('Failed to send reset email. Please try again.');
     } finally {
       setIsLoading(false);

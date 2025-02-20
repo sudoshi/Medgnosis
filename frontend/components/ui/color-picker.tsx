@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef, useCallback } from 'react';
 import { EyeDropperIcon } from '@heroicons/react/24/outline';
+import { forwardRef, useCallback } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface ColorPickerProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange'> {
@@ -28,7 +29,7 @@ export const ColorPicker = forwardRef<HTMLDivElement, ColorPickerProps>(
   }, ref) => {
     const handleEyeDropper = useCallback(async () => {
       try {
-        // @ts-ignore - EyeDropper API is not yet in TypeScript
+        // @ts-expect-error - EyeDropper API is not yet in TypeScript
         const eyeDropper = new window.EyeDropper();
         const result = await eyeDropper.open();
         onChange(result.sRGBHex);

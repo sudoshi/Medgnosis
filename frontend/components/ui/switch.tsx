@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef } from 'react';
 import * as SwitchPrimitive from '@radix-ui/react-switch';
+import { forwardRef } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface SwitchProps {

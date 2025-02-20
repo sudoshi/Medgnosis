@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect, useRef, useCallback } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface SearchInputProps {
@@ -42,7 +43,7 @@ export function SearchInput({
     if (propValue !== undefined && propValue !== value) {
       setValue(propValue);
     }
-  }, [propValue]);
+  }, [propValue, value]);
 
   useEffect(() => {
     if (autoFocus && inputRef.current) {

@@ -1,4 +1,5 @@
 import { Inter } from 'next/font/google';
+
 import { ClientLayout } from './client-layout';
 import { metadata } from './metadata';
 import './globals.css';

@@ -1,8 +1,9 @@
 'use client';
 
-import { forwardRef } from 'react';
-import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
+import { forwardRef } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface NavigationMenuProps {

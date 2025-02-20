@@ -1,9 +1,9 @@
-import { useEffect } from "react";
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { useEffect } from "react";
 
 interface NotificationToastProps {
   type: "success" | "error";

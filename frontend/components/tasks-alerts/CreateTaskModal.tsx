@@ -1,12 +1,13 @@
-import type { Task } from "@/types/tasks-alerts";
-
-import { useState } from "react";
 import {
   CalendarIcon,
   UserIcon,
   UserGroupIcon,
   ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
+import { useState } from "react";
+
+import type { Task } from "@/types/tasks-alerts";
+
 
 interface CreateTaskModalProps {
   isOpen: boolean;

@@ -1,6 +1,7 @@
+import { useState, useCallback, useEffect } from "react";
+
 import type { AlertPreferenceState } from "@/types/standardized-alerts";
 
-import { useState, useCallback, useEffect } from "react";
 
 const defaultPreferences: AlertPreferenceState = {
   selectedPriorities: {

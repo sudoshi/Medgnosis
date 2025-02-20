@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import {
   XMarkIcon,
   MicrophoneIcon,
@@ -8,6 +7,7 @@ import {
   MinusIcon,
 } from "@heroicons/react/24/outline";
 import Image from "next/image";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 import { MicrophonePermission } from "./MicrophonePermission";
 

@@ -1,14 +1,14 @@
 "use client";
 
+
+import { useEffect, useRef, useState } from "react";
+
+import { abbyAnalytics } from "@/services/AbbyAnalytics";
 import type {
   SpeechRecognition,
   SpeechRecognitionEvent,
   SpeechRecognitionErrorEvent,
 } from "@/types/web-speech";
-
-import { useEffect, useRef, useState } from "react";
-
-import { abbyAnalytics } from "@/services/AbbyAnalytics";
 
 interface VoiceControllerProps {
   onWakeWord: () => void;

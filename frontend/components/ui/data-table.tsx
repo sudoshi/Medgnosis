@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
 import {
   ChevronUpDownIcon,
   ChevronUpIcon,
@@ -8,6 +7,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
+import { useState, useEffect, useMemo } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export type SortDirection = 'asc' | 'desc' | null;
@@ -77,8 +78,8 @@ export function DataTable<T>({
     if (!sortConfig || !sortConfig.direction) return data;
 
     return [...data].sort((a, b) => {
-      const aValue = (a as any)[sortConfig.key];
-      const bValue = (b as any)[sortConfig.key];
+      const aValue = (a as T)[sortConfig.key as keyof T];
+      const bValue = (b as T)[sortConfig.key as keyof T];
 
       if (aValue === bValue) return 0;
       if (aValue === null || aValue === undefined) return 1;
@@ -177,7 +178,10 @@ export function DataTable<T>({
                   >
                     {column.cell
                       ? column.cell(item)
-                      : (item as any)[column.key]}
+                      : typeof (item as T)[column.key as keyof T] === 'object' ||
+                        typeof (item as T)[column.key as keyof T] === 'function'
+                        ? (item as T)[column.key as keyof T] as React.ReactNode
+                        : String((item as T)[column.key as keyof T])}
                   </td>
                 ))}
               </tr>

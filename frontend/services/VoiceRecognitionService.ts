@@ -1,4 +1,5 @@
 import type { VoiceState, CommandResult } from "@/config/voice";
+import { VOICE_CONFIG } from "@/config/voice";
 import type {
   SpeechRecognition,
   SpeechRecognitionEvent,
@@ -7,7 +8,6 @@ import type {
 
 import { abbyAnalytics } from "./AbbyAnalytics";
 
-import { VOICE_CONFIG } from "@/config/voice";
 
 type VoiceCallback = (state: VoiceState) => void;
 type CommandCallback = (result: CommandResult) => void;

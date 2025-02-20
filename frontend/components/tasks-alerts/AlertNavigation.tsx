@@ -1,9 +1,10 @@
 "use client";
 
-import type { AlertType, AlertCategory } from "@/types/tasks-alerts";
 
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
+
+import type { AlertType, AlertCategory } from "@/types/tasks-alerts";
 
 interface AlertNavigationProps {
   alertCounts: {

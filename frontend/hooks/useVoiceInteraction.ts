@@ -1,10 +1,10 @@
-import type { VoiceState, CommandResult } from "@/config/voice";
 
 import { useState, useEffect, useCallback } from "react";
 
-import { voiceRecognition } from "@/services/VoiceRecognitionService";
+import type { VoiceState, CommandResult } from "@/config/voice";
 import { audioFeedback } from "@/services/AudioFeedbackService";
 import { useVoiceCommandProcessor } from "@/services/VoiceCommandProcessor";
+import { voiceRecognition } from "@/services/VoiceRecognitionService";
 
 interface VoiceInteractionState extends VoiceState {
   lastResponse: string | null;

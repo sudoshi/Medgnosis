@@ -1,6 +1,8 @@
 'use client';
 
+import type * as Ace from 'ace-builds';
 import { forwardRef, useEffect, useRef, useState } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface CodeEditorProps {
@@ -41,11 +43,11 @@ export const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
     enableSnippets = true,
     onLoad,
   }, ref) => {
-    const editorRef = useRef<any>(null);
-    const [editor, setEditor] = useState<any>(null);
-    const [ace, setAce] = useState<any>(null);
+    const editorRef = useRef<HTMLDivElement>(null);
+    const [editor, setEditor] = useState<Ace.Ace.Editor | null>(null);
+    const [ace, setAce] = useState<typeof Ace | null>(null);
 
-    useEffect(() => {
+     useEffect(() => {
       let mounted = true;
 
       const loadAce = async () => {
@@ -69,7 +71,7 @@ export const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
           ]);
 
           if (mounted) {
-            setAce(ace);
+            setAce(ace as typeof Ace);
           }
         } catch (error) {
           console.error('Failed to load Ace editor:', error);
@@ -96,8 +98,8 @@ export const CodeEditor = forwardRef<HTMLDivElement, CodeEditorProps>(
       editor.session.setUseWrapMode(true);
       editor.setShowPrintMargin(false);
 
-      if (minLines) editor.setMinLines(minLines);
-      if (maxLines) editor.setMaxLines(maxLines);
+      if (minLines) editor.renderer.setOption('minLines', minLines);
+      if (maxLines) editor.renderer.setOption('maxLines', maxLines);
 
       editor.setOptions({
         enableBasicAutocompletion,

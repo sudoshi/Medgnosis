@@ -1,7 +1,8 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
 import { Menu, Transition } from '@headlessui/react';
+import { Fragment, type ReactNode } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface DropdownMenuProps {

@@ -5,8 +5,9 @@ import {
   NavbarItem,
 } from "@heroui/navbar";
 import NextLink from "next/link";
-import { ThemeSwitch } from "@/components/theme-switch";
+
 import { AcumenusLogo } from "@/components/icons";
+import { ThemeSwitch } from "@/components/theme-switch";
 
 export const Navbar = () => {
   return (

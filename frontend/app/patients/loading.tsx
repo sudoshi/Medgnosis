@@ -1,5 +1,6 @@
-import AdminLayout from '@/components/layout/AdminLayout';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
+
+import AdminLayout from '@/components/layout/AdminLayout';
 
 function LoadingPulse() {
   return <div className="animate-pulse bg-dark-secondary rounded h-4" />;

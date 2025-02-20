@@ -1,7 +1,5 @@
-import type { PatientDetails } from "@/types/patient";
 
 import { Dialog, Transition } from "@headlessui/react";
-import { Fragment } from "react";
 import {
   ClipboardDocumentListIcon,
   XMarkIcon,
@@ -12,6 +10,9 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
+import { Fragment } from "react";
+
+import type { PatientDetails } from "@/types/patient";
 
 interface PatientDetailModalProps {
   isOpen: boolean;

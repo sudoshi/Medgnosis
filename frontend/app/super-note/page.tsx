@@ -1,17 +1,17 @@
 "use client";
 
-import type { Patient } from "@/types/patient";
-import type { SOAPNote } from "@/types/soap-note";
 
 import { useState } from "react";
 
 import AdminLayout from "@/components/layout/AdminLayout";
+import { NotificationToast } from "@/components/super-note/NotificationToast";
+import { PatientSelector } from "@/components/super-note/PatientSelector";
+import { SuperNoteFollowUp } from "@/components/super-note/SuperNoteFollowUp";
+import { SuperNoteInitialVisit } from "@/components/super-note/SuperNoteInitialVisit";
 import { useVoiceInteraction } from "@/hooks/useVoiceInteraction";
 import { superNoteService } from "@/services/superNoteService";
-import { PatientSelector } from "@/components/super-note/PatientSelector";
-import { NotificationToast } from "@/components/super-note/NotificationToast";
-import { SuperNoteInitialVisit } from "@/components/super-note/SuperNoteInitialVisit";
-import { SuperNoteFollowUp } from "@/components/super-note/SuperNoteFollowUp";
+import type { Patient } from "@/types/patient";
+import type { SOAPNote } from "@/types/soap-note";
 
 const visitTypes = [
   {

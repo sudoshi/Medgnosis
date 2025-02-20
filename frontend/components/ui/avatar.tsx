@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Image from 'next/image';
-import { cn } from '@/lib/utils';
 import { UserIcon } from '@heroicons/react/24/solid';
+import Image from 'next/image';
+import { useEffect, useState } from 'react';
+
+import { cn } from '@/lib/utils';
+
 
 export interface AvatarProps {
   src?: string | null;

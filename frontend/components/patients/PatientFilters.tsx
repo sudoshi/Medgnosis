@@ -1,5 +1,3 @@
-import type { ComponentType } from "react";
-
 import {
   AdjustmentsHorizontalIcon,
   ChevronDownIcon,
@@ -8,6 +6,7 @@ import {
   UserGroupIcon,
   BeakerIcon,
 } from "@heroicons/react/24/outline";
+import type { ComponentType } from "react";
 import { useState } from "react";
 
 interface FilterGroup {

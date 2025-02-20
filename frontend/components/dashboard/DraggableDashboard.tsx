@@ -1,4 +1,6 @@
+import { Bars3Icon } from "@heroicons/react/24/outline";
 import type { ReactElement } from "react";
+import { useState, useEffect } from "react";
 import type {
   DraggableProvided,
   DraggableStateSnapshot,
@@ -6,10 +8,7 @@ import type {
   DroppableStateSnapshot,
   DropResult,
 } from "react-beautiful-dnd";
-
-import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
-import { Bars3Icon } from "@heroicons/react/24/outline";
 
 export interface DashboardPanel {
   id: string;

@@ -1,7 +1,8 @@
 'use client';
 
-import { forwardRef } from 'react';
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
+import { forwardRef } from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface RadioGroupProps {

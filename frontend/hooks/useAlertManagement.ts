@@ -1,8 +1,8 @@
-import type { Alert } from "@/types/tasks-alerts";
 
 import { useState, useCallback } from "react";
 
 import { mockAlerts } from "@/services/mockTasksAlertsData";
+import type { Alert } from "@/types/tasks-alerts";
 
 export function useAlertManagement() {
   const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
