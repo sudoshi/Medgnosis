@@ -27,7 +27,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);

@@ -3,6 +3,7 @@ import type { PatientDetails } from '@/types/patient';
 export const mockPatientsList: PatientDetails[] = [
   {
     id: 'P001',
+    mrn: 'MRN001',
     name: {
       first: 'John',
       last: 'Smith'
@@ -187,6 +188,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P002',
+    mrn: 'MRN002',
     name: {
       first: 'Maria',
       last: 'Garcia'
@@ -429,6 +431,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P003',
+    mrn: 'MRN003',
     name: {
       first: 'Robert',
       last: 'Johnson'
@@ -615,6 +618,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P004',
+    mrn: 'MRN004',
     name: {
       first: 'Sarah',
       last: 'Williams'
@@ -826,6 +830,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P005',
+    mrn: 'MRN005',
     name: {
       first: 'James',
       last: 'Chen'
@@ -1045,6 +1050,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P006',
+    mrn: 'MRN006',
     name: {
       first: 'Patricia',
       last: 'Thompson'
@@ -1287,6 +1293,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P007',
+    mrn: 'MRN007',
     name: {
       first: 'Michael',
       last: 'Rodriguez'
@@ -1483,6 +1490,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P008',
+    mrn: 'MRN008',
     name: {
       first: 'Linda',
       last: 'Anderson'
@@ -1707,6 +1715,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P009',
+    mrn: 'MRN009',
     name: {
       first: 'William',
       last: 'Taylor'
@@ -1926,6 +1935,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P010',
+    mrn: 'MRN010',
     name: {
       first: 'David',
       last: 'Patel'
@@ -2145,6 +2155,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P011',
+    mrn: 'MRN011',
     name: {
       first: 'Susan',
       last: 'Martinez'
@@ -2379,6 +2390,7 @@ export const mockPatientsList: PatientDetails[] = [
   },
   {
     id: 'P012',
+    mrn: 'MRN012',
     name: {
       first: 'Richard',
       last: 'Wilson'

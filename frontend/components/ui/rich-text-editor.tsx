@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, useCallback } from 'react';
-import { Editor } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
@@ -9,11 +9,9 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
-import { useEditor, EditorContent } from '@tiptap/react';
 import {
   BoldIcon,
   ItalicIcon,
-  UnderlineIcon,
   StrikethroughIcon,
   ListBulletIcon,
   Bars3Icon,
@@ -31,7 +29,6 @@ export interface RichTextEditorProps {
   value: string;
   onChange?: (value: string) => void;
   className?: string;
-  placeholder?: string;
   readOnly?: boolean;
   minHeight?: number;
   maxHeight?: number;
@@ -42,7 +39,6 @@ export const RichTextEditor = forwardRef<HTMLDivElement, RichTextEditorProps>(
     value,
     onChange,
     className,
-    placeholder = 'Write something...',
     readOnly = false,
     minHeight = 200,
     maxHeight,

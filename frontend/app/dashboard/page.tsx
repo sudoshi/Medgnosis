@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import {
   ChartBarIcon,
@@ -10,12 +10,10 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
-import { dashboard } from '@/services/api';
 import type { DashboardData } from '@/services/api';
 import { mockDashboardData } from '@/services/mockData';
 import { mockPatientsList } from '@/services/mockPatientData';
 import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
-import QualityMeasures from '@/components/quality/QualityMeasures';
 import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
 import CareGapSummary from '@/components/analytics/CareGapSummary';
 import PatientActivity from '@/components/patients/PatientActivity';
@@ -65,9 +63,9 @@ function StatCard({ title, value, description, icon: Icon, trend, loading }: Sta
 }
 
 export default function DashboardPage() {
-  const [state, setState] = useState<DashboardData | null>(mockDashboardData);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state] = useState<DashboardData | null>(mockDashboardData);
+  const [loading] = useState(false);
+  const [error] = useState<string | null>(null);
 
   if (error) {
     return (

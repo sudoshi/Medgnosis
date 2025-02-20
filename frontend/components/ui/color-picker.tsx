@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useState, useCallback } from 'react';
+import { forwardRef, useCallback } from 'react';
 import { EyeDropperIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 
@@ -26,8 +26,6 @@ export const ColorPicker = forwardRef<HTMLDivElement, ColorPickerProps>(
     disabled,
     ...props
   }, ref) => {
-    const [isOpen, setIsOpen] = useState(false);
-
     const handleEyeDropper = useCallback(async () => {
       try {
         // @ts-ignore - EyeDropper API is not yet in TypeScript

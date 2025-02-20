@@ -43,6 +43,7 @@ export const mockCareLists: CareList[] = [
 export const mockPatientsList: PatientDetails[] = [
   {
     id: '1',
+    mrn: 'MRN001',
     name: {
       first: 'John',
       last: 'Smith'

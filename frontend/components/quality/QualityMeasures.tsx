@@ -72,7 +72,7 @@ function TrendChart({ data }: TrendChartProps) {
 
   return (
     <div className="h-40 flex items-end justify-between">
-      {data.map((point, index) => (
+      {data.map((point) => (
         <div
           key={point.month}
           className="flex flex-col items-center space-y-2"

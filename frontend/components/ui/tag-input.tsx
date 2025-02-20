@@ -1,6 +1,7 @@
 'use client';
 
-import { forwardRef, useState, useCallback, KeyboardEvent } from 'react';
+import { forwardRef, useState, useCallback } from 'react';
+import type { KeyboardEvent } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 

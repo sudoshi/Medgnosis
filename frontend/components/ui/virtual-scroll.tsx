@@ -7,8 +7,8 @@ import {
   useState,
   useCallback,
   useMemo,
-  UIEvent,
 } from 'react';
+import type { UIEvent } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface VirtualScrollProps<T> {
@@ -36,7 +36,6 @@ export function VirtualScroll<T>({
   const [scrollTop, setScrollTop] = useState(0);
 
   const totalHeight = items.length * itemHeight;
-  const viewportItems = Math.ceil(height / itemHeight);
 
   const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
   const endIndex = Math.min(
@@ -138,7 +137,6 @@ export function useVirtualScroll({
   const scrollingTimeoutRef = useRef<NodeJS.Timeout>();
 
   const totalHeight = itemCount * itemHeight;
-  const viewportItems = Math.ceil(viewportHeight / itemHeight);
 
   const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
   const endIndex = Math.min(

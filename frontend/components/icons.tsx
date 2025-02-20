@@ -1,6 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
-import { IconSvgProps } from "@/types";
+import type { IconSvgProps } from "@/types";
 
 export const AcumenusLogo = ({
   size = 36,

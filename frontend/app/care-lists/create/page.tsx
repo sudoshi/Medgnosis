@@ -7,8 +7,6 @@ import { mockMeasures } from '@/services/mockMeasures';
 import type { QualityMeasure } from '@/types/measure';
 import {
   ClipboardDocumentListIcon,
-  ChartBarIcon,
-  UserGroupIcon,
   ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 

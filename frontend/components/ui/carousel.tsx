@@ -56,6 +56,7 @@ export const Carousel = forwardRef<HTMLDivElement, CarouselProps>(
         }, interval);
         return () => clearInterval(timer);
       }
+      return undefined;
     }, [autoPlay, interval, next, isHovered]);
 
     return (

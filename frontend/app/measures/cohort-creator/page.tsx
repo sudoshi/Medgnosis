@@ -3,18 +3,16 @@
 import { useState, useMemo } from 'react';
 import {
   UserGroupIcon,
-  ChartBarIcon,
   FunnelIcon,
-  MagnifyingGlassIcon,
   ClipboardDocumentListIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import MeasureList from '@/components/measures/MeasureList';
 import MeasureFilters from '@/components/measures/MeasureFilters';
 import { mockMeasures } from '@/services/mockMeasures';
 import { mockPatientsList } from '@/services/mockPatientData';
 import CreateCareListModal from '@/components/measures/cohort/CreateCareListModal';
-import type { QualityMeasure, MeasureFilter, MeasureDomain, MeasureType } from '@/types/measure';
-import type { Patient } from '@/types/patient';
+import type { MeasureFilter, MeasureDomain, MeasureType } from '@/types/measure';
 
 export default function CohortCreatorPage() {
   const [selectedMeasures, setSelectedMeasures] = useState<Set<string>>(new Set());

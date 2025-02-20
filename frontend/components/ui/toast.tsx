@@ -60,6 +60,7 @@ export function Toast({
 
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [duration, id, onClose]);
 
   const positions = {

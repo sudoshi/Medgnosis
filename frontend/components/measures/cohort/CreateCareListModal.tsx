@@ -28,7 +28,6 @@ export default function CreateCareListModal({
   onClose,
   selectedMeasures,
   cohortSize,
-  matchingPatients,
 }: CreateCareListModalProps) {
   const [formData, setFormData] = useState<FormData>({
     name: '',

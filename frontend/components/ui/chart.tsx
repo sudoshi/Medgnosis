@@ -12,6 +12,8 @@ import {
   Title,
   Tooltip,
   Legend,
+} from 'chart.js';
+import type {
   ChartData,
   ChartOptions,
   ChartType,

@@ -83,7 +83,7 @@ const TreeViewItem = forwardRef<HTMLDivElement, TreeViewItemProps>(
     expandedIds,
     onToggleExpanded,
   }, ref) => {
-    const { id, label, icon: Icon, children, disabled, defaultExpanded } = item;
+    const { id, label, icon: Icon, children, disabled } = item;
     const hasChildren = children && children.length > 0;
     const isExpanded = expandedIds.includes(id);
     const isSelected = id === selectedId;

@@ -9,7 +9,6 @@ export interface ScrollAreaProps {
   className?: string;
   viewportClassName?: string;
   orientation?: 'vertical' | 'horizontal' | 'both';
-  scrollHideDelay?: number;
   type?: 'auto' | 'always' | 'scroll' | 'hover';
 }
 
@@ -19,7 +18,6 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
     className,
     viewportClassName,
     orientation = 'vertical',
-    scrollHideDelay = 600,
     type = 'hover',
   }, ref) => {
     return (
@@ -36,13 +34,11 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
         {(orientation === 'vertical' || orientation === 'both') && (
           <ScrollBar
             orientation="vertical"
-            scrollHideDelay={scrollHideDelay}
           />
         )}
         {(orientation === 'horizontal' || orientation === 'both') && (
           <ScrollBar
             orientation="horizontal"
-            scrollHideDelay={scrollHideDelay}
           />
         )}
         <Corner />
@@ -54,12 +50,11 @@ ScrollArea.displayName = 'ScrollArea';
 
 interface ScrollBarProps {
   orientation?: 'vertical' | 'horizontal';
-  scrollHideDelay?: number;
   className?: string;
 }
 
 const ScrollBar = forwardRef<HTMLDivElement, ScrollBarProps>(
-  ({ orientation = 'vertical', scrollHideDelay, className }, ref) => {
+  ({ orientation = 'vertical', className }, ref) => {
     return (
       <ScrollAreaPrimitive.ScrollAreaScrollbar
         ref={ref}

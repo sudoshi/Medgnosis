@@ -147,7 +147,7 @@ export default function MeasuresReportsPage() {
         </div>
 
         <div className="space-y-4">
-          {reports.map((report, index) => (
+          {reports.map((report) => (
             <ReportCard key={report.title} report={report} />
           ))}
         </div>

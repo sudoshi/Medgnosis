@@ -59,6 +59,7 @@ export const ResizablePanel = forwardRef<HTMLDivElement, ResizablePanelProps>(
           window.removeEventListener('mouseup', handleMouseUp);
         };
       }
+      return undefined;
     }, [isResizing, handleMouseMove, handleMouseUp]);
 
     return (
@@ -198,6 +199,7 @@ export const ResizableHandle = forwardRef<HTMLDivElement, ResizableHandleProps>(
           window.removeEventListener('mouseup', handleMouseUp);
         };
       }
+      return undefined;
     }, [isResizing, handleMouseMove, handleMouseUp]);
 
     return (

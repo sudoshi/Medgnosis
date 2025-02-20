@@ -51,6 +51,7 @@ export function Collapsible({
       resizeObserver.observe(contentRef.current);
       return () => resizeObserver.disconnect();
     }
+    return undefined;
   }, [isOpen]);
 
   const handleToggle = () => {
@@ -141,11 +142,8 @@ export function CollapsibleGroup({
   showChevron = true,
   chevronPosition = 'right',
 }: CollapsibleGroupProps) {
-  const [openId, setOpenId] = useState<string | null>(defaultOpenId || null);
-
   const handleChange = (id: string, isOpen: boolean) => {
     const newOpenId = isOpen ? id : null;
-    setOpenId(newOpenId);
     onChange?.(newOpenId);
   };
 

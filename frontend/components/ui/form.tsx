@@ -1,6 +1,7 @@
 'use client';
 
-import { HTMLAttributes, LabelHTMLAttributes, forwardRef } from 'react';
+import { forwardRef } from 'react';
+import type { HTMLAttributes, LabelHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface FormLabelProps extends LabelHTMLAttributes<HTMLLabelElement> {

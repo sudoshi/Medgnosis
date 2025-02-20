@@ -1,6 +1,7 @@
 'use client';
 
-import { HTMLAttributes, forwardRef } from 'react';
+import { forwardRef } from 'react';
+import type { HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface ProgressProps extends HTMLAttributes<HTMLDivElement> {

@@ -16,7 +16,7 @@ interface VoiceControllerProps {
 }
 
 export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
-  const [isListening, setIsListening] = useState(false);
+  const [, setIsListening] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 

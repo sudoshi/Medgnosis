@@ -52,7 +52,7 @@ export class VoiceCommandProcessor {
       VOICE_CONFIG.commands.actions,
     )) {
       if (transcript.includes(command)) {
-        await this.handleActionCommand(details.action, details.response);
+        await this.handleActionCommand(details.action);
         abbyAnalytics.trackEvent("action_command", {
           command,
           action: details.action,
@@ -91,8 +91,7 @@ export class VoiceCommandProcessor {
   }
 
   private async handleActionCommand(
-    action: string,
-    response: string,
+    action: string
   ): Promise<void> {
     try {
       switch (action) {

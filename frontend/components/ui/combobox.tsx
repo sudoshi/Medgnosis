@@ -41,7 +41,7 @@ export function Combobox({
   loading = false,
   emptyMessage = 'No options found',
 }: ComboboxProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 

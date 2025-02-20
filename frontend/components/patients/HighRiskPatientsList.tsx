@@ -123,7 +123,6 @@ function LoadingState() {
 export default function HighRiskPatientsList({
   patients,
   loading = false,
-  onAction,
 }: HighRiskPatientsListProps) {
   if (loading) {
     return <LoadingState />;

@@ -39,12 +39,11 @@ const visitTypes = [
 export default function SuperNotePage() {
   const [note, setNote] = useState<SOAPNote | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
   const [notification, setNotification] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
-  const { isListening, startListening, stopListening, transcript } =
+  const { isListening, startListening, stopListening } =
     useVoiceInteraction(false);
 
   const handleExport = async () => {
@@ -58,7 +57,6 @@ export default function SuperNotePage() {
     }
 
     try {
-      setIsExporting(true);
       const noteWithPatient: SOAPNote = {
         ...note,
         metadata: {
@@ -80,7 +78,6 @@ export default function SuperNotePage() {
         message: "Failed to export note. Please try again.",
       });
     } finally {
-      setIsExporting(false);
     }
   };
 

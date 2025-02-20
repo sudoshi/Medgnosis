@@ -174,8 +174,7 @@ export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps>(
       throw new Error('SortableItem must be used within a Sortable');
     }
 
-    const { activeId, overIndex, onDragStart, onDragOver } = context;
-    const isDragging = activeId === id;
+    const { overIndex, onDragStart, onDragOver } = context;
     const isOver = overIndex === index;
 
     return (
