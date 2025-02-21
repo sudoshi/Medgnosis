@@ -134,7 +134,10 @@ export function SuperNoteFollowUp({
       ...(note.followUpDetails ?? {}),
     };
 
-    if (subsection) {
+    if (sectionKey === 'ebmGuidelines') {
+      newFollowUpDetails[sectionKey] = value as any; // Assert type as string
+    }
+    else if (subsection) {
       // Section expects an object
       const currentContent = newFollowUpDetails[sectionKey];
       let sectionContent: Record<string, string> = {};
@@ -163,46 +166,15 @@ export function SuperNoteFollowUp({
     const section = sections[sectionKey];
     const content = note.followUpDetails?.[sectionKey];
 
-    if (section.subsections) {
-      const sectionContent = isObjectContent(content) ? content : {};
-
-      return (
-        <div className="space-y-4">
-          {section.subsections.map((subsection) => (
-            <div key={subsection} className="border-l-4 border-blue-200 pl-4">
-              <h4 className="mb-2 font-semibold capitalize text-light-text-primary dark:text-dark-text-primary">
-                {subsection.replace(/([A-Z])/g, " $1").trim()}
-              </h4>
-              <textarea
-                className="w-full resize-none rounded-lg border border-light-border/20 bg-light-secondary/20 p-2 text-light-text-primary outline-none transition duration-200 placeholder-light-text-secondary/70 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary dark:border-dark-border/20 dark:bg-dark-secondary/20 dark:text-dark-text-primary dark:placeholder-dark-text-secondary/70"
-                disabled={!editMode}
-                placeholder={`Enter ${subsection
-                  .replace(/([A-Z])/g, " $1")
-                  .toLowerCase()}...`}
-                value={sectionContent[subsection] || ""}
-                onChange={(e) =>
-                  handleSectionChange(sectionKey, e.target.value, subsection)
-                }
-              />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (typeof content === "string" || !content) {
-      return (
-        <textarea
-          className="h-40 w-full resize-none rounded-lg border border-light-border/20 bg-light-secondary/20 p-4 text-light-text-primary outline-none transition duration-200 placeholder-light-text-secondary/70 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary dark:border-dark-border/20 dark:bg-dark-secondary/20 dark:text-dark-text-primary dark:placeholder-dark-text-secondary/70"
-          disabled={!editMode}
-          placeholder={`Enter ${section.title.toLowerCase()} details...`}
-          value={content || ""}
-          onChange={(e) => handleSectionChange(sectionKey, e.target.value)}
-        />
-      );
-    }
-
-    return null;
+    return (
+      <textarea
+        className="h-40 w-full resize-none rounded-lg border border-light-border/20 bg-light-secondary/20 p-4 text-light-text-primary outline-none transition duration-200 placeholder-light-text-secondary/70 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary dark:border-dark-border/20 dark:bg-dark-secondary/20 dark:text-dark-text-primary dark:placeholder-dark-text-secondary/70"
+        disabled={!editMode}
+        placeholder={`Enter ${section.title.toLowerCase()} details...`}
+        value={content as string || ""}
+        onChange={(e) => handleSectionChange(sectionKey, e.target.value)}
+      />
+    );
   };
 
   return (
