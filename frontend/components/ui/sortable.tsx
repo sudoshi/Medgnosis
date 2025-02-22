@@ -160,8 +160,8 @@ export function Sortable<T extends { id: string }>({
   );
 }
 
-// Make SortableItemProps generic, using the same type T as Sortable
-export interface SortableItemProps<T extends { id: string }> {
+// Props for each sortable item
+export interface SortableItemProps {
   id: string;
   index: number;
   children: React.ReactNode;
@@ -170,7 +170,7 @@ export interface SortableItemProps<T extends { id: string }> {
 }
 
 // Update SortableItem to use SortableItemProps<T> and get context type from SortableContext
-export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps<any>>(
+export const SortableItem = forwardRef<HTMLDivElement, SortableItemProps>(
   ({ id, index, children, className, dragHandleClassName }, ref) => {
     const context = useContext(SortableContext) as SortableContextValue<any>;
     if (!context) {
