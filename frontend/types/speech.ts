@@ -1,3 +1,5 @@
+import type { SpeechRecognitionCtor, SpeechGrammarListCtor } from './web-speech';
+
 export interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
