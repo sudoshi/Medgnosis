@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  PHP_VERSION: '8.2'
+  NODE_VERSION: '18'
+  PRODUCTION_BRANCH: 'main'
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -42,6 +47,39 @@ jobs:
           php artisan route:cache
           php artisan view:cache
 
+      # Create production environment files
+      - name: Create environment files
+        run: |
+          # Frontend production env
+          echo "NEXT_PUBLIC_API_URL=https://demo.medgnosis.app/api" > frontend/.env.production
+          echo "NEXT_PUBLIC_APP_URL=https://demo.medgnosis.app" >> frontend/.env.production
+          
+          # Backend production env
+          cat > backend/.env.production << EOL
+          APP_NAME="Population Health Platform"
+          APP_ENV=production
+          APP_DEBUG=false
+          APP_URL=https://demo.medgnosis.app
+          
+          LOG_CHANNEL=stack
+          LOG_LEVEL=error
+          
+          DB_CONNECTION=pgsql
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_DATABASE=PHM
+          DB_USERNAME=postgres
+          DB_PASSWORD=acumenus
+          DB_SCHEMA=prod
+          
+          CACHE_DRIVER=file
+          SESSION_DRIVER=file
+          SESSION_LIFETIME=120
+          
+          SANCTUM_STATEFUL_DOMAINS=demo.medgnosis.app
+          SESSION_DOMAIN=.medgnosis.app
+          EOL
+
       # Deploy to server
       - name: Deploy
         uses: appleboy/ssh-action@master
@@ -64,24 +102,35 @@ jobs:
             cp -r ${{ github.workspace }}/frontend .
             
             # Set permissions
-            chown -R www-data:www-data .
-            chmod -R 755 .
-            chmod -R 775 backend/storage
+            sudo chown -R www-data:www-data .
+            sudo chmod -R 755 .
+            sudo chmod -R 775 backend/storage
             
             # Backend setup
             cd backend
-            cp .env.example .env
+            cp .env.production .env
             php artisan key:generate
             php artisan storage:link
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
             php artisan migrate --force
             
-            # Update environment variables
-            sed -i 's/DB_HOST=.*/DB_HOST=localhost/' .env
-            sed -i 's/DB_DATABASE=.*/DB_DATABASE=PHM/' .env
-            sed -i 's/DB_USERNAME=.*/DB_USERNAME=postgres/' .env
-            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=acumenus/' .env
-            sed -i 's/DB_SCHEMA=.*/DB_SCHEMA=prod/' .env
+            # Start services using PM2 for better process management
+            cd /var/www/Medgnosis
             
-            # Start services
-            cd ..
-            ./start.sh
+            # Install PM2 if not already installed
+            which pm2 || npm install -g pm2
+            
+            # Start backend
+            pm2 start "php artisan serve --port=8000" --name="medgnosis-backend"
+            
+            # Start frontend
+            cd frontend
+            pm2 start "npm run start" --name="medgnosis-frontend"
+            
+            # Save PM2 process list
+            pm2 save
+            
+            # Setup PM2 to start on system boot
+            pm2 startup
