@@ -62,7 +62,7 @@ export interface SpeechRecognition extends EventTarget {
 
 type Constructor<T> = new (...args: any[]) => T;
 
-declare module "window" {
+declare global {
   export interface Window {
     SpeechRecognition?: Constructor<SpeechRecognition>;
     webkitSpeechRecognition?: Constructor<SpeechRecognition>;
