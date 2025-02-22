@@ -60,22 +60,12 @@ export interface SpeechRecognition extends EventTarget {
   stop(): void;
 }
 
-interface SpeechRecognitionCtor {
-  new (): SpeechRecognition;
-}
-
-interface SpeechGrammarListCtor {
-  new (): SpeechGrammarList;
-}
-
 declare global {
   interface Window {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-    SpeechGrammarList?: SpeechGrammarListCtor;
-    webkitSpeechGrammarList?: SpeechGrammarListCtor;
+    SpeechRecognition?: SpeechRecognition;
+    webkitSpeechRecognition?: SpeechRecognition;
+    SpeechGrammarList?: SpeechGrammarList;
+    webkitSpeechGrammarList?: SpeechGrammarList;
   }
 }
 
-export type SpeechRecognitionCtor = Constructor<SpeechRecognition>;
-export type SpeechGrammarListCtor = Constructor<SpeechGrammarList>;
