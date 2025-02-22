@@ -1,29 +1,33 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-// Enable compression for better performance
-compress: true,
+  output: 'standalone',
+  // Enable compression for better performance
+  compress: true,
 
-// Configure poweredByHeader
-poweredByHeader: false,
+  // Configure poweredByHeader
+  poweredByHeader: false,
 
-// Configure rewrites for API proxying
-async rewrites() {
+  // Configure rewrites for API proxying
+  async rewrites() {
+    const apiUrl = process.env.NODE_ENV === 'production'
+      ? 'https://demo.medgnosis.app/api'
+      : 'http://localhost:8000/api';
+
     return [
-    {
+      {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-    },
-    {
+        destination: `${apiUrl}/:path*`,
+      },
+      {
         source: '/sanctum/csrf-cookie',
-        destination: 'http://localhost:8000/sanctum/csrf-cookie',
-    },
-    {
+        destination: `${apiUrl.replace('/api', '')}/sanctum/csrf-cookie`,
+      },
+      {
         source: '/storage/:path*',
-        destination: 'http://localhost:8000/storage/:path*',
-    }
+        destination: `${apiUrl.replace('/api', '')}/storage/:path*`,
+      }
     ];
-},
+  },
 
 // Configure response headers
 async headers() {
