@@ -1,0 +1,87 @@
+name: Deploy Medgnosis
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Setup PHP
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, iconv, json, mbstring, pdo
+          
+      # Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # Install and build frontend
+      - name: Build Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          
+      # Install and build backend
+      - name: Build Backend
+        working-directory: backend
+        run: |
+          composer install --no-dev --optimize-autoloader
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+      # Deploy to server
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: demo.medgnosis.app
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Stop services
+            cd /var/www/Medgnosis
+            [ -f stop.sh ] && ./stop.sh
+
+            # Backup current version
+            timestamp=$(date +%Y%m%d_%H%M%S)
+            [ -d backend ] && mv backend backend_backup_$timestamp
+            [ -d frontend ] && mv frontend frontend_backup_$timestamp
+
+            # Deploy new version
+            cp -r ${{ github.workspace }}/backend .
+            cp -r ${{ github.workspace }}/frontend .
+            
+            # Set permissions
+            chown -R www-data:www-data .
+            chmod -R 755 .
+            chmod -R 775 backend/storage
+            
+            # Backend setup
+            cd backend
+            cp .env.example .env
+            php artisan key:generate
+            php artisan storage:link
+            php artisan migrate --force
+            
+            # Update environment variables
+            sed -i 's/DB_HOST=.*/DB_HOST=localhost/' .env
+            sed -i 's/DB_DATABASE=.*/DB_DATABASE=PHM/' .env
+            sed -i 's/DB_USERNAME=.*/DB_USERNAME=postgres/' .env
+            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=acumenus/' .env
+            sed -i 's/DB_SCHEMA=.*/DB_SCHEMA=prod/' .env
+            
+            # Start services
+            cd ..
+            ./start.sh
