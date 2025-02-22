@@ -62,10 +62,10 @@ export interface SpeechRecognition extends EventTarget {
 
 declare global {
   interface Window {
-    SpeechRecognition?: SpeechRecognition;
-    webkitSpeechRecognition?: SpeechRecognition;
-    SpeechGrammarList?: SpeechGrammarList;
-    webkitSpeechGrammarList?: SpeechGrammarList;
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+    SpeechGrammarList?: SpeechGrammarListCtor;
+    webkitSpeechGrammarList?: SpeechGrammarListCtor;
   }
 }
 
