@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // Disable static page generation for dynamic routes
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
+
   // Enable compression for better performance
   compress: true,
 
@@ -57,32 +59,80 @@ async headers() {
     ];
 },
 
-// Configure webpack for development
+// Configure webpack for development and production
 webpack: (config, { dev, isServer }) => {
-    // Enable polling in development for better hot reload in certain environments
-    if (!isServer && dev) {
-    config.watchOptions = {
-        ...config.watchOptions,
-        poll: 1000,
-        aggregateTimeout: 300,
-    };
+    // Add fallbacks for node modules
+    if (!isServer) {
+        config.resolve.fallback = {
+            ...config.resolve.fallback,
+            fs: false,
+            net: false,
+            tls: false,
+        };
     }
-    
+
+    // Enable polling in development
+    if (!isServer && dev) {
+        config.watchOptions = {
+            ...config.watchOptions,
+            poll: 1000,
+            aggregateTimeout: 300,
+        };
+    }
+
+    // Production optimizations
+    if (!dev) {
+        config.optimization = {
+            ...config.optimization,
+            minimize: true,
+            splitChunks: {
+                chunks: 'all',
+                minSize: 20000,
+                maxSize: 244000,
+                minChunks: 1,
+                maxAsyncRequests: 30,
+                maxInitialRequests: 30,
+                cacheGroups: {
+                    defaultVendors: {
+                        test: /[\\]node_modules[\\]/,
+                        priority: -10,
+                        reuseExistingChunk: true,
+                    },
+                    default: {
+                        minChunks: 2,
+                        priority: -20,
+                        reuseExistingChunk: true,
+                    },
+                },
+            },
+        };
+    }
+
     return config;
 },
 
 // Optimize images
 images: {
-    domains: ['localhost'],
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-    unoptimized: true
+    domains: ['localhost', 'demo.medgnosis.app'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256],
+    minimumCacheTTL: 60,
+    formats: ['image/webp'],
+    unoptimized: process.env.NODE_ENV === 'development',
 },
 
 // Enable experimental features
 experimental: {
     scrollRestoration: true,
+    optimizeCss: true,
+    optimizeServerReact: true,
+    serverActions: true,
 },
+
+// Configure build output
+distDir: process.env.NODE_ENV === 'production' ? '.next/standalone' : '.next',
+reactStrictMode: true,
+swcMinify: true,
 };
 
 module.exports = nextConfig;
