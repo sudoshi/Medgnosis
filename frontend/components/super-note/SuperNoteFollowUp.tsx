@@ -150,8 +150,8 @@ export function SuperNoteFollowUp({
 
       newFollowUpDetails[sectionKey] = sectionContent;
     } else {
-      // Section expects a string
-      newFollowUpDetails[sectionKey] = value;
+      // Section expects a Record<string, string>
+      newFollowUpDetails[sectionKey] = { content: value };
     }
 
     const newNote: SOAPNote = {
