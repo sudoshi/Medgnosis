@@ -123,12 +123,23 @@ jobs:
             echo "❌ Backend files missing"
             exit 1
           fi
+      
+      # Test SSH connection before deployment
+      - name: Test SSH connection
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: echo "SSH connection successful"
 
       # Deploy backend
+      # Note: If deployment fails with "Could not resolve hostname", 
+      # update SSH_HOST secret to use an IP address instead of a hostname
       - name: Deploy backend
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete --exclude=".env"
+          switches: -avzr --delete --exclude=".env" --verbose
           path: backend/
           remote_path: /var/www/Medgnosis/backend
           remote_host: ${{ secrets.SSH_HOST }}
@@ -139,7 +150,7 @@ jobs:
       - name: Deploy frontend
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete
+          switches: -avzr --delete --verbose
           path: frontend/.next/standalone/
           remote_path: /var/www/Medgnosis/frontend
           remote_host: ${{ secrets.SSH_HOST }}
