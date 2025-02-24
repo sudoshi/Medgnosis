@@ -28,6 +28,7 @@ jobs:
           NODE_ENV: production
         run: |
           npm ci
+          npm install autoprefixer postcss tailwindcss
           npm run build
           cp server.js .next/standalone/
 

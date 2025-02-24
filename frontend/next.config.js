@@ -12,7 +12,11 @@ const nextConfig = {
   
   // Configure module resolution
   webpack: (config, { isServer }) => {
-    config.resolve.modules.push(__dirname)
+    // Use aliases for module resolution
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': __dirname,
+    }
     return config
   }
 }
