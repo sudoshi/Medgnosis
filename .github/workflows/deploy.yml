@@ -133,25 +133,26 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: echo "SSH connection successful"
           
-      # Prepare temporary directories for deployment
-      - name: Prepare temporary directories
+      # Backup .env file if it exists
+      - name: Backup .env file
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Create clean temporary directories
-            rm -rf /tmp/medgnosis-deploy
-            mkdir -p /tmp/medgnosis-deploy/backend
-            mkdir -p /tmp/medgnosis-deploy/frontend
+            # Create backup directory in user's home
+            mkdir -p ~/medgnosis-backup
             
-            # Backup .env file if it exists
-            sudo cp /var/www/Medgnosis/backend/.env /tmp/medgnosis-env-backup 2>/dev/null || true
-            
-            echo "Temporary deployment directories prepared"
+            # Backup .env file if it exists (without sudo)
+            if [ -f "/var/www/Medgnosis/backend/.env" ] && [ -r "/var/www/Medgnosis/backend/.env" ]; then
+              cp /var/www/Medgnosis/backend/.env ~/medgnosis-backup/.env
+              echo ".env file backed up successfully"
+            else
+              echo "No readable .env file found or no read permission"
+            fi
 
-      # Deploy backend to temporary directory
+      # Deploy backend directly
       # Note: If deployment fails with "Could not resolve hostname", 
       # update SSH_HOST secret to use an IP address instead of a hostname
       - name: Deploy backend
@@ -159,106 +160,64 @@ jobs:
         with:
           switches: -avzr --delete --exclude=".env" --verbose
           path: backend/
-          remote_path: /tmp/medgnosis-deploy/backend
+          remote_path: /var/www/Medgnosis/backend
           remote_host: ${{ secrets.SSH_HOST }}
           remote_user: ${{ secrets.SSH_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Deploy frontend to temporary directory
+      # Deploy frontend directly
       - name: Deploy frontend
         uses: burnett01/rsync-deployments@5.2.1
         with:
           switches: -avzr --delete --verbose
           path: frontend/.next/standalone/
-          remote_path: /tmp/medgnosis-deploy/frontend
+          remote_path: /var/www/Medgnosis/frontend
           remote_host: ${{ secrets.SSH_HOST }}
           remote_user: ${{ secrets.SSH_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Post-deployment tasks
-      - name: Execute post-deployment commands
+      # Restore .env file if it was backed up
+      - name: Restore .env file
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Stop services
-            sudo systemctl stop php8.2-fpm
-            sudo systemctl stop apache2
-            sudo systemctl stop nextjs
-
-            # Move files from temporary directories to final destination
-            echo "Moving files from temporary directories to final destination..."
-            
-            # Remove existing directories (but keep .env backup)
-            sudo rm -rf /var/www/Medgnosis/backend
-            sudo rm -rf /var/www/Medgnosis/frontend
-            
-            # Create fresh directories
-            sudo mkdir -p /var/www/Medgnosis/backend
-            sudo mkdir -p /var/www/Medgnosis/frontend
-            
-            # Copy files from temp to destination
-            sudo cp -a /tmp/medgnosis-deploy/backend/. /var/www/Medgnosis/backend/
-            sudo cp -a /tmp/medgnosis-deploy/frontend/. /var/www/Medgnosis/frontend/
-            
-            # Restore .env if it existed
-            if [ -f "/tmp/medgnosis-env-backup" ]; then
+            # Restore .env if it was backed up
+            if [ -f ~/medgnosis-backup/.env ]; then
               echo "Restoring .env file..."
-              sudo cp /tmp/medgnosis-env-backup /var/www/Medgnosis/backend/.env
+              cp ~/medgnosis-backup/.env /var/www/Medgnosis/backend/.env
+              echo ".env file restored successfully"
             fi
             
-            # Install backend dependencies
-            cd /var/www/Medgnosis/backend
-            sudo composer install --no-interaction --prefer-dist --optimize-autoloader
-            
-            # Generate application key if needed
-            if ! grep -q "APP_KEY=" /var/www/Medgnosis/backend/.env || grep -q "APP_KEY=$" /var/www/Medgnosis/backend/.env; then
-              echo "Generating application key..."
-              sudo php artisan key:generate
-            fi
+            # Clean up backup
+            rm -rf ~/medgnosis-backup
 
-            # Clear Laravel cache
-            sudo php artisan config:clear
-            sudo php artisan route:clear
-            sudo php artisan view:clear
-
-            # Set up Next.js service
-            sudo cp /home/acumenus/GitHub/Medgnosis/nextjs.service /etc/systemd/system/
-            sudo systemctl daemon-reload
-            
-            # Set permissions
-            sudo chown -R www-data:www-data /var/www/Medgnosis
-            sudo chmod -R 755 /var/www/Medgnosis
-            sudo chmod -R 775 /var/www/Medgnosis/backend/storage
-            sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
-            
-            # Copy Apache configuration
-            sudo cp /home/acumenus/GitHub/Medgnosis/demo-medgnosis.conf /etc/apache2/sites-available/
-            
-            # Copy frontend server.js to correct location if needed
-            if [ ! -f "/var/www/Medgnosis/frontend/server.js" ] && [ -f "/tmp/medgnosis-deploy/frontend/server.js" ]; then
+      # Copy server.js to frontend directory if needed
+      - name: Copy server.js
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Copy server.js to frontend directory if needed
+            if [ ! -f "/var/www/Medgnosis/frontend/server.js" ]; then
               echo "Copying server.js to frontend directory..."
-              sudo cp /tmp/medgnosis-deploy/frontend/server.js /var/www/Medgnosis/frontend/
+              cp frontend/.next/standalone/server.js /var/www/Medgnosis/frontend/ 2>/dev/null || echo "Could not copy server.js"
             fi
-            
-            sudo a2ensite demo-medgnosis.conf
-            
-            # Clean up temporary files
-            rm -rf /tmp/medgnosis-deploy
-            rm -f /tmp/medgnosis-env-backup
-            
-            # Verify and start services
-            sudo apache2ctl configtest
-            sudo systemctl start php8.2-fpm
-            sudo systemctl start apache2
-            sudo systemctl enable nextjs
-            sudo systemctl start nextjs
-            
-            # Log deployment
-            echo "Deployment completed successfully on $(date)" >> /var/log/deploy.log
+
+      # Notify completion
+      - name: Notify completion
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Deployment completed successfully on $(date)" > ~/deploy-log.txt
+            echo "Note: Service restart may need to be done manually by an administrator"
             
             # Verify deployment
-            sleep 10 # Wait for services to fully start
-            curl -s -o /dev/null -w "%{http_code}" https://demo.medgnosis.app
+            curl -s -o /dev/null -w "HTTP Status: %{http_code}" https://demo.medgnosis.app || echo "Could not verify deployment"

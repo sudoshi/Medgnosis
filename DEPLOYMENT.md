@@ -57,82 +57,77 @@ rsync: [receiver] mkstemp "/var/www/Medgnosis/backend/vendor/psr/clock/.CHANGELO
 or
 
 ```
-rsync: [generator] failed to set times on "/var/www/Medgnosis/backend/vendor/laravel/framework/src/Illuminate/Container": Operation not permitted (1)
+sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+sudo: a password is required
 ```
 
-These indicate permission problems with the target directories. To solve this, the workflow now uses a completely different deployment strategy:
+These indicate permission problems with the target directories or sudo privileges. To solve this, the workflow now uses a completely different deployment strategy:
 
-1. **Deploy to temporary directories first**:
+1. **Deploy directly to the target directories without sudo**:
+   - This requires that the SSH user has write permissions to the target directories
+   - The web server directories must be owned by or writable by the SSH user
+
+2. **Backup and restore the .env file to the user's home directory**:
    ```bash
-   # Create clean temporary directories
-   rm -rf /tmp/medgnosis-deploy
-   mkdir -p /tmp/medgnosis-deploy/backend
-   mkdir -p /tmp/medgnosis-deploy/frontend
-   ```
-
-2. **Rsync files to these temporary directories** where the SSH user has full permissions
-
-3. **After successful rsync, replace the production directories**:
-   ```bash
-   # Remove existing directories
-   sudo rm -rf /var/www/Medgnosis/backend
-   sudo rm -rf /var/www/Medgnosis/frontend
+   # Backup .env file to user's home directory
+   mkdir -p ~/medgnosis-backup
+   cp /var/www/Medgnosis/backend/.env ~/medgnosis-backup/.env
    
-   # Create fresh directories
-   sudo mkdir -p /var/www/Medgnosis/backend
-   sudo mkdir -p /var/www/Medgnosis/frontend
-   
-   # Copy files from temp to destination
-   sudo cp -a /tmp/medgnosis-deploy/backend/. /var/www/Medgnosis/backend/
-   sudo cp -a /tmp/medgnosis-deploy/frontend/. /var/www/Medgnosis/frontend/
+   # Restore after deployment
+   cp ~/medgnosis-backup/.env /var/www/Medgnosis/backend/.env
    ```
 
-4. **Set proper permissions after deployment**:
-   ```bash
-   sudo chown -R www-data:www-data /var/www/Medgnosis
-   sudo chmod -R 755 /var/www/Medgnosis
-   sudo chmod -R 775 /var/www/Medgnosis/backend/storage
-   sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
-   ```
+3. **Avoid using sudo commands entirely**:
+   - No service restarts (must be done manually by an administrator)
+   - No permission changes (directories must be pre-configured with correct permissions)
+   - No system-level operations
 
-This approach completely avoids permission issues by:
-- Using temporary directories where the SSH user has full control
-- Removing the problematic directories entirely
-- Using `sudo` to copy files into place with the correct permissions from the start
+This approach completely avoids sudo permission issues by:
+- Working only with files and directories the SSH user has permission to modify
+- Using the user's home directory for temporary storage
+- Avoiding any commands that require elevated privileges
 
-If you need to manually deploy using this approach:
+### Server Setup Requirements
+
+For this deployment strategy to work, the server must be set up with the following permissions:
+
+1. The SSH user must have write access to `/var/www/Medgnosis/backend` and `/var/www/Medgnosis/frontend`
+2. The directories must be pre-configured with the correct permissions for the web server
+
+You can set this up by having an administrator run these commands once:
 
 ```bash
-# On the target server
-# 1. Create temporary directories
-rm -rf /tmp/medgnosis-deploy
-mkdir -p /tmp/medgnosis-deploy/backend
-mkdir -p /tmp/medgnosis-deploy/frontend
-
-# 2. Backup .env file if it exists
-sudo cp /var/www/Medgnosis/backend/.env /tmp/medgnosis-env-backup 2>/dev/null || true
-
-# 3. Deploy to temporary directories
-rsync -avzr --delete --exclude=".env" backend/ user@server:/tmp/medgnosis-deploy/backend
-rsync -avzr --delete frontend/.next/standalone/ user@server:/tmp/medgnosis-deploy/frontend
-
-# 4. Replace production directories
-sudo rm -rf /var/www/Medgnosis/backend
-sudo rm -rf /var/www/Medgnosis/frontend
-sudo mkdir -p /var/www/Medgnosis/backend
-sudo mkdir -p /var/www/Medgnosis/frontend
-sudo cp -a /tmp/medgnosis-deploy/backend/. /var/www/Medgnosis/backend/
-sudo cp -a /tmp/medgnosis-deploy/frontend/. /var/www/Medgnosis/frontend/
-
-# 5. Restore .env file
-sudo cp /tmp/medgnosis-env-backup /var/www/Medgnosis/backend/.env 2>/dev/null || true
-
-# 6. Set proper permissions
-sudo chown -R www-data:www-data /var/www/Medgnosis
-sudo chmod -R 755 /var/www/Medgnosis
-sudo chmod -R 775 /var/www/Medgnosis/backend/storage
-sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
+# Set up permissions for deployment
+sudo chown -R ssh-user:www-data /var/www/Medgnosis
+sudo chmod -R 775 /var/www/Medgnosis
 ```
+
+Where `ssh-user` is the username used for SSH deployment.
+
+### Manual Deployment Without Sudo
+
+If you need to manually deploy without sudo privileges:
+
+```bash
+# 1. Backup .env file if it exists
+mkdir -p ~/medgnosis-backup
+cp /var/www/Medgnosis/backend/.env ~/medgnosis-backup/.env 2>/dev/null || true
+
+# 2. Deploy directly to target directories
+rsync -avzr --delete --exclude=".env" backend/ user@server:/var/www/Medgnosis/backend
+rsync -avzr --delete frontend/.next/standalone/ user@server:/var/www/Medgnosis/frontend
+
+# 3. Restore .env file
+cp ~/medgnosis-backup/.env /var/www/Medgnosis/backend/.env 2>/dev/null || true
+
+# 4. Clean up
+rm -rf ~/medgnosis-backup
+```
+
+Note: After deployment, you'll need to ask a server administrator to restart the necessary services:
+- php8.2-fpm
+- apache2
+- nextjs
 
 ## Updating GitHub Secrets
 
