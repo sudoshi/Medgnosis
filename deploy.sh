@@ -30,7 +30,7 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 
 # Install frontend dependencies and build static site
 cd ../frontend
-npm install
+npm ci
 
 # Set permissions before build
 sudo chown -R $(whoami):$(whoami) .
