@@ -152,15 +152,26 @@ jobs:
               echo "No readable .env file found or no read permission"
             fi
 
-      # Deploy backend directly
+      # Deploy backend directly (excluding vendor directory)
       # Note: If deployment fails with "Could not resolve hostname", 
       # update SSH_HOST secret to use an IP address instead of a hostname
       - name: Deploy backend
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete --exclude=".env" --verbose
+          switches: -avzr --delete --exclude=".env" --exclude="vendor/" --verbose
           path: backend/
           remote_path: /var/www/Medgnosis/backend
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          
+      # Deploy deployment script
+      - name: Deploy deployment script
+        uses: burnett01/rsync-deployments@5.2.1
+        with:
+          switches: -avzr --verbose
+          path: deployment.sh
+          remote_path: /var/www/Medgnosis/
           remote_host: ${{ secrets.SSH_HOST }}
           remote_user: ${{ secrets.SSH_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -207,6 +218,20 @@ jobs:
               echo "Copying server.js to frontend directory..."
               cp frontend/.next/standalone/server.js /var/www/Medgnosis/frontend/ 2>/dev/null || echo "Could not copy server.js"
             fi
+
+      # Run deployment script
+      - name: Run deployment script
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Make deployment script executable
+            chmod +x /var/www/Medgnosis/deployment.sh
+            
+            # Run deployment script
+            /var/www/Medgnosis/deployment.sh
 
       # Notify completion
       - name: Notify completion

@@ -51,30 +51,42 @@ If the deployment fails because build artifacts are missing, check:
 If you encounter permission errors like these during deployment:
 
 ```
-rsync: [receiver] mkstemp "/var/www/Medgnosis/backend/vendor/psr/clock/.CHANGELOG.md.vpHKHW" failed: Permission denied (13)
+rsync: [receiver] mkstemp "/var/www/Medgnosis/backend/vendor/laravel/framework/src/Illuminate/Contracts/Container/.CircularDependencyException.php.7SOQJM" failed: Permission denied (13)
 ```
 
 or
 
 ```
-sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
-sudo: a password is required
+rsync: [generator] failed to set times on "/var/www/Medgnosis/backend/vendor/psy/psysh/src/Command": Operation not permitted (1)
 ```
 
-These indicate permission problems with the target directories or sudo privileges. To solve this, the workflow now uses a completely different deployment strategy:
+These indicate permission problems with the vendor directory. To solve this, the workflow now uses a completely different deployment strategy:
 
-1. **Deploy directly to the target directories without sudo**:
-   - This requires that the SSH user has write permissions to the target directories
-   - The web server directories must be owned by or writable by the SSH user
+1. **Skip the vendor directory during deployment**:
+   ```yaml
+   - name: Deploy backend
+     uses: burnett01/rsync-deployments@5.2.1
+     with:
+       switches: -avzr --delete --exclude=".env" --exclude="vendor/" --verbose
+       path: backend/
+       remote_path: /var/www/Medgnosis/backend
+   ```
 
-2. **Backup and restore the .env file to the user's home directory**:
+2. **Use a deployment script to install dependencies on the server**:
    ```bash
-   # Backup .env file to user's home directory
-   mkdir -p ~/medgnosis-backup
-   cp /var/www/Medgnosis/backend/.env ~/medgnosis-backup/.env
+   # deployment.sh
+   cd /var/www/Medgnosis/backend
+   composer install --no-dev --optimize-autoloader
    
-   # Restore after deployment
-   cp ~/medgnosis-backup/.env /var/www/Medgnosis/backend/.env
+   # Generate key if needed
+   if ! grep -q "APP_KEY=" .env || grep -q "APP_KEY=$" .env; then
+     php artisan key:generate
+   fi
+   
+   # Clear caches
+   php artisan config:clear
+   php artisan route:clear
+   php artisan view:clear
    ```
 
 3. **Avoid using sudo commands entirely**:
@@ -82,17 +94,18 @@ These indicate permission problems with the target directories or sudo privilege
    - No permission changes (directories must be pre-configured with correct permissions)
    - No system-level operations
 
-This approach completely avoids sudo permission issues by:
-- Working only with files and directories the SSH user has permission to modify
-- Using the user's home directory for temporary storage
-- Avoiding any commands that require elevated privileges
+This approach completely avoids vendor directory permission issues by:
+- Skipping the problematic vendor directory during rsync
+- Installing dependencies directly on the server
+- Using a deployment script that runs with the SSH user's permissions
 
 ### Server Setup Requirements
 
 For this deployment strategy to work, the server must be set up with the following permissions:
 
 1. The SSH user must have write access to `/var/www/Medgnosis/backend` and `/var/www/Medgnosis/frontend`
-2. The directories must be pre-configured with the correct permissions for the web server
+2. The SSH user must have permission to run `composer install` in the backend directory
+3. The directories must be pre-configured with the correct permissions for the web server
 
 You can set this up by having an administrator run these commands once:
 
@@ -100,6 +113,9 @@ You can set this up by having an administrator run these commands once:
 # Set up permissions for deployment
 sudo chown -R ssh-user:www-data /var/www/Medgnosis
 sudo chmod -R 775 /var/www/Medgnosis
+
+# Ensure composer is available to the SSH user
+sudo apt-get install composer
 ```
 
 Where `ssh-user` is the username used for SSH deployment.
@@ -113,14 +129,20 @@ If you need to manually deploy without sudo privileges:
 mkdir -p ~/medgnosis-backup
 cp /var/www/Medgnosis/backend/.env ~/medgnosis-backup/.env 2>/dev/null || true
 
-# 2. Deploy directly to target directories
-rsync -avzr --delete --exclude=".env" backend/ user@server:/var/www/Medgnosis/backend
+# 2. Deploy directly to target directories (excluding vendor)
+rsync -avzr --delete --exclude=".env" --exclude="vendor/" backend/ user@server:/var/www/Medgnosis/backend
 rsync -avzr --delete frontend/.next/standalone/ user@server:/var/www/Medgnosis/frontend
 
-# 3. Restore .env file
+# 3. Install dependencies on the server
+ssh user@server "cd /var/www/Medgnosis/backend && composer install --no-dev --optimize-autoloader"
+
+# 4. Restore .env file
 cp ~/medgnosis-backup/.env /var/www/Medgnosis/backend/.env 2>/dev/null || true
 
-# 4. Clean up
+# 5. Clear Laravel caches
+ssh user@server "cd /var/www/Medgnosis/backend && php artisan config:clear && php artisan route:clear && php artisan view:clear"
+
+# 6. Clean up
 rm -rf ~/medgnosis-backup
 ```
 
