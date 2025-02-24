@@ -25,10 +25,11 @@ jobs:
         working-directory: ./frontend
         env:
           NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
         run: |
           npm ci
-          rm -rf .next out
           npm run build
+          cp server.js .next/standalone/
 
       # Backend setup
       - name: Set up PHP
@@ -70,18 +71,12 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
+          source: |
+            backend/*
+            frontend/.next/standalone/*
           target: "/var/www/Medgnosis"
+          strip_components: 1
           rm: true
-          exclude: |
-            **/.git*
-            **/node_modules
-            backend/vendor
-            **/.next
-            **/tests
-            **/.env.example
-            **/.editorconfig
-            **/phpunit.xml
 
       # Post-deployment tasks
       - name: Execute post-deployment commands
@@ -94,6 +89,7 @@ jobs:
             # Stop services
             sudo systemctl stop php8.2-fpm
             sudo systemctl stop apache2
+            sudo systemctl stop nextjs
 
             # Install backend dependencies
             cd /var/www/Medgnosis/backend
@@ -103,30 +99,31 @@ jobs:
             sudo -u www-data php artisan config:clear
             sudo -u www-data php artisan route:clear
             sudo -u www-data php artisan view:clear
-            
-            # Install frontend dependencies and build
-            cd ../frontend
-            npm install
-            sudo rm -rf .next out
-            NEXT_TELEMETRY_DISABLED=1 npm run build
-            
-            # Set up static build directory
-            sudo mkdir -p /var/www/Medgnosis/frontend/out
-            sudo cp -R out/* /var/www/Medgnosis/frontend/out/
+
+            # Set up Next.js service
+            sudo cp /home/acumenus/GitHub/Medgnosis/nextjs.service /etc/systemd/system/
+            sudo systemctl daemon-reload
             
             # Set permissions
-            sudo chown -R www-data:www-data /var/www/Medgnosis/frontend/out
-            sudo chown -R www-data:www-data /var/www/Medgnosis/backend/storage
-            sudo chown -R www-data:www-data /var/www/Medgnosis/backend/bootstrap/cache
+            sudo chown -R www-data:www-data /var/www/Medgnosis
+            sudo chmod -R 755 /var/www/Medgnosis
+            sudo chmod -R 775 /var/www/Medgnosis/backend/storage
+            sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
             
-            # Verify Apache configuration and start services
+            # Copy Apache configuration
+            sudo cp /home/acumenus/GitHub/Medgnosis/demo-medgnosis.conf /etc/apache2/sites-available/
+            sudo a2ensite demo-medgnosis.conf
+            
+            # Verify and start services
             sudo apache2ctl configtest
             sudo systemctl start php8.2-fpm
             sudo systemctl start apache2
+            sudo systemctl enable nextjs
+            sudo systemctl start nextjs
             
             # Log deployment
             echo "Deployment completed successfully on $(date)" >> /var/log/deploy.log
             
             # Verify deployment
-            sleep 5 # Wait for services to fully start
+            sleep 10 # Wait for services to fully start
             curl -s -o /dev/null -w "%{http_code}" https://demo.medgnosis.app

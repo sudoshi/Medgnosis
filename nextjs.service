@@ -1,0 +1,16 @@
+[Unit]
+Description=Next.js Production Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/Medgnosis/frontend
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
