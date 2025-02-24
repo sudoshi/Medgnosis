@@ -1,6 +1,6 @@
 'use client';
 
-import AdminLayout from '@/components/layout/AdminLayout';
+import AdminLayout from '../../components/layout/AdminLayout';
 
 export default function Loading() {
   return (

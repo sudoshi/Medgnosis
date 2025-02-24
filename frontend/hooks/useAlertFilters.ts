@@ -1,3 +1,4 @@
+"use client"
 import { useMemo } from "react";
 
 import type { AlertPreferenceState } from "@/types/standardized-alerts";

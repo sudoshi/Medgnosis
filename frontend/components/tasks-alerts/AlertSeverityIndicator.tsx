@@ -1,3 +1,5 @@
+"use client";
+
 import { calculateAlertSeverity } from "@/services/alertSeverityService";
 import type { StandardizedAlert } from "@/types/standardized-alerts";
 

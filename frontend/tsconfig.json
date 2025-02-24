@@ -1,5 +1,5 @@
 {
-"compilerOptions": {
+  "compilerOptions": {
     "target": "es2017",
     "lib": ["dom", "dom.iterable", "esnext", "es2023"],
     "allowJs": true,
@@ -14,12 +14,12 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [
-    {
+      {
         "name": "next"
-    }
+      }
     ],
     "paths": {
-    "@/*": ["./*"]
+      "@/*": ["./*"]
     },
     "baseUrl": ".",
     "allowUnreachableCode": false,
@@ -30,20 +30,11 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "preserveConstEnums": true,
+    "removeComments": false,
     "sourceMap": true,
-    "verbatimModuleSyntax": true
-},
-"include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "components/**/*.ts",
-    "components/**/*.tsx",
-    "lib/**/*.ts",
-    "lib/**/*.tsx"
-],
-"exclude": ["node_modules"]
+    "strictNullChecks": true
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

@@ -1,3 +1,4 @@
+"use client"
 import { ExclamationTriangleIcon , ArrowPathIcon } from "@heroicons/react/24/outline";
 
 interface ErrorMessageProps {

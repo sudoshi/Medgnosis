@@ -1,3 +1,4 @@
+"use client"
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import type { ReactElement } from "react";
 import { useState, useEffect } from "react";

@@ -9,9 +9,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { useState, useMemo } from 'react';
 
-import AdminLayout from '@/components/layout/AdminLayout';
-import { mockAnticipatoryPatients } from '@/services/mockAnticipatoryData';
-import type { PatientDetails } from '@/types/patient';
+import AdminLayout from '../../components/layout/AdminLayout';
+import { mockAnticipatoryPatients } from '../../services/mockAnticipatoryData';
+import type { PatientDetails } from '../../types/patient';
 
 interface TimeFrameStats {
   total: number;

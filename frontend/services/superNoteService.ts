@@ -1,3 +1,4 @@
+"use client"
 import type { SOAPNote, FHIRDocumentReference } from "@/types/soap-note";
 
 class SuperNoteService {
