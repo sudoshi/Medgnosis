@@ -34,11 +34,6 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Development scripts
-start-dev.sh
-stop-dev.sh
-move-to-frontend.sh
-
 # PHM Data
 /backend/storage/phm/*.sql
 /backend/storage/phm/exports/*
