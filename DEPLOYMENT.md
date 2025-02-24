@@ -54,39 +54,85 @@ If you encounter permission errors like these during deployment:
 rsync: [receiver] mkstemp "/var/www/Medgnosis/backend/vendor/psr/clock/.CHANGELOG.md.vpHKHW" failed: Permission denied (13)
 ```
 
-This indicates that the SSH user doesn't have write permissions to the target directories. The workflow includes a step to set the correct permissions before deployment, but if you're still encountering issues:
+or
 
-1. Ensure the SSH user has sudo privileges on the target server
-2. Verify that the "Prepare target directories" step is running successfully
-3. Check that the post-deployment tasks are correctly resetting permissions to www-data
-
-The workflow now includes these aggressive permission fixes:
-
-```bash
-# Remove existing vendor directory to avoid permission issues
-sudo rm -rf /var/www/Medgnosis/backend/vendor
-
-# Set ownership to SSH user for deployment with full permissions
-sudo chown -R $USER:$USER /var/www/Medgnosis
-sudo chmod -R 777 /var/www/Medgnosis
+```
+rsync: [generator] failed to set times on "/var/www/Medgnosis/backend/vendor/laravel/framework/src/Illuminate/Container": Operation not permitted (1)
 ```
 
-If you need to manually fix permissions:
+These indicate permission problems with the target directories. To solve this, the workflow now uses a completely different deployment strategy:
+
+1. **Deploy to temporary directories first**:
+   ```bash
+   # Create clean temporary directories
+   rm -rf /tmp/medgnosis-deploy
+   mkdir -p /tmp/medgnosis-deploy/backend
+   mkdir -p /tmp/medgnosis-deploy/frontend
+   ```
+
+2. **Rsync files to these temporary directories** where the SSH user has full permissions
+
+3. **After successful rsync, replace the production directories**:
+   ```bash
+   # Remove existing directories
+   sudo rm -rf /var/www/Medgnosis/backend
+   sudo rm -rf /var/www/Medgnosis/frontend
+   
+   # Create fresh directories
+   sudo mkdir -p /var/www/Medgnosis/backend
+   sudo mkdir -p /var/www/Medgnosis/frontend
+   
+   # Copy files from temp to destination
+   sudo cp -a /tmp/medgnosis-deploy/backend/. /var/www/Medgnosis/backend/
+   sudo cp -a /tmp/medgnosis-deploy/frontend/. /var/www/Medgnosis/frontend/
+   ```
+
+4. **Set proper permissions after deployment**:
+   ```bash
+   sudo chown -R www-data:www-data /var/www/Medgnosis
+   sudo chmod -R 755 /var/www/Medgnosis
+   sudo chmod -R 775 /var/www/Medgnosis/backend/storage
+   sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
+   ```
+
+This approach completely avoids permission issues by:
+- Using temporary directories where the SSH user has full control
+- Removing the problematic directories entirely
+- Using `sudo` to copy files into place with the correct permissions from the start
+
+If you need to manually deploy using this approach:
 
 ```bash
-# On the target server - before deployment
-sudo rm -rf /var/www/Medgnosis/backend/vendor  # Remove problematic directory
-sudo chown -R your-ssh-user:your-ssh-user /var/www/Medgnosis
-sudo chmod -R 777 /var/www/Medgnosis  # Temporarily set full permissions
+# On the target server
+# 1. Create temporary directories
+rm -rf /tmp/medgnosis-deploy
+mkdir -p /tmp/medgnosis-deploy/backend
+mkdir -p /tmp/medgnosis-deploy/frontend
 
-# After deployment - restore secure permissions
+# 2. Backup .env file if it exists
+sudo cp /var/www/Medgnosis/backend/.env /tmp/medgnosis-env-backup 2>/dev/null || true
+
+# 3. Deploy to temporary directories
+rsync -avzr --delete --exclude=".env" backend/ user@server:/tmp/medgnosis-deploy/backend
+rsync -avzr --delete frontend/.next/standalone/ user@server:/tmp/medgnosis-deploy/frontend
+
+# 4. Replace production directories
+sudo rm -rf /var/www/Medgnosis/backend
+sudo rm -rf /var/www/Medgnosis/frontend
+sudo mkdir -p /var/www/Medgnosis/backend
+sudo mkdir -p /var/www/Medgnosis/frontend
+sudo cp -a /tmp/medgnosis-deploy/backend/. /var/www/Medgnosis/backend/
+sudo cp -a /tmp/medgnosis-deploy/frontend/. /var/www/Medgnosis/frontend/
+
+# 5. Restore .env file
+sudo cp /tmp/medgnosis-env-backup /var/www/Medgnosis/backend/.env 2>/dev/null || true
+
+# 6. Set proper permissions
 sudo chown -R www-data:www-data /var/www/Medgnosis
 sudo chmod -R 755 /var/www/Medgnosis
 sudo chmod -R 775 /var/www/Medgnosis/backend/storage
 sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
 ```
-
-Note: The temporary 777 permissions are only used during deployment and are immediately reset to more secure permissions after deployment completes.
 
 ## Updating GitHub Secrets
 
