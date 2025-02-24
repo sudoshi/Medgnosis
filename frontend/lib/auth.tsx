@@ -7,6 +7,10 @@ import { isAxiosError } from 'axios';
 import { auth as authApi } from '@/services/api';
 import type { User } from '@/services/api';
 
+// Use API URL from environment
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+console.log('Auth Context - Using API URL:', API_URL);
+
 interface LoginCredentials {
   email: string;
   password: string;

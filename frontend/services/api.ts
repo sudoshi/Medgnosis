@@ -44,7 +44,7 @@ export interface ApiErrorResponse {
 
 // Create a single axios instance
 const api: AxiosInstance = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+    baseURL: process.env.NEXT_PUBLIC_API_URL,
     withCredentials: true, // Include credentials (cookies) in requests
     headers: {
         'Content-Type': 'application/json',

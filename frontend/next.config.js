@@ -3,6 +3,12 @@ const nextConfig = {
   output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
   compress: true,
   poweredByHeader: false,
+
+  // Ensure environment variables are available
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://demo.medgnosis.app/api',
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'https://demo.medgnosis.app',
+  },
   
   // Configure module resolution
   webpack: (config, { isServer }) => {
@@ -10,22 +16,9 @@ const nextConfig = {
     return config
   },
 
-  // Configure rewrites for API proxying
+  // No API rewrites in production
   async rewrites() {
-    const apiUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://demo.medgnosis.app'
-      : 'http://localhost:8000';
-
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${apiUrl}/api/:path*`,
-      },
-      {
-        source: '/sanctum/csrf-cookie',
-        destination: `${apiUrl}/sanctum/csrf-cookie`,
-      }
-    ]
+    return [];
   },
 
   // Configure response headers

@@ -12,6 +12,8 @@ export default function LoginPage() {
   const { login, loading } = useAuth();
   const [error, setError] = useState('');
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
@@ -21,10 +23,13 @@ export default function LoginPage() {
     const password = formData.get('password') as string;
 
     try {
+      console.log('Login - Using API URL:', API_URL);
+      
       const remember = formData.get('remember-me') === 'on';
       await login({ email, password, remember });
-      router.push('/dashboard'); // Redirect to Dashboard after successful login
+      router.push('/dashboard');
     } catch (err) {
+      console.error('Login error:', err);
       if (err instanceof Error) {
         setError(err.message);
       } else {
