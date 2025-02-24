@@ -60,17 +60,33 @@ This indicates that the SSH user doesn't have write permissions to the target di
 2. Verify that the "Prepare target directories" step is running successfully
 3. Check that the post-deployment tasks are correctly resetting permissions to www-data
 
+The workflow now includes these aggressive permission fixes:
+
+```bash
+# Remove existing vendor directory to avoid permission issues
+sudo rm -rf /var/www/Medgnosis/backend/vendor
+
+# Set ownership to SSH user for deployment with full permissions
+sudo chown -R $USER:$USER /var/www/Medgnosis
+sudo chmod -R 777 /var/www/Medgnosis
+```
+
 If you need to manually fix permissions:
 
 ```bash
-# On the target server
+# On the target server - before deployment
+sudo rm -rf /var/www/Medgnosis/backend/vendor  # Remove problematic directory
 sudo chown -R your-ssh-user:your-ssh-user /var/www/Medgnosis
-# After deployment
+sudo chmod -R 777 /var/www/Medgnosis  # Temporarily set full permissions
+
+# After deployment - restore secure permissions
 sudo chown -R www-data:www-data /var/www/Medgnosis
 sudo chmod -R 755 /var/www/Medgnosis
 sudo chmod -R 775 /var/www/Medgnosis/backend/storage
 sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
 ```
+
+Note: The temporary 777 permissions are only used during deployment and are immediately reset to more secure permissions after deployment completes.
 
 ## Updating GitHub Secrets
 

@@ -145,9 +145,12 @@ jobs:
             sudo mkdir -p /var/www/Medgnosis/backend
             sudo mkdir -p /var/www/Medgnosis/frontend
             
-            # Set ownership to SSH user for deployment
-            sudo chown -R $USER:$USER /var/www/Medgnosis/backend
-            sudo chown -R $USER:$USER /var/www/Medgnosis/frontend
+            # Remove existing vendor directory to avoid permission issues
+            sudo rm -rf /var/www/Medgnosis/backend/vendor
+            
+            # Set ownership to SSH user for deployment with full permissions
+            sudo chown -R $USER:$USER /var/www/Medgnosis
+            sudo chmod -R 777 /var/www/Medgnosis
             
             echo "Target directories prepared with correct permissions"
 
