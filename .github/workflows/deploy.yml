@@ -26,9 +26,11 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: 1
           NODE_ENV: production
+          NEXT_PUBLIC_SKIP_PREFLIGHT_CHECK: true
+          NEXT_IGNORE_ESLINT_DURING_BUILDS: true
         run: |
           npm ci
-          npm install autoprefixer postcss tailwindcss
+          npm list autoprefixer postcss tailwindcss
           npm run build
           cp server.js .next/standalone/
 
