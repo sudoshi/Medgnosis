@@ -61,8 +61,43 @@ jobs:
 
       - name: Configure backend
         working-directory: ./backend
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'acumenus' }}
         run: |
-          cp .env.production .env
+          # Create .env file from template
+          cat > .env << EOF
+          APP_NAME=Medgnosis
+          APP_ENV=production
+          APP_KEY=
+          APP_DEBUG=false
+          APP_URL=https://demo.medgnosis.app
+
+          LOG_CHANNEL=stack
+          LOG_DEPRECATIONS_CHANNEL=null
+          LOG_LEVEL=warning
+
+          DB_CONNECTION=pgsql
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_DATABASE=PHM
+          DB_USERNAME=postgres
+          DB_PASSWORD=${DB_PASSWORD}
+          DB_SCHEMA=prod
+
+          BROADCAST_DRIVER=log
+          CACHE_DRIVER=file
+          FILESYSTEM_DISK=local
+          QUEUE_CONNECTION=sync
+          SESSION_DRIVER=file
+          SESSION_LIFETIME=120
+
+          SANCTUM_STATEFUL_DOMAINS=demo.medgnosis.app
+          SESSION_DOMAIN=.medgnosis.app
+          FRONTEND_URL=https://demo.medgnosis.app
+
+          CORS_ALLOWED_ORIGINS=https://demo.medgnosis.app
+          EOF
+
           php artisan key:generate
           php artisan config:cache
           php artisan route:cache

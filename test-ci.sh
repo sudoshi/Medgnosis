@@ -5,19 +5,46 @@ echo "=== Testing CI/CD fixes ==="
 
 echo "1. Testing backend configuration..."
 cd backend
-if [ -f .env.production ]; then
-  echo "✓ .env.production file exists"
-  echo "Testing Laravel configuration..."
-  if [ -f artisan ]; then
-    echo "✓ artisan file exists"
-    echo "Testing .env.production file copy..."
-    cp .env.production .env.test && echo "✓ .env.production can be copied successfully" && rm .env.test
-  else
-    echo "✗ artisan file not found"
-    exit 1
-  fi
+echo "Testing Laravel configuration..."
+if [ -f artisan ]; then
+  echo "✓ artisan file exists"
+  echo "Testing .env file creation..."
+  cat > .env.test << EOF
+  APP_NAME=Medgnosis
+  APP_ENV=production
+  APP_KEY=
+  APP_DEBUG=false
+  APP_URL=https://demo.medgnosis.app
+
+  LOG_CHANNEL=stack
+  LOG_DEPRECATIONS_CHANNEL=null
+  LOG_LEVEL=warning
+
+  DB_CONNECTION=pgsql
+  DB_HOST=localhost
+  DB_PORT=5432
+  DB_DATABASE=PHM
+  DB_USERNAME=postgres
+  DB_PASSWORD=acumenus
+  DB_SCHEMA=prod
+
+  BROADCAST_DRIVER=log
+  CACHE_DRIVER=file
+  FILESYSTEM_DISK=local
+  QUEUE_CONNECTION=sync
+  SESSION_DRIVER=file
+  SESSION_LIFETIME=120
+
+  SANCTUM_STATEFUL_DOMAINS=demo.medgnosis.app
+  SESSION_DOMAIN=.medgnosis.app
+  FRONTEND_URL=https://demo.medgnosis.app
+
+  CORS_ALLOWED_ORIGINS=https://demo.medgnosis.app
+EOF
+  echo "✓ .env file can be created successfully"
+  rm .env.test
 else
-  echo "✗ .env.production file not found"
+  echo "✗ artisan file not found"
   exit 1
 fi
 
@@ -40,7 +67,7 @@ echo "1. Moved autoprefixer, postcss, tailwindcss, typescript, and @types/node f
 echo "2. Updated postcss.config.js to use the correct format for Next.js"
 echo "3. Added a browserslist configuration in .browserslistrc"
 echo "4. Updated next.config.js to ignore TypeScript errors during build"
-echo "5. Updated GitHub Actions workflow to use the new configuration"
-echo "6. Created backend/.env.production file with correct database configuration"
+echo "5. Updated GitHub Actions workflow to create .env file directly in the CI/CD pipeline"
+echo "6. Added support for DB_PASSWORD secret in the GitHub Actions workflow"
 echo ""
 echo "These changes should fix the CI/CD pipeline issues."
