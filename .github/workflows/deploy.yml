@@ -104,18 +104,47 @@ jobs:
           php artisan view:cache
 
       # Deploy to server
-      - name: Deploy application
-        uses: appleboy/scp-action@master
+      - name: Verify build artifacts
+        run: |
+          echo "Verifying frontend build artifacts..."
+          if [ -d "frontend/.next/standalone" ]; then
+            echo "✅ Frontend build artifacts exist"
+            ls -la frontend/.next/standalone
+          else
+            echo "❌ Frontend build artifacts missing"
+            exit 1
+          fi
+          
+          echo "Verifying backend files..."
+          if [ -d "backend" ]; then
+            echo "✅ Backend files exist"
+            ls -la backend
+          else
+            echo "❌ Backend files missing"
+            exit 1
+          fi
+
+      # Deploy backend
+      - name: Deploy backend
+        uses: burnett01/rsync-deployments@5.2.1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: |
-            backend/*
-            frontend/.next/standalone/*
-          target: "/var/www/Medgnosis"
-          strip_components: 1
-          rm: true
+          switches: -avzr --delete --exclude=".env"
+          path: backend/
+          remote_path: /var/www/Medgnosis/backend
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # Deploy frontend
+      - name: Deploy frontend
+        uses: burnett01/rsync-deployments@5.2.1
+        with:
+          switches: -avzr --delete
+          path: frontend/.next/standalone/
+          remote_path: /var/www/Medgnosis/frontend
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       # Post-deployment tasks
       - name: Execute post-deployment commands
@@ -151,6 +180,17 @@ jobs:
             
             # Copy Apache configuration
             sudo cp /home/acumenus/GitHub/Medgnosis/demo-medgnosis.conf /etc/apache2/sites-available/
+            
+            # Copy frontend server.js to correct location if needed
+            if [ -f "/var/www/Medgnosis/frontend/server.js" ]; then
+              echo "✅ server.js exists in frontend directory"
+            else
+              echo "⚠️ server.js not found, checking for it in other locations..."
+              if [ -f "/var/www/Medgnosis/frontend/.next/standalone/server.js" ]; then
+                echo "Found server.js in .next/standalone, copying to frontend directory"
+                cp /var/www/Medgnosis/frontend/.next/standalone/server.js /var/www/Medgnosis/frontend/
+              fi
+            fi
             sudo a2ensite demo-medgnosis.conf
             
             # Verify and start services
