@@ -12,14 +12,18 @@ const nextConfig = {
 
   // Configure rewrites for API proxying
   async rewrites() {
-    return process.env.NODE_ENV === 'production' ? [] : [
+    const apiUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://demo.medgnosis.app'
+      : 'http://localhost:8000';
+
+    return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${apiUrl}/api/:path*`,
       },
       {
         source: '/sanctum/csrf-cookie',
-        destination: 'http://localhost:8000/sanctum/csrf-cookie',
+        destination: `${apiUrl}/sanctum/csrf-cookie`,
       }
     ]
   },
