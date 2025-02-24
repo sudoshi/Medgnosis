@@ -24,6 +24,10 @@
   "autoprefixer": "^10.4.20",
   "postcss": "^8.5.3",
   "tailwindcss": "^3.4.17",
+  "typescript": "5.6.3",
+  "@types/node": "20.5.7",
+  "@types/react": "18.3.3",
+  "@types/react-dom": "18.3.0",
   "@radix-ui/react-aspect-ratio": "^1.1.1",
   "@radix-ui/react-menubar": "^1.1.5",
   "@radix-ui/react-navigation-menu": "^1.2.4",
@@ -75,10 +79,6 @@
   "@next/swc-linux-x64-gnu": "^15.1.7",
   "@next/swc-linux-x64-musl": "^15.1.7",
   "@react-types/shared": "3.25.0",
-  "@types/node": "20.5.7",
-  "@types/react": "18.3.3",
-  "@types/react-dom": "18.3.0",
-  "tailwind-variants": "0.1.20",
-  "typescript": "5.6.3"
+  "tailwind-variants": "0.1.20"
  }
 }
