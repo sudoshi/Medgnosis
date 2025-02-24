@@ -74,5 +74,7 @@ echo "8. Added verification steps to ensure build artifacts exist before deploym
 echo "9. Added server.js file check and copy in post-deployment tasks"
 echo "10. Added SSH connection test step before deployment"
 echo "11. Created DEPLOYMENT.md with troubleshooting instructions"
+echo "12. Added pre-deployment step to set correct permissions on target directories"
+echo "13. Updated DEPLOYMENT.md with permission troubleshooting information"
 echo ""
 echo "These changes should fix the CI/CD pipeline issues."

@@ -48,10 +48,29 @@ If the deployment fails because build artifacts are missing, check:
 
 #### Permission Issues
 
-If you encounter permission issues during deployment:
+If you encounter permission errors like these during deployment:
 
-1. Ensure the SSH user has appropriate permissions on the target server
-2. Check that the post-deployment tasks are using the correct paths and permissions
+```
+rsync: [receiver] mkstemp "/var/www/Medgnosis/backend/vendor/psr/clock/.CHANGELOG.md.vpHKHW" failed: Permission denied (13)
+```
+
+This indicates that the SSH user doesn't have write permissions to the target directories. The workflow includes a step to set the correct permissions before deployment, but if you're still encountering issues:
+
+1. Ensure the SSH user has sudo privileges on the target server
+2. Verify that the "Prepare target directories" step is running successfully
+3. Check that the post-deployment tasks are correctly resetting permissions to www-data
+
+If you need to manually fix permissions:
+
+```bash
+# On the target server
+sudo chown -R your-ssh-user:your-ssh-user /var/www/Medgnosis
+# After deployment
+sudo chown -R www-data:www-data /var/www/Medgnosis
+sudo chmod -R 755 /var/www/Medgnosis
+sudo chmod -R 775 /var/www/Medgnosis/backend/storage
+sudo chmod -R 775 /var/www/Medgnosis/backend/bootstrap/cache
+```
 
 ## Updating GitHub Secrets
 

@@ -132,6 +132,24 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: echo "SSH connection successful"
+          
+      # Prepare target directories with correct permissions
+      - name: Prepare target directories
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Create directories if they don't exist
+            sudo mkdir -p /var/www/Medgnosis/backend
+            sudo mkdir -p /var/www/Medgnosis/frontend
+            
+            # Set ownership to SSH user for deployment
+            sudo chown -R $USER:$USER /var/www/Medgnosis/backend
+            sudo chown -R $USER:$USER /var/www/Medgnosis/frontend
+            
+            echo "Target directories prepared with correct permissions"
 
       # Deploy backend
       # Note: If deployment fails with "Could not resolve hostname", 
