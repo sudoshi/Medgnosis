@@ -15,7 +15,7 @@ import CareGapSummary from '@/components/analytics/CareGapSummary';
 import AdminLayout from '@/components/layout/AdminLayout';
 import HighRiskPatientsList from '@/components/patients/HighRiskPatientsList';
 import PatientActivity from '@/components/patients/PatientActivity';
-import type { DashboardData } from '@/services/api';
+import type { DashboardData } from '@/types';
 import { mockDashboardData } from '@/services/mockData';
 import { mockPatientsList } from '@/services/mockPatientData';
 

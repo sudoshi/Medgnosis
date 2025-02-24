@@ -1,7 +1,6 @@
 import { ChartBarIcon, UserGroupIcon } from "@heroicons/react/24/outline";
 
-import type { DashboardData } from "@/services/api";
-
+import type { DashboardData } from "@/types";
 
 interface AnalyticsOverviewProps {
   data: DashboardData["analytics"];
@@ -16,8 +15,7 @@ export default function AnalyticsOverview({
     return <div className="animate-pulse">Loading analytics...</div>;
   }
 
-  const { populationMetrics, riskStratification } = data;
-
+  // Remove the old destructuring line that was causing the error
   return (
     <div className="space-y-6">
       {/* Population Overview */}
@@ -37,7 +35,7 @@ export default function AnalyticsOverview({
                   High Risk
                 </span>
                 <span className="font-medium">
-                  {populationMetrics.byRiskLevel.high}
+                  {data.populationMetrics.byRiskLevel.high}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -45,7 +43,7 @@ export default function AnalyticsOverview({
                   Medium Risk
                 </span>
                 <span className="font-medium">
-                  {populationMetrics.byRiskLevel.medium}
+                  {data.populationMetrics.byRiskLevel.medium}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -53,7 +51,7 @@ export default function AnalyticsOverview({
                   Low Risk
                 </span>
                 <span className="font-medium">
-                  {populationMetrics.byRiskLevel.low}
+                  {data.populationMetrics.byRiskLevel.low}
                 </span>
               </div>
             </div>
@@ -70,15 +68,15 @@ export default function AnalyticsOverview({
                   Age Groups
                 </span>
                 <div className="flex items-center space-x-2">
-                  {Object.entries(populationMetrics.demographics.age).map(
+                  {Object.entries(data.populationMetrics.demographics.age).map(
                     ([range, count]) => (
                       <span
                         key={range}
                         className="text-xs px-2 py-1 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded text-light-text-primary dark:text-dark-text-primary"
                       >
-                        {range}: {count}
+                        {`${range}: ${count}`}
                       </span>
-                    ),
+                    )
                   )}
                 </div>
               </div>
@@ -88,10 +86,10 @@ export default function AnalyticsOverview({
                 </span>
                 <div className="flex items-center space-x-2">
                   <span className="text-xs px-2 py-1 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded text-light-text-primary dark:text-dark-text-primary">
-                    Male: {populationMetrics.demographics.gender.male}
+                    Male: {data.populationMetrics.demographics.gender.male}
                   </span>
                   <span className="text-xs px-2 py-1 bg-light-secondary/30 dark:bg-dark-secondary/30 rounded text-light-text-primary dark:text-dark-text-primary">
-                    Female: {populationMetrics.demographics.gender.female}
+                    Female: {data.populationMetrics.demographics.gender.female}
                   </span>
                 </div>
               </div>
@@ -106,9 +104,9 @@ export default function AnalyticsOverview({
           Risk Score Distribution
         </h3>
         <div className="h-40 flex items-end justify-between">
-          {riskStratification.distribution.map((point) => {
+          {data.riskStratification.distribution.map((point) => {
             const maxCount = Math.max(
-              ...riskStratification.distribution.map((d) => d.count),
+              ...data.riskStratification.distribution.map((d) => d.count)
             );
             const height = (point.count / maxCount) * 100;
 

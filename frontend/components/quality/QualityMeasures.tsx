@@ -4,15 +4,19 @@ import {
   ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
 
-import type { DashboardData } from '@/services/api';
+import type { DashboardData } from '@/types';
 
 interface QualityMeasuresProps {
   data: DashboardData['qualityMeasures'];
   loading?: boolean;
 }
 
+type Measure = DashboardData['qualityMeasures']['performance']['measures'][0];
+type MonthlyData = DashboardData['qualityMeasures']['trends']['monthly'][0];
+type ImprovementItem = DashboardData['qualityMeasures']['improvement'][0];
+
 interface PerformanceCardProps {
-  measure: DashboardData['qualityMeasures']['performance']['measures'][0];
+  measure: Measure;
 }
 
 function PerformanceCard({ measure }: PerformanceCardProps) {
@@ -61,12 +65,12 @@ function PerformanceCard({ measure }: PerformanceCardProps) {
 }
 
 interface TrendChartProps {
-  data: DashboardData['qualityMeasures']['trends']['monthly'];
+  data: MonthlyData[];
 }
 
 function TrendChart({ data }: TrendChartProps) {
-  const maxScore = Math.max(...data.map(d => d.score));
-  const minScore = Math.min(...data.map(d => d.score));
+  const maxScore = Math.max(...data.map((d) => d.score));
+  const minScore = Math.min(...data.map((d) => d.score));
   const range = maxScore - minScore;
   const normalizeHeight = (score: number) => 
     ((score - minScore) / (range || 1)) * 100;
@@ -94,7 +98,7 @@ function TrendChart({ data }: TrendChartProps) {
 }
 
 interface ImprovementCardProps {
-  item: DashboardData['qualityMeasures']['improvement'][0];
+  item: ImprovementItem;
 }
 
 function ImprovementCard({ item }: ImprovementCardProps) {

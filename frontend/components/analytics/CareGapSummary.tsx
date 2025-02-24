@@ -1,6 +1,6 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
-import type { DashboardData } from '@/services/api';
+import type { DashboardData } from '@/types';
 
 interface MetricCardProps {
   title: string;
@@ -65,7 +65,7 @@ export default function CareGapSummary({ summary, loading }: CareGapSummaryProps
             {Object.entries(summary.byMeasure).map(([measure, count]) => (
               <div key={measure} className="flex justify-between items-center p-2 rounded-lg bg-dark-secondary/20 hover:bg-dark-secondary/30 transition-all duration-200">
                 <span className="text-sm">{measure}</span>
-                <span className="text-sm font-medium">{count}</span>
+                <span className="text-sm font-medium">{count.toString()}</span>
               </div>
             ))}
           </div>

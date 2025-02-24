@@ -1,4 +1,4 @@
-import type { DashboardData } from './api';
+import type { DashboardData } from '@/types';
 
 export const mockDashboardData: DashboardData = {
   stats: {
@@ -6,11 +6,11 @@ export const mockDashboardData: DashboardData = {
       value: 1250,
       trend: 5.2
     },
+    activePatients: 1150,
     riskScore: {
-      value: 85,
-      trend: 5,
       highRiskCount: 127,
-      highRiskPercentage: 12.7
+      highRiskPercentage: 12.7,
+      trend: 5
     },
     careGaps: {
       value: 145,
@@ -21,62 +21,8 @@ export const mockDashboardData: DashboardData = {
       trend: 8.7
     }
   },
-  careGaps: [
-    {
-      id: 1,
-      patient: "Sarah Johnson",
-      measure: "Diabetes A1C Test",
-      days_open: 45,
-      priority: "high"
-    },
-    {
-      id: 2,
-      patient: "Michael Chen",
-      measure: "Annual Wellness Visit",
-      days_open: 30,
-      priority: "medium"
-    },
-    {
-      id: 3,
-      patient: "Robert Smith",
-      measure: "Colorectal Cancer Screening",
-      days_open: 60,
-      priority: "high"
-    },
-    {
-      id: 4,
-      patient: "Emily Davis",
-      measure: "Mammogram",
-      days_open: 15,
-      priority: "low"
-    }
-  ],
-  highRiskPatients: [
-    {
-      id: 1,
-      name: "James Wilson",
-      riskScore: 85,
-      conditions: ["CHF", "Diabetes", "COPD"],
-      lastEncounter: "2024-01-15"
-    },
-    {
-      id: 2,
-      name: "Maria Garcia",
-      riskScore: 78,
-      conditions: ["Hypertension", "CKD"],
-      lastEncounter: "2024-01-18"
-    },
-    {
-      id: 3,
-      name: "Robert Smith",
-      riskScore: 82,
-      conditions: ["COPD", "Depression", "Heart Failure"],
-      lastEncounter: "2024-01-20"
-    }
-  ],
   analytics: {
     populationMetrics: {
-      totalActive: 1250,
       byRiskLevel: {
         high: 180,
         medium: 420,
@@ -97,6 +43,12 @@ export const mockDashboardData: DashboardData = {
     },
     careGapSummary: {
       total: 145,
+      byType: [
+        { name: "Diabetes Care", value: 35, percentage: 24.1 },
+        { name: "Preventive Screenings", value: 48, percentage: 33.1 },
+        { name: "Immunizations", value: 27, percentage: 18.6 },
+        { name: "Chronic Care", value: 35, percentage: 24.2 }
+      ],
       byPriority: {
         high: 45,
         medium: 65,
@@ -111,11 +63,11 @@ export const mockDashboardData: DashboardData = {
     },
     riskStratification: {
       distribution: [
-        { score: "0-20", count: 250 },
-        { score: "21-40", count: 400 },
-        { score: "41-60", count: 350 },
-        { score: "61-80", count: 180 },
-        { score: "81-100", count: 70 }
+        { score: 10, count: 250 },
+        { score: 30, count: 400 },
+        { score: 50, count: 350 },
+        { score: 70, count: 180 },
+        { score: 90, count: 70 }
       ]
     },
     patientActivity: {
@@ -177,21 +129,21 @@ export const mockDashboardData: DashboardData = {
       overall: 78.5,
       measures: [
         {
-          id: 1,
+          id: "1",
           name: "Diabetes A1C Control",
           score: 82.3,
           target: 85,
           trend: 2.1
         },
         {
-          id: 2,
+          id: "2",
           name: "Breast Cancer Screening",
           score: 75.8,
           target: 80,
           trend: -1.2
         },
         {
-          id: 3,
+          id: "3",
           name: "Hypertension Control",
           score: 77.4,
           target: 75,
@@ -209,14 +161,14 @@ export const mockDashboardData: DashboardData = {
     },
     improvement: [
       {
-        id: 1,
+        id: "1",
         measure: "Diabetes A1C Control",
         gap: "15 patients need A1C test",
         impact: "High",
         potential: "+3.2%"
       },
       {
-        id: 2,
+        id: "2",
         measure: "Breast Cancer Screening",
         gap: "23 patients due for mammogram",
         impact: "Medium",

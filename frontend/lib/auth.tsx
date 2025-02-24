@@ -4,8 +4,8 @@ import { createContext, useContext, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isAxiosError } from 'axios';
 
-import { auth as authApi } from '@/services/api';
-import type { User } from '@/services/api';
+import apiService from '@/services/api';
+import type { User } from '@/types';
 
 // Use API URL from environment
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -44,8 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       setError(null);
-      const response = await authApi.login(credentials);
-      setUser(response.data.user);
+      const response = await apiService.login(credentials.email, credentials.password);
+      setUser(response.data);
       router.push('/dashboard');
     } catch (err) {
       const message = isAxiosError(err)
