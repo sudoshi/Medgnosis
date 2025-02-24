@@ -5,12 +5,16 @@ vendor/
 # Environment files
 .env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+# Keep production env files for deployment
+!.env.production
 
 # Build output
 /frontend/.next
 /frontend/build
 /frontend/dist
+/frontend/out
 /backend/public/build
 /backend/storage/*.key
 
