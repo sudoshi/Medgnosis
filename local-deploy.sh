@@ -46,13 +46,9 @@ if [ ! -d "$DEPLOY_DIR" ]; then
     mkdir -p "$DEPLOY_DIR"
 fi
 
-# Copy frontend files
+# Copy frontend files (primary focus for updates)
 print_status "Copying frontend files..."
 rsync -av --exclude="node_modules" --exclude=".next" "$REPO_DIR/frontend/" "$DEPLOY_DIR/frontend/"
-
-# Copy backend files
-print_status "Copying backend files..."
-rsync -av --exclude="vendor" --exclude="node_modules" "$REPO_DIR/backend/" "$DEPLOY_DIR/backend/"
 
 # Set up frontend environment
 print_status "Setting up frontend environment..."
@@ -60,18 +56,82 @@ cat > "$DEPLOY_DIR/frontend/.env" << EOL
 NEXT_PUBLIC_API_URL=https://demo.medgnosis.app/api
 EOL
 
-# Set up backend environment
-print_status "Setting up backend environment..."
-cat > "$DEPLOY_DIR/backend/.env" << EOL
+# Backend deployment with environment preservation
+print_status "Handling backend deployment..."
+
+# Copy backend files
+print_status "Copying backend files..."
+rsync -av --exclude="vendor" --exclude="node_modules" --exclude=".env" "$REPO_DIR/backend/" "$DEPLOY_DIR/backend/"
+
+# Check if backend .env exists in deployment directory
+if [ -f "$DEPLOY_DIR/backend/.env" ]; then
+    print_status "Existing backend .env found, preserving it..."
+    
+    # Backup the existing .env file
+    cp "$DEPLOY_DIR/backend/.env" "$DEPLOY_DIR/backend/.env.backup"
+    
+    # Check if APP_KEY is the placeholder or empty
+    CURRENT_APP_KEY=$(grep "^APP_KEY=" "$DEPLOY_DIR/backend/.env" | cut -d= -f2)
+    
+    if [[ "$CURRENT_APP_KEY" == "base64:Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Y" || -z "$CURRENT_APP_KEY" ]]; then
+        print_status "Invalid APP_KEY detected, generating a new one..."
+        
+        # Generate a new APP_KEY
+        cd "$DEPLOY_DIR/backend"
+        NEW_APP_KEY=$(php artisan key:generate --show)
+        cd "$REPO_DIR"
+        
+        # Generate a new APP_KEY using openssl directly
+        print_status "Generating a new APP_KEY..."
+        SECURE_KEY="base64:$(openssl rand -base64 32)"
+        
+        # Update the APP_KEY in the .env file
+        sed -i "s|^APP_KEY=.*|APP_KEY=$SECURE_KEY|g" "$DEPLOY_DIR/backend/.env"
+        print_status "Set APP_KEY to: $SECURE_KEY"
+        
+        # Ensure the Laravel cache is cleared
+        cd "$DEPLOY_DIR/backend"
+        php artisan config:clear
+        php artisan cache:clear
+        cd "$REPO_DIR"
+    fi
+    
+    # Ensure PostgreSQL connection details are correctly set
+    print_status "Ensuring database connection details are correct..."
+    sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=pgsql|" "$DEPLOY_DIR/backend/.env"
+    sed -i "s|^DB_HOST=.*|DB_HOST=localhost|" "$DEPLOY_DIR/backend/.env"
+    sed -i "s|^DB_PORT=.*|DB_PORT=5432|" "$DEPLOY_DIR/backend/.env"
+    sed -i "s|^DB_DATABASE=.*|DB_DATABASE=PHM|" "$DEPLOY_DIR/backend/.env"
+    sed -i "s|^DB_USERNAME=.*|DB_USERNAME=postgres|" "$DEPLOY_DIR/backend/.env"
+    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=acumenus|" "$DEPLOY_DIR/backend/.env"
+    
+    # Ensure DB_SCHEMA is set
+    if ! grep -q "^DB_SCHEMA=" "$DEPLOY_DIR/backend/.env"; then
+        echo "DB_SCHEMA=prod" >> "$DEPLOY_DIR/backend/.env"
+    else
+        sed -i "s|^DB_SCHEMA=.*|DB_SCHEMA=prod|" "$DEPLOY_DIR/backend/.env"
+    fi
+    
+    # Update the repository's .env file with the valid APP_KEY for future deployments
+    if [ -f "$REPO_DIR/backend/.env" ]; then
+        VALID_APP_KEY=$(grep "^APP_KEY=" "$DEPLOY_DIR/backend/.env" | cut -d= -f2)
+        sed -i "s|^APP_KEY=.*|APP_KEY=$VALID_APP_KEY|" "$REPO_DIR/backend/.env"
+        print_status "Updated repository's .env with valid APP_KEY for future deployments"
+    fi
+else
+    print_status "No existing backend .env found, creating a new one..."
+    
+    # Create a new .env file
+    cat > "$DEPLOY_DIR/backend/.env" << EOL
 APP_NAME=Medgnosis
 APP_ENV=production
-APP_KEY=base64:Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Yd+Y
+APP_KEY=
 APP_DEBUG=false
 APP_URL=https://demo.medgnosis.app
 
 LOG_CHANNEL=stack
 LOG_DEPRECATIONS_CHANNEL=null
-LOG_LEVEL=debug
+LOG_LEVEL=warning
 
 DB_CONNECTION=pgsql
 DB_HOST=localhost
@@ -88,49 +148,36 @@ QUEUE_CONNECTION=sync
 SESSION_DRIVER=file
 SESSION_LIFETIME=120
 
-MEMCACHED_HOST=127.0.0.1
-
-REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=null
-REDIS_PORT=6379
-
-MAIL_MAILER=smtp
-MAIL_HOST=mailpit
-MAIL_PORT=1025
-MAIL_USERNAME=null
-MAIL_PASSWORD=null
-MAIL_ENCRYPTION=null
-MAIL_FROM_ADDRESS="hello@example.com"
-MAIL_FROM_NAME="\${APP_NAME}"
-
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_DEFAULT_REGION=us-east-1
-AWS_BUCKET=
-AWS_USE_PATH_STYLE_ENDPOINT=false
-
-PUSHER_APP_ID=
-PUSHER_APP_KEY=
-PUSHER_APP_SECRET=
-PUSHER_HOST=
-PUSHER_PORT=443
-PUSHER_SCHEME=https
-PUSHER_APP_CLUSTER=mt1
-
-VITE_APP_NAME="\${APP_NAME}"
-VITE_PUSHER_APP_KEY="\${PUSHER_APP_KEY}"
-VITE_PUSHER_HOST="\${PUSHER_HOST}"
-VITE_PUSHER_PORT="\${PUSHER_PORT}"
-VITE_PUSHER_SCHEME="\${PUSHER_SCHEME}"
-VITE_PUSHER_APP_CLUSTER="\${PUSHER_APP_CLUSTER}"
-
 SANCTUM_STATEFUL_DOMAINS=demo.medgnosis.app
 SESSION_DOMAIN=.demo.medgnosis.app
+FRONTEND_URL=https://demo.medgnosis.app
+
+CORS_ALLOWED_ORIGINS=https://demo.medgnosis.app
 EOL
 
-# Set up API routes
-print_status "Setting up API routes..."
-cat > "$DEPLOY_DIR/backend/routes/api.php" << EOL
+    # Generate a new APP_KEY
+    cd "$DEPLOY_DIR/backend"
+    NEW_APP_KEY=$(php artisan key:generate --show)
+    cd "$REPO_DIR"
+    
+    # Update the APP_KEY in the .env file
+    sed -i "s|^APP_KEY=.*|APP_KEY=$NEW_APP_KEY|" "$DEPLOY_DIR/backend/.env"
+    
+    # Update the repository's .env file with the valid APP_KEY for future deployments
+    if [ -f "$REPO_DIR/backend/.env" ]; then
+        sed -i "s|^APP_KEY=.*|APP_KEY=$NEW_APP_KEY|" "$REPO_DIR/backend/.env"
+        print_status "Updated repository's .env with valid APP_KEY for future deployments"
+    fi
+fi
+
+# Preserve API routes and controllers
+print_status "Preserving API routes and controllers..."
+
+# Only create API routes file if it doesn't exist
+if [ ! -f "$DEPLOY_DIR/backend/routes/api.php" ]; then
+    print_status "Creating default API routes..."
+    mkdir -p "$DEPLOY_DIR/backend/routes"
+    cat > "$DEPLOY_DIR/backend/routes/api.php" << EOL
 <?php
 
 use Illuminate\Http\Request;
@@ -165,11 +212,13 @@ Route::get('/test', function () {
     return response()->json(['message' => 'API is working!']);
 });
 EOL
+fi
 
-# Set up AuthController
-print_status "Setting up AuthController..."
-mkdir -p "$DEPLOY_DIR/backend/app/Http/Controllers"
-cat > "$DEPLOY_DIR/backend/app/Http/Controllers/AuthController.php" << EOL
+# Only create AuthController if it doesn't exist
+if [ ! -f "$DEPLOY_DIR/backend/app/Http/Controllers/AuthController.php" ]; then
+    print_status "Creating default AuthController..."
+    mkdir -p "$DEPLOY_DIR/backend/app/Http/Controllers"
+    cat > "$DEPLOY_DIR/backend/app/Http/Controllers/AuthController.php" << EOL
 <?php
 
 namespace App\Http\Controllers;
@@ -265,6 +314,7 @@ class AuthController extends Controller
     }
 }
 EOL
+fi
 
 # Set up Apache configuration
 print_status "Setting up Apache configuration..."
