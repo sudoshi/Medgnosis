@@ -1,9 +1,18 @@
 "use client";
 
-
-import { useEffect, useRef, useState } from "react";
-
+import { useEffect, useRef, useState, useCallback } from "react";
 import { abbyAnalytics } from "@/services/AbbyAnalytics";
+import { ollamaService } from "@/services/OllamaService";
+
+// Debounce helper
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
 import type {
   SpeechRecognition,
   SpeechRecognitionEvent,
@@ -13,12 +22,50 @@ import type {
 interface VoiceControllerProps {
   onWakeWord: () => void;
   enabled: boolean;
+  onResponse?: (response: string) => void;
 }
 
-export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
-  const [, setIsListening] = useState(false);
+export function VoiceController({ onWakeWord, enabled, onResponse }: VoiceControllerProps) {
+  const [isListening, setIsListening] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const lastWakeWordRef = useRef<number>(0);
+
+  const speak = async (text: string) => {
+    if (!synthRef.current || !utteranceRef.current) return;
+    
+    utteranceRef.current.text = text;
+    setIsSpeaking(true);
+    
+    utteranceRef.current.onend = () => {
+      setIsSpeaking(false);
+      if (enabled && hasPermission && !isProcessing) {
+        // Add a small delay before restarting recognition
+        setTimeout(() => {
+          recognitionRef.current?.start();
+        }, 500);
+      }
+    };
+    
+    // Cancel any ongoing speech
+    synthRef.current.cancel();
+    synthRef.current.speak(utteranceRef.current);
+  };
+
+  // Initialize speech synthesis
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      synthRef.current = window.speechSynthesis;
+      utteranceRef.current = new SpeechSynthesisUtterance();
+      utteranceRef.current.rate = 1.0;
+      utteranceRef.current.pitch = 1.0;
+      utteranceRef.current.volume = 1.0;
+    }
+  }, []);
 
   useEffect(() => {
     // Check if browser supports speech recognition
@@ -59,12 +106,48 @@ export function VoiceController({ onWakeWord, enabled }: VoiceControllerProps) {
       }
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = async (event: SpeechRecognitionEvent) => {
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript.trim().toLowerCase() || "";
 
-      if (text.includes("hey abby")) {
+      // Debounce wake word detection
+      const now = Date.now();
+      if ((text.includes("hey abby") || text.includes("hey abbey")) && 
+          now - lastWakeWordRef.current > 3000) { // Prevent triggering more than once every 3 seconds
+        lastWakeWordRef.current = now;
+        setIsProcessing(true);
         onWakeWord();
+        await speak("Yes, how can I help you?");
+        recognition.stop();
+        setTimeout(() => {
+          if (enabled && hasPermission) {
+            recognition.start();
+          }
+        }, 1000);
+      } else if (isProcessing && !text.includes("hey abby")) {
+        try {
+          const stream = await ollamaService.chat(text);
+          const reader = stream.getReader();
+          let responseText = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = new TextDecoder().decode(value);
+            responseText += chunk;
+          }
+
+          if (onResponse) {
+            onResponse(responseText);
+          }
+          await speak(responseText);
+        } catch (error) {
+          console.error('Error processing request:', error);
+          await speak('I apologize, but I encountered an error processing your request.');
+        } finally {
+          setIsProcessing(false);
+        }
       }
     };
 

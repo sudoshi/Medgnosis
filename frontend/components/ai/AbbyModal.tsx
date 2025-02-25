@@ -9,7 +9,9 @@ import {
 import Image from "next/image";
 import { useState, useRef, useEffect, useCallback } from "react";
 
+import { ollamaService } from "@/services/OllamaService";
 import { MicrophonePermission } from "./MicrophonePermission";
+import { VoiceController } from "./VoiceController";
 
 interface Message {
   role: "user" | "assistant";
@@ -27,27 +29,109 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isSpeaking] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleMessage = async (content: string) => {
+    if (!content.trim()) return;
+    
+    setIsProcessing(true);
+    const userMessage: Message = {
+      role: 'user',
+      content,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+
+    try {
+      const stream = await ollamaService.chat(content);
+      const reader = stream.getReader();
+      let responseText = '';
+      let partialResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        responseText += chunk;
+        partialResponse += chunk;
+
+        // Update UI with partial response every few characters
+        if (partialResponse.length > 10) {
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: responseText,
+            timestamp: new Date(),
+          };
+          setMessages(prev => {
+            // Replace the last message if it's from the assistant
+            if (prev[prev.length - 1]?.role === 'assistant') {
+              return [...prev.slice(0, -1), assistantMessage];
+            }
+            return [...prev, assistantMessage];
+          });
+          partialResponse = '';
+        }
+      }
+
+      // Ensure the final message is complete
+      const finalMessage: Message = {
+        role: 'assistant',
+        content: responseText,
+        timestamp: new Date(),
+      };
+      setMessages(prev => {
+        if (prev[prev.length - 1]?.role === 'assistant') {
+          return [...prev.slice(0, -1), finalMessage];
+        }
+        return [...prev, finalMessage];
+      });
+
+      // Add response to Ollama conversation history
+      ollamaService.addAssistantResponse(responseText);
+    } catch (error) {
+      console.error('Error processing message:', error);
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error processing your request.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      ollamaService.clearHistory();
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
       setIsActive(true);
       // Add welcome message if no messages exist
       if (messages.length === 0) {
-        setMessages([
-          {
-            role: "assistant",
-            content: "How can I help?",
-            timestamp: new Date(),
-          },
-        ]);
+        const welcomeMessage: Message = {
+          role: 'assistant',
+          content: 'How can I help?',
+          timestamp: new Date(),
+        };
+        setMessages([welcomeMessage]);
+        ollamaService.addAssistantResponse(welcomeMessage.content);
       }
     } else {
       setIsActive(false);
       setIsMinimized(false);
+      // Clear conversation history when closing
+      ollamaService.clearHistory();
     }
   }, [isOpen, messages.length, setIsActive]);
 
@@ -68,27 +152,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
-
-    const userMessage: Message = {
-      role: "user",
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-
-    // TODO: Implement actual AI response logic
-    const assistantMessage: Message = {
-      role: "assistant",
-      content:
-        "I'm still being implemented, but I'll be able to help you soon!",
-      timestamp: new Date(),
-    };
-
-    setTimeout(() => {
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 1000);
+    await handleMessage(input);
   };
 
   const handleVoiceEnable = useCallback(async () => {
@@ -127,6 +191,13 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
         onAllow={handleVoiceEnable}
         onDeny={handleVoiceDisable}
       />
+      {voiceEnabled && (
+        <VoiceController
+          enabled={voiceEnabled && isOpen && !isMinimized}
+          onWakeWord={() => setIsMinimized(false)}
+          onResponse={handleMessage}
+        />
+      )}
       <div
         className={`fixed right-4 bottom-4 z-50 flex flex-col rounded-lg bg-dark-primary border border-dark-border shadow-xl transition-all duration-300 ${
           isMinimized ? "h-14 w-14" : "h-[600px] w-[400px]"
@@ -136,6 +207,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
         <div className="flex items-center justify-between border-b border-dark-border p-4">
           <div className="flex items-center space-x-3">
             <div className="relative h-8 w-8 rounded-full overflow-hidden">
+              <div className={`absolute inset-0 z-10 rounded-full ${isListening ? 'animate-pulse ring-2 ring-accent-primary' : ''} ${isSpeaking ? 'ring-2 ring-accent-success' : ''}`} />
               <Image
                 fill
                 alt="Abby AI Assistant"
@@ -151,6 +223,13 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
             )}
           </div>
           <div className="flex items-center space-x-2">
+            <button
+              className={`rounded p-1 hover:bg-dark-secondary ${voiceEnabled ? 'text-accent-primary' : ''}`}
+              onClick={toggleVoice}
+              title={voiceEnabled ? 'Disable voice control' : 'Enable voice control'}
+            >
+              <SpeakerWaveIcon className={`h-5 w-5 ${isListening ? 'animate-pulse' : ''}`} />
+            </button>
             <button
               className="rounded p-1 hover:bg-dark-secondary"
               onClick={() => setIsMinimized(!isMinimized)}
@@ -173,9 +252,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-[80%] rounded-lg p-3 ${
@@ -188,6 +265,22 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
                     <p className="mt-1 text-xs opacity-70">
                       {message.timestamp.toLocaleTimeString()}
                     </p>
+                  </div>
+                </div>
+              ))}
+              {isProcessing && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-lg p-3 bg-dark-secondary">
+                    <div className="flex space-x-2">
+                      <div className="h-2 w-2 rounded-full bg-accent-primary animate-bounce" />
+                      <div className="h-2 w-2 rounded-full bg-accent-primary animate-bounce delay-100" />
+                      <div className="h-2 w-2 rounded-full bg-accent-primary animate-bounce delay-200" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
                   </div>
                 </div>
               ))}
