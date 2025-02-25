@@ -5,7 +5,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://demo.medgnosis.app', 'https://demo.medgnosis.app.'],
+    'allowed_origins' => ['https://demo.medgnosis.app', 'https://demo.medgnosis.app.', 'http://localhost:3009'],
 
     'allowed_origins_patterns' => [],
 

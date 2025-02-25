@@ -22,8 +22,12 @@ if [ ! -d "node_modules" ]; then
     npm install --legacy-peer-deps || { echo -e "${RED}Error: npm install failed${NC}"; exit 1; }
 fi
 
+# Set development environment variables
+export NEXT_PUBLIC_API_URL=http://localhost:8009/api
+export NEXT_PUBLIC_APP_URL=http://localhost:3009
+
 # Start Next.js
-PORT=3000 npx next dev &
+PORT=3009 npx next dev &
 echo $! > .next.pid
 
 # Start Backend
@@ -62,9 +66,9 @@ php artisan route:clear
 php artisan view:clear
 
 # Start Laravel
-php artisan serve &
+php artisan serve --port=8009 &
 echo $! > .laravel.pid
 
 echo -e "${GREEN}Development environment is ready!${NC}"
-echo -e "Frontend: http://localhost:3000"
-echo -e "Backend: http://localhost:8000"
+echo -e "Frontend: http://localhost:3009"
+echo -e "Backend: http://localhost:8009"

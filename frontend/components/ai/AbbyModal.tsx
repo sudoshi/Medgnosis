@@ -21,6 +21,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  id?: string;
 }
 
 interface AbbyModalProps {
@@ -31,84 +32,125 @@ interface AbbyModalProps {
 
 export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
+  const [currentMessage, setCurrentMessage] = useState("");
   const [isMinimized, setIsMinimized] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleMessage = async (content: string) => {
-    if (!content.trim()) return;
-    
-    setIsProcessing(true);
+  const handleMessage = async (message: string) => {
+    if (!message.trim()) return;
+
+    // Add user message
     const userMessage: Message = {
-      role: 'user',
-      content,
+      role: "user",
+      content: message,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    setMessages((prev) => [...prev, userMessage]);
+    setCurrentMessage("");
+    setIsLoading(true);
 
     try {
-      const stream = await ollamaService.chat(content);
-      const reader = stream.getReader();
-      let responseText = '';
-      let partialResponse = '';
+      // Add empty assistant message
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "", timestamp: new Date() },
+      ]);
 
+      // Make a direct fetch request to Ollama API
+      console.log("Making request to Ollama API");
+      const res = await fetch('http://localhost:11434/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gemma:latest',
+          prompt: message,
+          stream: true,
+        }),
+      });
+      
+      console.log("Got response from Ollama:", res);
+      
+      if (!res.ok) {
+        throw new Error(`Ollama API error: ${res.status}`);
+      }
+      
+      if (!res.body) {
+        throw new Error('No response body from Ollama API');
+      }
+      
+      const reader = res.body.getReader();
+      console.log("Created reader:", reader);
+      
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      // Process the response chunks
+      console.log("Starting to read chunks...");
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        console.log("Read chunk:", { done, valueExists: !!value, valueLength: value ? value.length : 0 });
+        
+        if (done) {
+          console.log("Done reading chunks");
+          break;
+        }
 
-        const chunk = new TextDecoder().decode(value);
-        responseText += chunk;
-        partialResponse += chunk;
-
-        // Update UI with partial response every few characters
-        if (partialResponse.length > 10) {
-          const assistantMessage: Message = {
-            role: 'assistant',
-            content: responseText,
-            timestamp: new Date(),
-          };
-          setMessages(prev => {
-            // Replace the last message if it's from the assistant
-            if (prev[prev.length - 1]?.role === 'assistant') {
-              return [...prev.slice(0, -1), assistantMessage];
+        // Decode and accumulate the response
+        const chunkText = decoder.decode(value, { stream: true });
+        console.log("Decoded text:", chunkText);
+        
+        // Parse JSON from the chunk
+        const lines = chunkText.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            console.log("Parsed JSON:", parsed);
+            
+            if (parsed.response) {
+              fullResponse += parsed.response;
+              console.log("Updated full response:", fullResponse);
+              
+              // Update the assistant message with the accumulated response
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                
+                if (lastMessage && lastMessage.role === "assistant") {
+                  newMessages[newMessages.length - 1] = {
+                    ...lastMessage,
+                    content: fullResponse,
+                    timestamp: new Date(),
+                  };
+                }
+                
+                return newMessages;
+              });
             }
-            return [...prev, assistantMessage];
-          });
-          partialResponse = '';
+          } catch (error) {
+            console.error("Error parsing JSON:", error);
+          }
         }
       }
-
-      // Ensure the final message is complete
-      const finalMessage: Message = {
-        role: 'assistant',
-        content: responseText,
-        timestamp: new Date(),
-      };
-      setMessages(prev => {
-        if (prev[prev.length - 1]?.role === 'assistant') {
-          return [...prev.slice(0, -1), finalMessage];
-        }
-        return [...prev, finalMessage];
-      });
-
-      // Add response to Ollama conversation history
-      ollamaService.addAssistantResponse(responseText);
     } catch (error) {
-      console.error('Error processing message:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: 'I apologize, but I encountered an error processing your request.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      console.error("Error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I'm sorry, I encountered an error while processing your request. Please try again.",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
     }
   };
 
@@ -143,11 +185,22 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   useEffect(() => {
     // Check if voice features were previously enabled
     const savedVoicePreference = localStorage.getItem("abbyVoiceEnabled");
-
     if (savedVoicePreference === "true") {
       setVoiceEnabled(true);
     }
   }, []);
+
+  useEffect(() => {
+    // Add debugging for message state changes
+    console.log('Messages state changed:', messages);
+    
+    // Force a re-render when messages change
+    const forceUpdate = setTimeout(() => {
+      setMessages(prev => [...prev]);
+    }, 100);
+    
+    return () => clearTimeout(forceUpdate);
+  }, [messages]);
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
@@ -156,8 +209,8 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    await handleMessage(input);
+    if (!currentMessage.trim()) return;
+    await handleMessage(currentMessage);
   };
 
   const handleVoiceEnable = async () => {
@@ -257,26 +310,29 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
           <>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+              {messages.map((message, index) => {
+                console.log(`Rendering message ${index}:`, message);
+                return (
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      message.role === "user"
-                        ? "bg-accent-primary text-white"
-                        : "bg-dark-secondary"
-                    }`}
+                    key={`message-${index}-${message.timestamp.getTime()}`}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    <p>{message.content}</p>
-                    <p className="mt-1 text-xs opacity-70">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        message.role === "user"
+                          ? "bg-accent-primary text-white"
+                          : "bg-dark-secondary"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      <p className="mt-1 text-xs opacity-70">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {isProcessing && (
+                );
+              })}
+              {isLoading && (
                 <div className="flex justify-start">
                   <div className="max-w-[80%] rounded-lg p-3 bg-dark-secondary">
                     <div className="flex space-x-2">
@@ -295,10 +351,10 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
               <div className="flex space-x-2">
                 <Input
                   ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  value={currentMessage}
+                  onChange={(e) => setCurrentMessage(e.target.value)}
                   placeholder="Type your message..."
-                  disabled={isProcessing}
+                  disabled={isLoading}
                   className="flex-1"
                 />
                 <Button
@@ -312,10 +368,10 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!input.trim() || isProcessing}
+                  disabled={!currentMessage.trim() || isLoading}
                   className="bg-accent-primary hover:bg-accent-primary/80"
                 >
-                  {isProcessing ? (
+                  {isLoading ? (
                     <StopIcon className="h-5 w-5" />
                   ) : (
                     <PaperAirplaneIcon className="h-5 w-5" />
