@@ -5,13 +5,17 @@ import {
   MicrophoneIcon,
   SpeakerWaveIcon,
   MinusIcon,
+  PaperAirplaneIcon,
+  StopIcon,
 } from "@heroicons/react/24/outline";
 import Image from "next/image";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 
 import { ollamaService } from "@/services/OllamaService";
 import { MicrophonePermission } from "./MicrophonePermission";
 import { VoiceController } from "./VoiceController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface Message {
   role: "user" | "assistant";
@@ -29,11 +33,12 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleMessage = async (content: string) => {
     if (!content.trim()) return;
@@ -155,7 +160,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
     await handleMessage(input);
   };
 
-  const handleVoiceEnable = useCallback(async () => {
+  const handleVoiceEnable = async () => {
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       setVoiceEnabled(true);
@@ -166,13 +171,13 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
       setVoiceEnabled(false);
       localStorage.setItem("abbyVoiceEnabled", "false");
     }
-  }, []);
+  };
 
-  const handleVoiceDisable = useCallback(() => {
+  const handleVoiceDisable = () => {
     setVoiceEnabled(false);
     localStorage.setItem("abbyVoiceEnabled", "false");
     setShowPermissionModal(false);
-  }, []);
+  };
 
   const toggleVoice = () => {
     if (!voiceEnabled) {
@@ -185,17 +190,20 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   if (!isOpen) return null;
 
   return (
-    <>
-      <MicrophonePermission
-        isOpen={showPermissionModal}
-        onAllow={handleVoiceEnable}
-        onDeny={handleVoiceDisable}
-      />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      {showPermissionModal && (
+        <MicrophonePermission
+          isOpen={showPermissionModal}
+          onAllow={handleVoiceEnable}
+          onDeny={handleVoiceDisable}
+        />
+      )}
       {voiceEnabled && (
         <VoiceController
           enabled={voiceEnabled && isOpen && !isMinimized}
           onWakeWord={() => setIsMinimized(false)}
           onResponse={handleMessage}
+          onListeningChange={setIsListening}
         />
       )}
       <div
@@ -207,7 +215,7 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
         <div className="flex items-center justify-between border-b border-dark-border p-4">
           <div className="flex items-center space-x-3">
             <div className="relative h-8 w-8 rounded-full overflow-hidden">
-              <div className={`absolute inset-0 z-10 rounded-full ${isListening ? 'animate-pulse ring-2 ring-accent-primary' : ''} ${isSpeaking ? 'ring-2 ring-accent-success' : ''}`} />
+              <div className={`absolute inset-0 z-10 rounded-full ${isListening ? 'animate-pulse ring-2 ring-accent-primary' : ''}`} />
               <Image
                 fill
                 alt="Abby AI Assistant"
@@ -281,50 +289,43 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
               )}
               <div ref={messagesEndRef} />
             </div>
-                  </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
 
             {/* Input */}
-            <div className="border-t border-dark-border p-4">
-              <form
-                className="flex items-center space-x-2"
-                onSubmit={handleSubmit}
-              >
-                <input
-                  className="flex-1 rounded-lg bg-dark-secondary p-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
-                  placeholder="Type your message..."
-                  type="text"
+            <form onSubmit={handleSubmit} className="border-t border-dark-border p-4">
+              <div className="flex space-x-2">
+                <Input
+                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your message..."
+                  disabled={isProcessing}
+                  className="flex-1"
                 />
-                <button
-                  className={`rounded-full p-2 ${
-                    voiceEnabled
-                      ? isSpeaking
-                        ? "bg-accent-error hover:bg-accent-error/80"
-                        : "bg-accent-primary hover:bg-accent-primary/80"
-                      : "bg-dark-secondary hover:bg-dark-secondary/80"
-                  }`}
-                  title={voiceEnabled ? "Disable voice" : "Enable voice"}
+                <Button
+                  variant="ghost"
+                  size="icon"
                   type="button"
                   onClick={toggleVoice}
+                  className={voiceEnabled ? "text-accent-primary" : ""}
                 >
-                  <MicrophoneIcon className="h-5 w-5" />
-                </button>
-                <button
-                  className="rounded-full bg-dark-secondary p-2 hover:bg-dark-secondary/80"
-                  type="button"
+                  <MicrophoneIcon className={`h-5 w-5 ${isListening ? "animate-pulse" : ""}`} />
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!input.trim() || isProcessing}
+                  className="bg-accent-primary hover:bg-accent-primary/80"
                 >
-                  <SpeakerWaveIcon className="h-5 w-5" />
-                </button>
-              </form>
-            </div>
+                  {isProcessing ? (
+                    <StopIcon className="h-5 w-5" />
+                  ) : (
+                    <PaperAirplaneIcon className="h-5 w-5" />
+                  )}
+                </Button>
+              </div>
+            </form>
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }

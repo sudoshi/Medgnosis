@@ -49,14 +49,16 @@ export class QueueService {
       }, timeout);
 
       // Wrap the task to clear timeout and handle errors
-      const wrappedTask = async () => {
+      const wrappedTask = async (): Promise<T> => {
         try {
           const result = await task();
           clearTimeout(timeoutId);
           resolve(result);
+          return result;
         } catch (error) {
           clearTimeout(timeoutId);
           reject(error);
+          throw error;
         }
       };
 

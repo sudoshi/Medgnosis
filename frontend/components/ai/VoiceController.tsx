@@ -1,17 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { abbyAnalytics } from "@/services/AbbyAnalytics";
 import { ollamaService } from "@/services/OllamaService";
-
-// Debounce helper
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
 
 import type {
   SpeechRecognition,
@@ -23,26 +14,28 @@ interface VoiceControllerProps {
   onWakeWord: () => void;
   enabled: boolean;
   onResponse?: (response: string) => void;
+  onListeningChange?: (isListening: boolean) => void;
 }
 
-export function VoiceController({ onWakeWord, enabled, onResponse }: VoiceControllerProps) {
+export function VoiceController({ onWakeWord, enabled, onResponse, onListeningChange }: VoiceControllerProps) {
   const [isListening, setIsListening] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastWakeWordRef = useRef<number>(0);
 
+  // Update parent component about listening state changes
+  useEffect(() => {
+    onListeningChange?.(isListening);
+  }, [isListening, onListeningChange]);
+
   const speak = async (text: string) => {
     if (!synthRef.current || !utteranceRef.current) return;
     
     utteranceRef.current.text = text;
-    setIsSpeaking(true);
-    
     utteranceRef.current.onend = () => {
-      setIsSpeaking(false);
       if (enabled && hasPermission && !isProcessing) {
         // Add a small delay before restarting recognition
         setTimeout(() => {
@@ -97,10 +90,12 @@ export function VoiceController({ onWakeWord, enabled, onResponse }: VoiceContro
 
     recognition.onstart = () => {
       setIsListening(true);
+      onListeningChange?.(true);
     };
 
     recognition.onend = () => {
       setIsListening(false);
+      onListeningChange?.(false);
       if (enabled && hasPermission) {
         recognition.start(); // Restart if enabled
       }

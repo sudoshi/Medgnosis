@@ -110,7 +110,7 @@ export class ErrorHandlingService {
 
 // Global error handler setup
 if (typeof window !== 'undefined') {
-  window.onerror = (message, source, lineno, colno, error) => {
+  window.onerror = (message, _source, _lineno, _colno, error) => {
     ErrorHandlingService.handleGlobalError(error || new Error(String(message)));
     return false;
   };

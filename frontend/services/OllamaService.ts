@@ -1,14 +1,11 @@
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 import { ErrorHandlingService } from './abby/ErrorHandlingService';
 import { SecurityService } from './abby/SecurityService';
 import { CacheService } from './abby/CacheService';
 import { QueueService } from './abby/QueueService';
 import { StateManagementService } from './abby/StateManagementService';
 import { Message } from './abby/types';
+
+export interface ChatMessage extends Message {}
 
 export class OllamaService {
   private baseUrl: string;

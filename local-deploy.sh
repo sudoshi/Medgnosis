@@ -50,10 +50,24 @@ fi
 print_status "Copying frontend files..."
 rsync -av --exclude="node_modules" --exclude=".next" "$REPO_DIR/frontend/" "$DEPLOY_DIR/frontend/"
 
+# Ensure Abby services directory exists
+print_status "Setting up Abby services..."
+mkdir -p "$DEPLOY_DIR/frontend/services/abby"
+
+# Copy Abby service files
+print_status "Copying Abby service files..."
+rsync -av "$REPO_DIR/frontend/services/abby/" "$DEPLOY_DIR/frontend/services/abby/"
+
 # Set up frontend environment
 print_status "Setting up frontend environment..."
 cat > "$DEPLOY_DIR/frontend/.env" << EOL
 NEXT_PUBLIC_API_URL=https://demo.medgnosis.app/api
+NEXT_PUBLIC_OLLAMA_URL=http://localhost:11434
+NEXT_PUBLIC_ENABLE_ABBY=true
+NEXT_PUBLIC_ABBY_VOICE_ENABLED=true
+NEXT_PUBLIC_ABBY_WAKE_WORD=hey abby
+NEXT_PUBLIC_ABBY_RATE_LIMIT=100
+NEXT_PUBLIC_ABBY_CACHE_TTL=3600000
 EOL
 
 # Backend deployment with environment preservation
@@ -379,6 +393,11 @@ EOL
 
 # Set up Next.js service
 print_status "Setting up Next.js service..."
+
+# Create log directory for Next.js
+mkdir -p /var/log/nextjs
+chown www-data:www-data /var/log/nextjs
+
 cat > "$NEXTJS_SERVICE" << EOL
 [Unit]
 Description=Next.js Production Server
@@ -388,10 +407,12 @@ After=network.target
 Type=simple
 User=www-data
 WorkingDirectory=$DEPLOY_DIR/frontend
-ExecStart=/usr/bin/node $DEPLOY_DIR/frontend/server.js
-Restart=on-failure
+ExecStart=/usr/bin/npm start
+Restart=always
 Environment=NODE_ENV=production
 Environment=PORT=3001
+StandardOutput=append:/var/log/nextjs/output.log
+StandardError=append:/var/log/nextjs/error.log
 
 [Install]
 WantedBy=multi-user.target
@@ -399,6 +420,19 @@ EOL
 
 # Set up Laravel service
 print_status "Setting up Laravel service..."
+
+# Create log directory for Laravel
+mkdir -p /var/log/laravel
+chown www-data:www-data /var/log/laravel
+
+# Fix Laravel storage permissions
+mkdir -p "$DEPLOY_DIR/backend/storage/logs"
+mkdir -p "$DEPLOY_DIR/backend/storage/framework/cache"
+mkdir -p "$DEPLOY_DIR/backend/storage/framework/sessions"
+mkdir -p "$DEPLOY_DIR/backend/storage/framework/views"
+chown -R www-data:www-data "$DEPLOY_DIR/backend/storage"
+chmod -R 775 "$DEPLOY_DIR/backend/storage"
+
 cat > "$LARAVEL_SERVICE" << EOL
 [Unit]
 Description=Laravel Production Server
@@ -408,9 +442,11 @@ After=network.target
 Type=simple
 User=www-data
 WorkingDirectory=$DEPLOY_DIR/backend
-ExecStart=/usr/bin/php -S 0.0.0.0:8001 -t $DEPLOY_DIR/backend/public
-Restart=on-failure
+ExecStart=/usr/bin/php artisan serve --port=8001 --host=0.0.0.0
+Restart=always
 Environment=APP_ENV=production
+StandardOutput=append:/var/log/laravel/output.log
+StandardError=append:/var/log/laravel/error.log
 
 [Install]
 WantedBy=multi-user.target
@@ -421,13 +457,82 @@ print_status "Setting permissions..."
 chown -R www-data:www-data "$DEPLOY_DIR"
 chmod -R 755 "$DEPLOY_DIR"
 
+# Set up Ollama service
+print_status "Setting up Ollama service..."
+cat > "/etc/systemd/system/ollama.service" << EOL
+[Unit]
+Description=Ollama AI Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/ollama serve
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+# Enable and start Ollama service
+systemctl enable ollama.service
+systemctl start ollama
+
+# Pull required Ollama models
+print_status "Pulling Ollama models..."
+ollama pull mistral:7b-instruct
+
 # Install dependencies for frontend
 print_status "Installing frontend dependencies..."
-cd "$DEPLOY_DIR/frontend" && npm install
+cd "$DEPLOY_DIR/frontend"
+npm install
 
 # Build frontend
 print_status "Building frontend..."
-cd "$DEPLOY_DIR/frontend" && npm run build
+cd "$DEPLOY_DIR/frontend"
+if ! npm run build; then
+    print_error "Next.js build failed. Please check the error messages above."
+fi
+
+# Create production server.js for Next.js
+print_status "Creating Next.js server configuration..."
+cat > "$DEPLOY_DIR/frontend/server.js" << EOL
+const { createServer } = require('http');
+const { parse } = require('url');
+const next = require('next');
+
+const dev = process.env.NODE_ENV !== 'production';
+const hostname = 'localhost';
+const port = process.env.PORT || 3001;
+
+const app = next({ dev, hostname, port });
+const handle = app.getRequestHandler();
+
+app.prepare().then(() => {
+  createServer(async (req, res) => {
+    try {
+      const parsedUrl = parse(req.url, true);
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error('Error occurred handling', req.url, err);
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  })
+  .once('error', (err) => {
+    console.error(err);
+    process.exit(1);
+  })
+  .listen(port, () => {
+    console.log('> Ready on http://' + hostname + ':' + port);
+  });
+});
+EOL
+
+# Update package.json scripts
+if ! grep -q '"start":' "$DEPLOY_DIR/frontend/package.json"; then
+    sed -i '"scripts": {/a\    "start": "NODE_ENV=production node server.js",' "$DEPLOY_DIR/frontend/package.json"
+fi
 
 # Install dependencies for backend
 print_status "Installing backend dependencies..."
@@ -448,9 +553,61 @@ systemctl enable laravel.service
 
 # Restart services
 print_status "Restarting services..."
+
+# Restart and verify Apache
 systemctl restart apache2
+if ! systemctl is-active --quiet apache2; then
+    print_error "Failed to start Apache service"
+fi
+
+# Clear Laravel cache and optimize
+cd "$DEPLOY_DIR/backend"
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan view:clear
+php artisan optimize
+
+# Restart and verify Next.js
+systemctl daemon-reload
 systemctl restart nextjs
+sleep 5  # Give it time to start
+
+# Check Next.js status and logs
+if ! systemctl is-active --quiet nextjs; then
+    print_warning "Next.js service failed to start. Checking logs..."
+    journalctl -u nextjs -n 50
+    tail -n 50 /var/log/nextjs/error.log
+    print_error "Failed to start Next.js service"
+fi
+
+# Test Next.js
+if ! curl -s http://localhost:3001 > /dev/null; then
+    print_warning "Next.js service is not responding"
+    print_status "Checking Next.js logs..."
+    journalctl -u nextjs -n 50
+    tail -n 50 /var/log/nextjs/error.log
+    print_error "Next.js service is not accessible"
+fi
+
+# Restart and verify Laravel
 systemctl restart laravel
+sleep 5  # Give it time to start
+if ! systemctl is-active --quiet laravel; then
+    print_warning "Laravel service failed to start. Checking logs..."
+    journalctl -u laravel -n 50
+    tail -n 50 /var/log/laravel/error.log
+    print_error "Failed to start Laravel service"
+fi
+
+# Test Laravel
+if ! curl -s http://localhost:8001/api/test > /dev/null; then
+    print_warning "Laravel service is not responding"
+    print_status "Checking Laravel logs..."
+    journalctl -u laravel -n 50
+    tail -n 50 /var/log/laravel/error.log
+    print_error "Laravel service is not accessible"
+fi
 
 print_status "Deployment completed successfully!"
 print_status "You can now access the application at https://demo.medgnosis.app"
