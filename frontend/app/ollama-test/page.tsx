@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface Message {
   role: "user" | "assistant";
@@ -13,25 +13,38 @@ export default function OllamaTestPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Get the Ollama API URL based on environment
+  const getOllamaApiUrl = () => {
+    // In production (Apache2), use the relative URL that will be proxied
+    if (process.env.NODE_ENV === 'production') {
+      return '/ollama/api/generate';
+    }
+    // In development, use the direct URL
+    return 'http://localhost:11434/api/generate';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
     // Add user message
-    const userMessage = { role: "user", content: input, timestamp: new Date() };
+    const userMessage: Message = { role: "user", content: input, timestamp: new Date() };
     setMessages(prev => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
     try {
       // Add empty assistant message
-      setMessages(prev => [...prev, { role: "assistant", content: "", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { role: "assistant" as const, content: "", timestamp: new Date() }]);
 
       // Get response from Ollama
       console.log("Getting response from Ollama...");
       
       // Make a direct fetch request to Ollama API
-      const res = await fetch('http://localhost:11434/api/generate', {
+      const ollamaApiUrl = getOllamaApiUrl();
+      console.log("Using Ollama API URL:", ollamaApiUrl);
+      
+      const res = await fetch(ollamaApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,6 +111,7 @@ export default function OllamaTestPage() {
                     ...lastMessage,
                     content: fullResponse,
                     timestamp: new Date(),
+                    role: "assistant" as const,
                   };
                 }
                 

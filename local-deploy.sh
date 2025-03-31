@@ -371,6 +371,21 @@ cat > "$APACHE_CONF" << EOL
         RewriteRule ^(.*)$ \$1 [R=200,L]
     </Location>
     
+    # Ollama API Proxy
+    ProxyPass /ollama http://localhost:11434
+    ProxyPassReverse /ollama http://localhost:11434
+    
+    # Ensure headers are preserved for Ollama
+    <Location /ollama>
+        ProxyPreserveHost On
+        RequestHeader set X-Forwarded-Proto "https"
+        RequestHeader set X-Forwarded-Port "443"
+    </Location>
+    
+    # Allow streaming responses for Ollama
+    SetEnv proxy-sendchunked 1
+    SetEnv proxy-sendcl 0
+    
     # Frontend Next.js Server
     ProxyPass /api !
     ProxyPass / http://localhost:3001/

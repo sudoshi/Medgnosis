@@ -41,6 +41,16 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Get the Ollama API URL based on environment
+  const getOllamaApiUrl = () => {
+    // In production (Apache2), use the relative URL that will be proxied
+    if (process.env.NODE_ENV === 'production') {
+      return '/ollama/api/generate';
+    }
+    // In development, use the direct URL
+    return 'http://localhost:11434/api/generate';
+  };
+
   const handleMessage = async (message: string) => {
     if (!message.trim()) return;
 
@@ -63,7 +73,10 @@ export function AbbyModal({ isOpen, onClose, setIsActive }: AbbyModalProps) {
 
       // Make a direct fetch request to Ollama API
       console.log("Making request to Ollama API");
-      const res = await fetch('http://localhost:11434/api/generate', {
+      const ollamaApiUrl = getOllamaApiUrl();
+      console.log("Using Ollama API URL:", ollamaApiUrl);
+      
+      const res = await fetch(ollamaApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -160,3 +160,10 @@ For detailed technical documentation, please refer to:
 - [EDW Schema Guide](docs/edw-schema.md)
 - [Star Schema Guide](docs/star-schema.md)
 - [ETL Documentation](docs/etl-processes.md)
+- [Ollama Integration](docs/ollama-integration.md)
+
+## AI Integration
+
+Medgnosis includes integration with Ollama, an open-source platform for running large language models locally. This integration powers the Abby chat interface, allowing users to interact with the application using natural language.
+
+For more information, see the [Ollama Integration documentation](docs/ollama-integration.md).

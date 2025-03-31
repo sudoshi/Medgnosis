@@ -108,6 +108,9 @@ export class OllamaService {
           const stream = new ReadableStream({
             async start(controller) {
               console.log('Stream start called, getting reader...');
+              if (!res.body) {
+                throw new Error('Response body is null');
+              }
               const reader = res.body.getReader();
               console.log('Got reader:', reader);
               const textDecoder = new TextDecoder();
