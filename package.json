@@ -1,9 +1,38 @@
 {
-  "dependencies": {
-    "supports-color": "^8.1.1",
-    "typescript": "^4.9.5"
+  "name": "medgnosis",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:migrate": "turbo run db:migrate --filter=@medgnosis/db",
+    "db:seed": "turbo run db:seed --filter=@medgnosis/db",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,sql}\"",
+    "demo:infra": "docker compose -f docker-compose.demo.yml up -d",
+    "demo:infra:stop": "docker compose -f docker-compose.demo.yml down",
+    "demo:infra:reset": "docker compose -f docker-compose.demo.yml down -v",
+    "demo:migrate": "turbo run db:migrate --filter=@medgnosis/db",
+    "demo:seed": "turbo run db:seed --filter=@medgnosis/db",
+    "demo:setup": "npm run demo:migrate && npm run demo:seed",
+    "demo:api": "npm run dev --workspace=apps/api",
+    "demo:web": "npm run dev --workspace=apps/web"
   },
   "devDependencies": {
-    "prettier": "^3.4.2"
-  }
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "prettier": "^3.4.2",
+    "@types/node": "^22.10.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@10.9.2"
 }

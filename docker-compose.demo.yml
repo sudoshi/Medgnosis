@@ -1,0 +1,57 @@
+# =============================================================================
+# Medgnosis — Demo Infrastructure
+# Usage: npm run demo:infra
+#
+# Services:
+#   postgres  — PostgreSQL 15 on :5432
+#   redis     — Redis 7 on :6379  (BullMQ + WebSocket pub/sub)
+#   mailhog   — MailHog SMTP :1025 / Web UI :8025 (captures outgoing email)
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: medgnosis-demo-postgres
+    environment:
+      POSTGRES_DB: medgnosis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: demosecret
+    ports:
+      - '5432:5432'
+    volumes:
+      - medgnosis-demo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d medgnosis']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: medgnosis-demo-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - medgnosis-demo-redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: medgnosis-demo-mailhog
+    ports:
+      - '1025:1025'   # SMTP
+      - '8025:8025'   # Web UI
+    restart: unless-stopped
+
+volumes:
+  medgnosis-demo-pgdata:
+    name: medgnosis-demo-pgdata
+  medgnosis-demo-redisdata:
+    name: medgnosis-demo-redisdata

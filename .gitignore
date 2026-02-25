@@ -7,16 +7,22 @@ vendor/
 .env.local
 .env.development.local
 .env.test.local
-# Keep production env files for deployment
+# Keep production and demo env files for deployment
 !.env.production
+!.env.demo
+!.env.example
 
 # Build output
-/frontend/.next
-/frontend/build
-/frontend/dist
-/frontend/out
+dist/
+.next/
+build/
+out/
+coverage/
 /backend/public/build
 /backend/storage/*.key
+
+# Turbo
+.turbo
 
 # IDE files
 .idea/
@@ -42,3 +48,6 @@ Thumbs.db
 /backend/storage/phm/*.sql
 /backend/storage/phm/exports/*
 /backend/storage/phm/imports/*
+
+# Docker
+docker-compose.override.yml

@@ -1,0 +1,29 @@
+{
+  "name": "@medgnosis/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "db:migrate": "node --import tsx/esm src/migrate.ts",
+    "db:seed": "node --import tsx/esm src/seed.ts",
+    "db:seed-demo": "node --import tsx/esm src/seed-demo.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.5",
+    "@medgnosis/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "tsx": "^4.19.2"
+  }
+}

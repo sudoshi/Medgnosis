@@ -1,169 +1,251 @@
-# Population Health Management (PHM) Database Foundation
+# Medgnosis
 
-A comprehensive healthcare data platform combining enterprise data management with analytical capabilities, designed to support population health initiatives for medium to large healthcare organizations.
+Population health management platform for healthcare organizations. Tracks patient outcomes, closes care gaps, calculates eCQMs, and supports value-based care through risk stratification, cohort analysis, and quality reporting.
 
-## Overview
-
-This project implements a hybrid data architecture that merges the reliability of Inmon's Enterprise Data Warehouse (EDW) approach with the analytical power of Kimball's dimensional modeling. The foundation supports both operational healthcare data management and sophisticated population health analytics.
-
-### Core Capabilities
-
-The platform enables healthcare organizations to:
-
-- Track and analyze patient health outcomes across populations
-- Monitor and close care gaps systematically
-- Calculate and report electronic Clinical Quality Measures (eCQMs)
-- Support value-based care initiatives
-- Enable risk stratification and patient cohort analysis
-- Maintain comprehensive patient and provider histories
-- Generate regulatory and quality improvement reports
+Built as a TypeScript monorepo: **Fastify API + Vite/React SPA + PostgreSQL + Redis**.
 
 ## Architecture
 
-Our architecture follows a two-phase approach that separates operational data storage from analytical processing:
+```
+apps/
+  api/       Fastify 5 REST API + WebSocket      :3001
+  web/       Vite 6 + React 19 SPA               :5173
 
-### Phase 1: Enterprise Data Warehouse (3NF)
+packages/
+  shared/    Types, Zod schemas, constants        @medgnosis/shared
+  db/        Postgres client, migrations, seeds   @medgnosis/db
+```
 
-The EDW serves as the system of record, implemented in Third Normal Form (3NF) for data integrity and operational efficiency. Key components include:
+### Data Layer
 
-- **Core Entities**
-  - Patient demographics and history
-  - Provider and organization hierarchies
-  - Address and location management
-  
-- **Clinical Data**
-  - Encounters and visits
-  - Diagnoses (ICD-10, SNOMED)
-  - Procedures (CPT, HCPCS)
-  - Observations and lab results (LOINC)
-  - Medications and prescriptions (RxNorm, NDC)
-  
-- **Supporting Data**
-  - Insurance and coverage information
-  - Care gap tracking
-  - Social Determinants of Health (SDOH)
-  - Patient attribution and program enrollment
+Medgnosis uses a hybrid data warehouse combining Inmon (3NF) and Kimball (star schema) architectures:
 
-### Phase 2: Analytics Star Schema
+- **Enterprise Data Warehouse** (`phm_edw`) — 14 normalized tables for operational data (patients, encounters, conditions, observations, medications, procedures, labs, vitals, immunizations, allergies, care teams, care plans)
+- **Analytics Star Schema** (`phm_star`) — 15 dimension + fact tables optimized for reporting (encounters, conditions, medications, labs, vitals, measure results, care gaps)
+- **ETL Pipeline** — Stored procedures for Synthea-to-EDW and EDW-to-Star transformation
+- **48 eCQM Definitions** — CMS quality measures (CMS2 through CMS951) with SQL-based population logic
 
-The dimensional model optimizes for analytical queries and reporting:
+### API
 
-- **Fact Tables**
-  - Encounters (visits and admissions)
-  - Diagnoses (with support for both acute and chronic conditions)
-  - Procedures performed
-  - Medication orders
-  - Clinical observations
-  - Care gaps
-  - Quality measure results
+Fastify 5 with plugin architecture, JWT auth, and role-based access control.
 
-- **Dimension Tables**
-  - Date (with fiscal period support)
-  - Patient (Type 2 SCD)
-  - Provider (Type 2 SCD)
-  - Organization (Type 2 SCD)
-  - Condition (ICD-10/SNOMED)
-  - Procedure (CPT/HCPCS)
-  - Medication
-  - Quality Measures
+| Route | Description |
+|-------|-------------|
+| `/health` | Health check (no auth) |
+| `/auth` | Login, logout, refresh, MFA setup/verify |
+| `/patients` | CRUD, risk scores, care gaps, encounters, observations, conditions, medications |
+| `/dashboard` | Aggregated population metrics |
+| `/measures` | eCQM definitions, results, cohorts |
+| `/care-gaps` | Gap management, prioritization, status updates |
+| `/alerts` | Clinical alerts with real-time WebSocket delivery |
+| `/insights` | AI-powered analysis (consent-gated, HIPAA-compliant) |
+| `/search` | Full-text patient search (pg_trgm) |
+| `/fhir` | FHIR R4 endpoints (Patient, Condition, Observation, MedicationRequest) |
+| `/admin` | User management, OMOP export, audit log, analytics |
 
-## Technical Implementation
+### Background Workers (BullMQ)
 
-### Database Requirements
+| Worker | Schedule | Description |
+|--------|----------|-------------|
+| Rules Engine | On data change | Evaluates clinical rules, fires alerts via WebSocket |
+| Measure Calculator | Nightly | Recalculates all active eCQMs against EDW |
+| AI Insights | Weekly | Generates patient summaries via LLM |
+| ETL Worker | Configurable | Runs Synthea-to-EDW-to-Star pipeline |
+| Nightly Scheduler | Cron | Dispatches recurring jobs |
 
-- PostgreSQL 12+ (primary implementation)
-- Minimum storage allocation for 1.5M patient records
-- Support for concurrent analytical queries
-- Partitioning capability for large fact tables
+### Frontend
 
-### ETL Framework
+Vite 6 + React 19 SPA with React Router 7, TanStack React Query, and Zustand state management.
 
-The system includes a robust ETL framework that:
+**Pages:** Login, Dashboard, Patients, Patient Detail, Measures, Care Lists, Alerts, Settings, 404
 
-- Refreshes dimensional data using SCD Type 2 for tracking historical changes
-- Supports both full and incremental loading patterns
-- Implements slowly changing dimension (SCD) management
-- Maintains data lineage and audit trails
-- Executes 8 times daily for near-real-time analytics
+**Key features:**
+- Real-time alert feed via WebSocket
+- Command palette search (Ctrl+K)
+- Keyboard navigation (Alt+1-5)
+- Dark/light/system theme
+- TipTap clinical editor (Super Note)
 
-### Performance Optimizations
+## Prerequisites
 
-- Implemented table partitioning for large fact tables
-- Designed efficient indexing strategies
-- Optimized SCD Type 2 processing for dimension updates
-- Supports both full refresh and incremental loading patterns
-- Includes query optimization for common analytical patterns
+- **Node.js** >= 20
+- **Docker** (for PostgreSQL + Redis + MailHog)
 
-### Data Security
+## Quick Start
 
-- Role-based access control (RBAC)
-- PHI encryption at rest
-- Audit logging of data access and changes
-- HIPAA-compliant data handling procedures
+```bash
+# 1. Install dependencies
+npm install
 
-## Getting Started
+# 2. Start infrastructure (Postgres 15, Redis 7, MailHog)
+npm run demo:infra
 
-1. **Database Setup**
-   ```sql
-   -- Create schemas
-   CREATE SCHEMA phm_edw;
-   CREATE SCHEMA phm_star;
-   ```
+# 3. Copy environment config
+cp .env.example .env
 
-2. **Create EDW Tables**
-   - Execute `phm-edw-ddl.sql` to create the 3NF structure
-   - Review and configure security settings
+# 4. Run database migrations and seed
+npm run demo:setup
 
-3. **Create Star Schema**
-   - Execute `phm-kimbal-ddl.sql` to create dimensional tables
-   - Configure table partitioning if needed
+# 5. Start everything (API + Web)
+npm run dev
+```
 
-4. **Initialize ETL Process**
-   - Configure ETL parameters in `ETL_Refresh_Full.sql`
-   - Set up scheduling for 8x daily refresh
-   - Test incremental load patterns
+Open http://localhost:5173 and log in with a test account.
 
-## Maintenance and Operations
+### Test Accounts
 
-### Regular Maintenance Tasks
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@medgnosis.com | admin123 |
+| Provider | provider@medgnosis.com | provider123 |
+| Analyst | analyst@medgnosis.com | analyst123 |
 
-- Monitor ETL execution logs
-- Review table statistics and update as needed
-- Manage table partitions
-- Archive historical data as needed
+### Individual Services
 
-### Performance Monitoring
+```bash
+npm run demo:api          # API only (localhost:3001)
+npm run demo:web          # Web only (localhost:5173)
+```
 
-- Track ETL execution times
-- Monitor fact table growth
-- Analyze query performance patterns
-- Review and update statistics regularly
+### Infrastructure Management
 
-## Contributing
+```bash
+npm run demo:infra        # Start Postgres + Redis + MailHog
+npm run demo:infra:stop   # Stop containers (data preserved)
+npm run demo:infra:reset  # Stop containers and delete volumes
+```
 
-We welcome contributions to improve the PHM Database Foundation. Please:
+## Development
 
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request with detailed description
-4. Ensure all existing tests pass
+All commands run across the monorepo via Turborepo:
 
-## License
+```bash
+npm run dev               # Start all apps in watch mode
+npm run build             # Build all packages and apps
+npm run typecheck         # TypeScript validation
+npm run lint              # ESLint
+npm run test              # Vitest unit tests
+npm run format            # Prettier formatting
+```
 
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
+### Database
 
-## Documentation
+```bash
+npm run db:migrate        # Run pending migrations
+npm run db:seed           # Seed base data (users, orgs)
+```
 
-For detailed technical documentation, please refer to:
+### Package-specific commands
 
-- [Architecture Overview](docs/architecture.md)
-- [EDW Schema Guide](docs/edw-schema.md)
-- [Star Schema Guide](docs/star-schema.md)
-- [ETL Documentation](docs/etl-processes.md)
-- [Ollama Integration](docs/ollama-integration.md)
+```bash
+# API
+npm run dev --workspace=apps/api
+npm run dev:worker --workspace=apps/api    # BullMQ workers
+
+# Web
+npm run dev --workspace=apps/web
+npm run test:e2e --workspace=apps/web      # Playwright E2E tests
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env`. Key settings:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgres://postgres:demosecret@localhost:5432/medgnosis` | PostgreSQL connection |
+| `REDIS_URL` | `redis://localhost:6379` | Redis for BullMQ + WebSocket pub/sub |
+| `JWT_SECRET` | — | Secret for signing JWTs (change in production) |
+| `AI_PROVIDER` | `ollama` | `ollama` (local) or `anthropic` (cloud, requires BAA) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `ANTHROPIC_API_KEY` | — | Required if `AI_PROVIDER=anthropic` |
+| `SENTRY_DSN` | — | Error tracking (optional) |
+
+See [.env.example](.env.example) for the full list.
 
 ## AI Integration
 
-Medgnosis includes integration with Ollama, an open-source platform for running large language models locally. This integration powers the Abby chat interface, allowing users to interact with the application using natural language.
+Medgnosis supports two LLM providers for clinical insights:
 
-For more information, see the [Ollama Integration documentation](docs/ollama-integration.md).
+- **Ollama** (default) — Local inference, no BAA required. Install [Ollama](https://ollama.com) and pull a model (e.g., `ollama pull gemma:7b`).
+- **Anthropic Claude** — Cloud inference via the Anthropic API. Requires a signed BAA for PHI processing.
+
+AI features are consent-gated: users must grant consent before the `/insights` endpoints return results. All prompts include a HIPAA preamble. Interactions are logged to `ai_interactions` for cost tracking and audit.
+
+## Interoperability
+
+### FHIR R4
+
+The `/fhir` routes expose patient data as FHIR R4 resources:
+- `GET /fhir/Patient` — Patient resources
+- `GET /fhir/Condition` — Condition resources (SNOMED CT)
+- `GET /fhir/Observation` — Observation resources (LOINC)
+- `GET /fhir/MedicationRequest` — Medication resources (RxNorm)
+- `GET /fhir/Patient/:id/$everything` — Full patient bundle
+
+### OMOP CDM
+
+Admin endpoints export data in OMOP Common Data Model format for research:
+- `GET /admin/omop/persons` — OMOP person records
+- `GET /admin/omop/conditions` — Condition occurrences
+- `GET /admin/omop/measurements` — Measurement records
+- `POST /admin/omop/cohort` — De-identified cohort generation
+
+## Security
+
+- JWT authentication with access + refresh tokens
+- Role-based access control (provider, analyst, admin, care_coordinator)
+- MFA support (TOTP)
+- Helmet (HSTS, no-sniff, frameguard, referrer policy)
+- Rate limiting (200 req/min global)
+- Audit trail on all mutations (resource type, user, IP, redacted payload)
+- PHI redaction in production logs (Pino + Sentry scrubbing)
+- AI consent gating
+
+## Testing
+
+```bash
+npm run test                                    # Unit tests (Vitest)
+npm run test:e2e --workspace=apps/web           # E2E tests (Playwright)
+npm run build && npm run typecheck && npm run lint   # Full CI check
+```
+
+CI runs automatically on push/PR to `main` via GitHub Actions with Postgres and Redis service containers.
+
+## Project Structure
+
+```
+Medgnosis/
+├── apps/
+│   ├── api/                    Fastify 5 API (port 3001)
+│   │   └── src/
+│   │       ├── plugins/        Auth, error handler, WebSocket
+│   │       ├── middleware/      AI consent gate, audit trail
+│   │       ├── routes/         10 route modules
+│   │       ├── services/       Risk scoring, LLM, FHIR, OMOP, measures, cohorts
+│   │       └── workers/        BullMQ background jobs
+│   └── web/                    Vite + React SPA (port 5173)
+│       └── src/
+│           ├── pages/          9 page components
+│           ├── components/     AuthGuard, AppShell, GlobalSearch
+│           ├── hooks/          WebSocket, keyboard shortcuts, theme, API queries
+│           ├── stores/         Zustand (auth, theme, UI)
+│           └── services/       Typed API client
+├── packages/
+│   ├── shared/                 Types, Zod schemas, constants
+│   └── db/                     Postgres client, 5 SQL migrations, seeds
+├── docs/
+│   └── DEVLOG.md               Development log and roadmap
+├── archive/                    Legacy Laravel + Next.js code (reference)
+├── docker-compose.demo.yml     Dev infrastructure
+├── turbo.json                  Task pipeline
+└── .env.example                Environment template
+```
+
+## Documentation
+
+- [Development Log & Roadmap](docs/DEVLOG.md) — Detailed accomplishments, known issues, and next phases
+
+## License
+
+Apache License 2.0

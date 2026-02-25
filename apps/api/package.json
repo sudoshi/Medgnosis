@@ -1,0 +1,48 @@
+{
+  "name": "@medgnosis/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../../.env --import tsx/esm --watch src/server.ts",
+    "dev:worker": "node --env-file=../../.env --import tsx/esm --watch src/worker.ts",
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/multipart": "^9.0.3",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/swagger": "^9.7.0",
+    "@fastify/swagger-ui": "^5.2.5",
+    "@fastify/websocket": "^11.2.0",
+    "@medgnosis/db": "*",
+    "@medgnosis/shared": "*",
+    "@sentry/node": "^8.45.0",
+    "bullmq": "^5.7.10",
+    "fastify": "^5.1.0",
+    "fastify-plugin": "^4.5.1",
+    "ioredis": "^5.3.2",
+    "openai": "^4.77.0",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "resend": "^6.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/ws": "^8.18.1",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
