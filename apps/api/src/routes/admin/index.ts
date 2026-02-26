@@ -112,10 +112,10 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get('/analytics/overview', async () => {
     const [patients, conditions, encounters, measures] = await Promise.all([
       sql`SELECT COUNT(*) as count FROM phm_edw.patient`,
-      sql`SELECT COUNT(*) as count FROM phm_edw.condition WHERE status = 'active'`,
+      sql`SELECT COUNT(*) as count FROM phm_edw.condition_diagnosis WHERE diagnosis_status = 'active'`,
       sql`
         SELECT COUNT(*) as count FROM phm_edw.encounter
-        WHERE encounter_date >= NOW() - INTERVAL '30 days'
+        WHERE encounter_datetime >= NOW() - INTERVAL '30 days'
       `,
       sql`SELECT COUNT(DISTINCT measure_id) as count FROM phm_star.fact_measure_result`,
     ]);

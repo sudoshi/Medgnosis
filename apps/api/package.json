@@ -27,6 +27,7 @@
     "@medgnosis/db": "*",
     "@medgnosis/shared": "*",
     "@sentry/node": "^8.45.0",
+    "bcrypt": "^6.0.0",
     "bullmq": "^5.7.10",
     "fastify": "^5.1.0",
     "fastify-plugin": "^4.5.1",
@@ -37,10 +38,11 @@
     "resend": "^6.9.2"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^22.10.1",
+    "@types/supertest": "^6.0.2",
     "@types/ws": "^8.18.1",
     "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

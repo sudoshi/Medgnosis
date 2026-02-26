@@ -1,269 +1,423 @@
 // =============================================================================
-// Medgnosis Web — Quality Measures page
+// Medgnosis Web — Quality Measures  (Clinical Obsidian v2)
+// 2-column: measure list left, detail panel right
 // =============================================================================
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, BarChart3, Target, TrendingUp } from 'lucide-react';
+import {
+  Search,
+  BarChart3,
+  Users,
+  CheckCircle2,
+  ChevronRight,
+} from 'lucide-react';
 import { api } from '../services/api.js';
 
-interface Measure {
-  measure_id: string;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface MeasureRow {
+  id: number;
   title: string;
+  code: string;
   description: string;
-  domain: string;
-  type: string;
-  cms_id: string;
-  eligible_count: number;
-  compliant_count: number;
-  performance: number;
-  target: number;
+  active_ind: string;
 }
 
-interface MeasuresResponse {
-  measures: Measure[];
-  pagination: { page: number; limit: number; total: number; pages: number };
+interface MeasureDetail extends MeasureRow {
+  population: {
+    total_patients: number;
+    compliant: number;
+    eligible: number;
+  };
 }
+
+// ─── Arc Gauge ────────────────────────────────────────────────────────────────
+// Semi-circle SVG gauge — 9 o'clock to 3 o'clock, fills clockwise
+
+function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
+  const r = 36;
+  const C = 2 * Math.PI * r; // ≈ 226
+  const pct = Math.min(Math.max(value / max, 0), 1);
+
+  const gaugeColor =
+    pct >= 0.75
+      ? '#10C981' // emerald
+      : pct >= 0.50
+        ? '#F5A623' // amber
+        : '#E8394A'; // crimson
+
+  return (
+    <div className="relative" style={{ width: 140, height: 90 }}>
+      <svg viewBox="0 0 100 65" width="140" height="90" aria-hidden="true">
+        {/* Track — top semi-circle */}
+        <circle
+          cx="50" cy="60" r={r}
+          fill="none"
+          stroke="#172239"
+          strokeWidth="9"
+          strokeLinecap="butt"
+          strokeDasharray={`${C / 2} ${C / 2}`}
+          transform="rotate(-180 50 60)"
+        />
+        {/* Value arc */}
+        {pct > 0.01 && (
+          <circle
+            cx="50" cy="60" r={r}
+            fill="none"
+            stroke={gaugeColor}
+            strokeWidth="9"
+            strokeLinecap="round"
+            strokeDasharray={`${pct * (C / 2) - 3} ${C}`}
+            transform="rotate(-180 50 60)"
+          />
+        )}
+      </svg>
+
+      {/* Center overlay — score + label */}
+      <div className="absolute inset-0 flex items-end justify-center pb-1">
+        <div className="text-center leading-none">
+          <p
+            className="font-data text-2xl font-medium tabular-nums leading-none"
+            style={{ color: gaugeColor }}
+          >
+            {Math.round(pct * 100)}
+          </p>
+          <p className="data-label mt-0.5">% rate</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MeasureDetailPanel ───────────────────────────────────────────────────────
+
+function MeasureDetailPanel({ measureId }: { measureId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['measure', measureId],
+    queryFn: () => api.get<MeasureDetail>(`/measures/${measureId}`),
+    enabled: !!measureId,
+  });
+
+  const detail = data?.data;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-fade-up">
+        <div className="space-y-2">
+          <div className="skeleton h-3 w-20 rounded" />
+          <div className="skeleton h-7 w-3/4 rounded" />
+          <div className="skeleton h-3 w-full rounded" />
+          <div className="skeleton h-3 w-4/5 rounded" />
+        </div>
+        <div className="surface p-0 overflow-hidden">
+          <div className="flex divide-x divide-edge/25">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex-1 px-4 py-3 space-y-1.5">
+                <div className="skeleton h-6 w-16 rounded" />
+                <div className="skeleton h-2.5 w-20 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="surface flex items-center justify-center py-8">
+          <div className="skeleton w-[140px] h-[90px] rounded-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <div className="empty-state py-20">
+        <p className="empty-state-title">Measure not found</p>
+      </div>
+    );
+  }
+
+  const { eligible, compliant, total_patients } = detail.population ?? {
+    eligible: 0, compliant: 0, total_patients: 0,
+  };
+  const rate = eligible > 0 ? Math.round((compliant / eligible) * 100) : 0;
+  const rateClass = rate >= 75 ? 'text-emerald' : rate >= 50 ? 'text-amber' : 'text-crimson';
+
+  return (
+    <div className="space-y-5 animate-fade-up">
+
+      {/* Measure header */}
+      <div>
+        <p className="font-data text-xs text-teal tabular-nums mb-1">{detail.code}</p>
+        <h2 className="text-xl font-semibold text-bright leading-tight">{detail.title}</h2>
+        {detail.description && (
+          <p className="text-sm text-dim mt-2 leading-relaxed">{detail.description}</p>
+        )}
+      </div>
+
+      {/* Stats strip */}
+      <div className="surface p-0 overflow-hidden">
+        <div className="flex items-stretch divide-x divide-edge/25">
+          <div className="flex-1 px-4 py-3 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <BarChart3 size={13} strokeWidth={1.5} className={rateClass} aria-hidden="true" />
+              <p className="data-label">Performance</p>
+            </div>
+            <p className={`font-data text-data-lg tabular-nums leading-none ${rateClass}`}>
+              {rate}%
+            </p>
+          </div>
+          <div className="flex-1 px-4 py-3 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <Users size={13} strokeWidth={1.5} className="text-dim" aria-hidden="true" />
+              <p className="data-label">Eligible</p>
+            </div>
+            <p className="font-data text-data-lg text-bright tabular-nums leading-none">
+              {eligible.toLocaleString()}
+            </p>
+          </div>
+          <div className="flex-1 px-4 py-3 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <CheckCircle2 size={13} strokeWidth={1.5} className="text-emerald" aria-hidden="true" />
+              <p className="data-label">Compliant</p>
+            </div>
+            <p className="font-data text-data-lg text-bright tabular-nums leading-none">
+              {compliant.toLocaleString()}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Performance gauge */}
+      <div className="surface">
+        <h3 className="text-xs font-semibold text-bright mb-4">Compliance Rate</h3>
+        <div className="flex items-center gap-8">
+          <ArcGauge value={rate} max={100} />
+
+          <div className="flex-1 space-y-3">
+            {/* Eligible bar */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-dim">Eligible patients</span>
+                <span className="font-data text-xs text-bright tabular-nums">
+                  {eligible.toLocaleString()}
+                </span>
+              </div>
+              <div className="progress-track progress-track-md">
+                <div
+                  className="progress-teal"
+                  style={{
+                    '--bar-width': total_patients > 0
+                      ? `${Math.round((eligible / total_patients) * 100)}%`
+                      : '0%',
+                    '--bar-delay': '0ms',
+                  } as React.CSSProperties}
+                />
+              </div>
+            </div>
+
+            {/* Compliant bar */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-dim">Compliant patients</span>
+                <span className="font-data text-xs text-bright tabular-nums">
+                  {compliant.toLocaleString()}
+                </span>
+              </div>
+              <div className="progress-track progress-track-md">
+                <div
+                  className="progress-emerald"
+                  style={{
+                    '--bar-width': eligible > 0
+                      ? `${Math.round((compliant / eligible) * 100)}%`
+                      : '0%',
+                    '--bar-delay': '120ms',
+                  } as React.CSSProperties}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Population totals */}
+      <div className="surface">
+        <h3 className="text-xs font-semibold text-bright mb-3">Population Coverage</h3>
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-sm text-dim">Total patients</span>
+          <span className="font-data text-sm text-bright tabular-nums">
+            {total_patients.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 border-t border-edge/15">
+          <span className="text-sm text-dim">Eligible for measure</span>
+          <span className="font-data text-sm text-teal tabular-nums">
+            {eligible.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 border-t border-edge/15">
+          <span className="text-sm text-dim">In compliance</span>
+          <span className="font-data text-sm text-emerald tabular-nums">
+            {compliant.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 border-t border-edge/15">
+          <span className="text-sm text-dim">Not compliant</span>
+          <span className="font-data text-sm text-amber tabular-nums">
+            {(eligible - compliant).toLocaleString()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MeasuresPage ─────────────────────────────────────────────────────────────
 
 export function MeasuresPage() {
-  const [search, setSearch] = useState('');
-  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
-  const [selectedMeasure, setSelectedMeasure] = useState<Measure | null>(null);
+  const [search, setSearch]               = useState('');
+  const [selectedId, setSelectedId]       = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['measures'],
-    queryFn: () => api.get<MeasuresResponse>('/measures?limit=100'),
+    queryFn: () => api.get<MeasureRow[]>('/measures'),
   });
 
-  const measures = data?.data?.measures ?? [];
+  const measures = data?.data ?? [];
 
-  const filteredMeasures = useMemo(() => {
-    return measures.filter((m) => {
-      if (selectedDomain && m.domain !== selectedDomain) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        return (
-          m.cms_id.toLowerCase().includes(s) ||
-          m.title.toLowerCase().includes(s) ||
-          m.description.toLowerCase().includes(s)
-        );
-      }
-      return true;
-    });
-  }, [measures, search, selectedDomain]);
-
-  const domains = useMemo(() => {
-    const counts: Record<string, number> = {};
-    measures.forEach((m) => {
-      counts[m.domain] = (counts[m.domain] || 0) + 1;
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [measures]);
+  const filtered = useMemo(() => {
+    if (!search.trim()) return measures;
+    const s = search.toLowerCase();
+    return measures.filter(
+      (m) =>
+        m.code.toLowerCase().includes(s) ||
+        m.title.toLowerCase().includes(s) ||
+        m.description?.toLowerCase().includes(s),
+    );
+  }, [measures, search]);
 
   return (
-    <div className="flex h-[calc(100vh-7rem)]">
-      {/* Left Sidebar — Filters */}
-      <div className="w-72 border-r border-light-border dark:border-dark-border p-5 overflow-y-auto scrollbar-thin">
-        <h2 className="text-lg font-semibold mb-4 text-light-text-primary dark:text-dark-text-primary">
-          Filters
-        </h2>
+    <div className="flex h-[calc(100vh-7.5rem)] -m-6 overflow-hidden">
 
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-2">
-              Domain
-            </h3>
-            <div className="space-y-1">
-              <button
-                onClick={() => setSelectedDomain(null)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  !selectedDomain
-                    ? 'bg-accent-primary/10 text-accent-primary font-medium'
-                    : 'hover:bg-light-secondary dark:hover:bg-dark-secondary'
-                }`}
-              >
-                All ({measures.length})
-              </button>
-              {domains.map(([domain, count]) => (
-                <button
-                  key={domain}
-                  onClick={() => setSelectedDomain(domain)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    selectedDomain === domain
-                      ? 'bg-accent-primary/10 text-accent-primary font-medium'
-                      : 'hover:bg-light-secondary dark:hover:bg-dark-secondary'
-                  }`}
-                >
-                  {domain} ({count})
-                </button>
-              ))}
-            </div>
+      {/* ── Measure list ─────────────────────────────────────────────── */}
+      <div className="w-[340px] flex-shrink-0 flex flex-col border-r border-edge/35 bg-s0">
+
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-edge/25 flex-shrink-0">
+          <h1 className="text-base font-semibold text-bright">Quality Measures</h1>
+          <p className="text-xs text-dim mt-0.5">
+            {isLoading ? '—' : `${measures.length} measures`}
+          </p>
+          <div className="relative mt-3">
+            <Search
+              size={13}
+              strokeWidth={1.5}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              placeholder="Search by code or name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field pl-8 w-full text-sm"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Search measures"
+            />
           </div>
         </div>
-      </div>
 
-      {/* Middle — Measure List */}
-      <div className="w-96 border-r border-light-border dark:border-dark-border p-5 overflow-y-auto scrollbar-thin">
-        <h1 className="text-xl font-semibold text-light-text-primary dark:text-dark-text-primary">
-          Quality Measures
-        </h1>
-        <p className="text-light-text-secondary dark:text-dark-text-secondary text-sm mt-1 mb-4">
-          {filteredMeasures.length} measures
-        </p>
+        {/* Count row */}
+        {search && (
+          <div className="px-5 py-2 border-b border-edge/20 flex-shrink-0">
+            <p className="text-xs text-dim">
+              <span className="font-data text-bright tabular-nums">{filtered.length}</span>
+              {' '}of {measures.length} measures
+            </p>
+          </div>
+        )}
 
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-light-text-secondary dark:text-dark-text-secondary" />
-          <input
-            type="text"
-            placeholder="Search measures..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-light-border dark:border-dark-border bg-light-primary dark:bg-dark-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-colors"
-          />
-        </div>
-
-        <div className="space-y-2">
-          {isLoading
-            ? Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-20 bg-dark-secondary/10 rounded-lg animate-pulse" />
-              ))
-            : filteredMeasures.map((m) => (
-                <button
-                  key={m.measure_id}
-                  onClick={() => setSelectedMeasure(m)}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                    selectedMeasure?.measure_id === m.measure_id
-                      ? 'border-accent-primary bg-accent-primary/5'
-                      : 'border-light-border/50 dark:border-dark-border/50 hover:bg-light-secondary/50 dark:hover:bg-dark-secondary/50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-accent-primary font-medium">{m.cms_id}</p>
-                      <p className="text-sm font-medium mt-0.5 truncate">{m.title}</p>
-                    </div>
-                    <span
-                      className={`text-sm font-semibold ml-2 ${
-                        m.performance >= (m.target || 75)
-                          ? 'text-accent-success'
-                          : m.performance >= (m.target || 75) * 0.75
-                            ? 'text-accent-warning'
-                            : 'text-accent-error'
-                      }`}
-                    >
-                      {m.performance}%
-                    </span>
-                  </div>
-                  <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1 capitalize">
-                    {m.domain}
-                  </p>
-                </button>
+        {/* List */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {isLoading ? (
+            <div className="p-3 space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="rounded-card px-3 py-3 bg-s1 space-y-1.5">
+                  <div className="skeleton h-2.5 w-16 rounded" />
+                  <div className="skeleton h-3 w-4/5 rounded" />
+                </div>
               ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-12 px-5 text-center">
+              <p className="text-sm text-dim">No measures found</p>
+              {search && (
+                <p className="text-xs text-ghost mt-1">
+                  Try a different search term
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="p-3 space-y-1">
+              {filtered.map((m) => {
+                const isSelected = selectedId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedId(m.id)}
+                    className={[
+                      'w-full text-left rounded-card px-3 py-3',
+                      'border transition-colors duration-100',
+                      'group flex items-center gap-2',
+                      isSelected
+                        ? 'bg-s1 border-teal/30 shadow-teal-glow'
+                        : 'border-edge/20 hover:bg-s1 hover:border-edge/40',
+                    ].join(' ')}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={[
+                          'font-data text-xs tabular-nums font-medium leading-none',
+                          isSelected ? 'text-teal' : 'text-dim group-hover:text-teal transition-colors',
+                        ].join(' ')}
+                      >
+                        {m.code}
+                      </p>
+                      <p className="text-xs font-medium text-bright mt-1.5 leading-snug line-clamp-2">
+                        {m.title}
+                      </p>
+                    </div>
+                    <ChevronRight
+                      size={13}
+                      strokeWidth={1.5}
+                      className={[
+                        'flex-shrink-0 transition-colors',
+                        isSelected ? 'text-teal' : 'text-ghost group-hover:text-dim',
+                      ].join(' ')}
+                      aria-hidden="true"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right — Measure Details */}
-      <div className="flex-1 p-6 overflow-y-auto scrollbar-thin">
-        {selectedMeasure ? (
-          <div className="space-y-6">
-            <div>
-              <p className="text-sm text-accent-primary font-medium">
-                {selectedMeasure.cms_id}
-              </p>
-              <h2 className="text-2xl font-semibold mt-1">{selectedMeasure.title}</h2>
-              <p className="text-light-text-secondary dark:text-dark-text-secondary mt-2">
-                {selectedMeasure.description}
-              </p>
-            </div>
-
-            {/* Performance Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="panel-stat">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent-primary/10 p-2">
-                    <BarChart3 className="h-5 w-5 text-accent-primary" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                      Performance
-                    </p>
-                    <p className="text-xl font-semibold">{selectedMeasure.performance}%</p>
-                  </div>
-                </div>
-              </div>
-              <div className="panel-stat">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent-success/10 p-2">
-                    <Target className="h-5 w-5 text-accent-success" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                      Target
-                    </p>
-                    <p className="text-xl font-semibold">{selectedMeasure.target}%</p>
-                  </div>
-                </div>
-              </div>
-              <div className="panel-stat">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent-warning/10 p-2">
-                    <TrendingUp className="h-5 w-5 text-accent-warning" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                      Eligible
-                    </p>
-                    <p className="text-xl font-semibold">{selectedMeasure.eligible_count}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Performance Bar */}
-            <div className="panel-base">
-              <h3 className="font-semibold mb-3">Performance vs Target</h3>
-              <div className="h-4 rounded-full bg-dark-secondary/30 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    selectedMeasure.performance >= selectedMeasure.target
-                      ? 'bg-accent-success'
-                      : selectedMeasure.performance >= selectedMeasure.target * 0.75
-                        ? 'bg-accent-warning'
-                        : 'bg-accent-error'
-                  }`}
-                  style={{ width: `${Math.min(selectedMeasure.performance, 100)}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-2 text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                <span>0%</span>
-                <span>Target: {selectedMeasure.target}%</span>
-                <span>100%</span>
-              </div>
-            </div>
-
-            {/* Population */}
-            <div className="panel-base">
-              <h3 className="font-semibold mb-3">Population Analysis</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg bg-light-secondary/50 dark:bg-dark-secondary/50">
-                  <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                    Eligible
-                  </p>
-                  <p className="text-lg font-semibold">{selectedMeasure.eligible_count}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-light-secondary/50 dark:bg-dark-secondary/50">
-                  <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                    Compliant
-                  </p>
-                  <p className="text-lg font-semibold">{selectedMeasure.compliant_count}</p>
-                </div>
-              </div>
-            </div>
+      {/* ── Detail panel ─────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin bg-void">
+        {selectedId ? (
+          <div className="p-6">
+            <MeasureDetailPanel key={selectedId} measureId={selectedId} />
           </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-light-text-secondary dark:text-dark-text-secondary">
-            Select a measure to view details
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <div className="w-14 h-14 rounded-full bg-s1 flex items-center justify-center">
+              <BarChart3 size={24} strokeWidth={1.5} className="text-ghost" />
+            </div>
+            <p className="text-sm font-medium text-dim">Select a measure</p>
+            <p className="text-xs text-ghost">
+              Choose a measure from the list to view population analysis
+            </p>
           </div>
         )}
       </div>

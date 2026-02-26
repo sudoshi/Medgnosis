@@ -23,14 +23,14 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
         p.patient_id AS id,
         p.first_name,
         p.last_name,
-        p.medical_record_number AS mrn,
+        p.mrn,
         p.date_of_birth,
         similarity(p.first_name || ' ' || p.last_name, ${searchTerm}) AS relevance
       FROM phm_edw.patient p
       WHERE p.active_ind = 'Y'
         AND (
           (p.first_name || ' ' || p.last_name) ILIKE ${`%${searchTerm}%`}
-          OR p.medical_record_number ILIKE ${`%${searchTerm}%`}
+          OR p.mrn ILIKE ${`%${searchTerm}%`}
           OR similarity(p.first_name || ' ' || p.last_name, ${searchTerm}) > 0.3
         )
       ORDER BY relevance DESC, p.last_name ASC

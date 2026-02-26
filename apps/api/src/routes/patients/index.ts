@@ -5,7 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
-import { patientSearchSchema, patientCreateSchema, PAGINATION } from '@medgnosis/shared';
+import { patientSearchSchema, patientCreateSchema } from '@medgnosis/shared';
 
 export default async function patientRoutes(fastify: FastifyInstance): Promise<void> {
   // All patient routes require authentication
@@ -14,7 +14,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
   // GET /patients — List patients with search and pagination
   fastify.get('/', async (request, reply) => {
     const params = patientSearchSchema.parse(request.query);
-    const { search, page, per_page, sort_by, sort_order, risk_level } = params;
+    const { search, page, per_page, sort_by, sort_order, risk_level: _risk_level } = params;
     const offset = (page - 1) * per_page;
 
     // Build dynamic query
@@ -42,7 +42,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         p.patient_id AS id,
         p.first_name,
         p.last_name,
-        p.medical_record_number AS mrn,
+        p.mrn,
         p.date_of_birth,
         p.gender,
         p.active_ind
@@ -77,12 +77,12 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         p.patient_id AS id,
         p.first_name,
         p.last_name,
-        p.medical_record_number AS mrn,
+        p.mrn,
         p.date_of_birth,
         p.gender,
-        p.ssn_encrypted,
-        p.phone_encrypted,
-        p.email_encrypted,
+        p.ssn,
+        p.primary_phone,
+        p.email,
         p.active_ind
       FROM phm_edw.patient p
       WHERE p.patient_id = ${id}::int AND p.active_ind = 'Y'
@@ -99,39 +99,39 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     const [conditions, encounters, observations, careGaps] = await Promise.all([
       sql`
         SELECT cd.condition_diagnosis_id AS id, c.condition_code AS code,
-               c.condition_name AS name, cd.condition_status AS status,
-               cd.onset_date, cd.diagnosis_date, cd.active_ind
+               c.condition_name AS name, cd.diagnosis_status AS status,
+               cd.onset_date, cd.active_ind
         FROM phm_edw.condition_diagnosis cd
         JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
         WHERE cd.patient_id = ${id}::int AND cd.active_ind = 'Y'
-        ORDER BY cd.diagnosis_date DESC
+        ORDER BY cd.onset_date DESC
       `,
       sql`
-        SELECT e.encounter_id AS id, e.encounter_date AS date,
+        SELECT e.encounter_id AS id, e.encounter_datetime AS date,
                e.encounter_type AS type, e.encounter_reason AS reason,
                e.active_ind
         FROM phm_edw.encounter e
         WHERE e.patient_id = ${id}::int AND e.active_ind = 'Y'
-        ORDER BY e.encounter_date DESC
+        ORDER BY e.encounter_datetime DESC
         LIMIT 20
       `,
       sql`
-        SELECT o.observation_id AS id, o.observation_type AS name,
-               o.observation_value AS value, o.observation_unit AS unit,
-               o.observation_date AS date, o.active_ind
+        SELECT o.observation_id AS id, o.observation_code AS name,
+               COALESCE(o.value_numeric::text, o.value_text) AS value, o.units AS unit,
+               o.observation_datetime AS date, o.active_ind
         FROM phm_edw.observation o
         WHERE o.patient_id = ${id}::int AND o.active_ind = 'Y'
-        ORDER BY o.observation_date DESC
+        ORDER BY o.observation_datetime DESC
         LIMIT 50
       `,
       sql`
         SELECT cg.care_gap_id AS id, md.measure_name AS measure,
                cg.gap_status AS status, cg.identified_date,
-               cg.due_date, cg.active_ind
+               cg.resolved_date, cg.active_ind
         FROM phm_edw.care_gap cg
         LEFT JOIN phm_edw.measure_definition md ON md.measure_id = cg.measure_id
         WHERE cg.patient_id = ${id}::int AND cg.active_ind = 'Y'
-        ORDER BY cg.due_date ASC
+        ORDER BY cg.identified_date ASC
       `,
     ]);
 
@@ -167,14 +167,14 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
 
     const [patient] = await sql`
       INSERT INTO phm_edw.patient (
-        first_name, last_name, medical_record_number,
+        first_name, last_name, mrn,
         date_of_birth, gender, active_ind, created_date, updated_date
       )
       VALUES (
         ${data.first_name}, ${data.last_name}, ${data.mrn},
         ${data.date_of_birth}, ${data.gender}, 'Y', NOW(), NOW()
       )
-      RETURNING patient_id AS id, first_name, last_name, medical_record_number AS mrn
+      RETURNING patient_id AS id, first_name, last_name, mrn
     `;
 
     await request.auditLog('create', 'patient', String(patient.id));

@@ -50,13 +50,13 @@ export function mapConditionToFHIR(
 ): FHIRResource {
   return {
     resourceType: 'Condition',
-    id: String(row.condition_id),
+    id: String(row.condition_diagnosis_id),
     meta: { lastUpdated: new Date().toISOString() },
     clinicalStatus: {
       coding: [
         {
           system: 'http://terminology.hl7.org/CodeSystem/condition-clinical',
-          code: row.status === 'active' ? 'active' : 'resolved',
+          code: row.diagnosis_status === 'active' ? 'active' : 'resolved',
         },
       ],
     },
@@ -91,21 +91,21 @@ export function mapObservationToFHIR(
         {
           system: 'http://loinc.org',
           code: row.observation_code ?? '',
-          display: row.observation_type,
+          display: row.observation_desc,
         },
       ],
-      text: row.observation_type,
+      text: row.observation_desc,
     },
     subject: { reference: `Patient/${patientId}` },
-    effectiveDateTime: row.observation_date
-      ? new Date(row.observation_date as string).toISOString()
+    effectiveDateTime: row.observation_datetime
+      ? new Date(row.observation_datetime as string).toISOString()
       : undefined,
   };
 
   if (row.value_numeric != null) {
     resource.valueQuantity = {
       value: Number(row.value_numeric),
-      unit: row.unit ?? '',
+      unit: row.units ?? '',
       system: 'http://unitsofmeasure.org',
     };
   } else if (row.value_text) {
@@ -121,9 +121,9 @@ export function mapMedicationToFHIR(
 ): FHIRResource {
   return {
     resourceType: 'MedicationRequest',
-    id: String(row.medication_id),
+    id: String(row.medication_order_id),
     meta: { lastUpdated: new Date().toISOString() },
-    status: row.status === 'active' ? 'active' : 'stopped',
+    status: row.prescription_status === 'active' ? 'active' : 'stopped',
     intent: 'order',
     medicationCodeableConcept: {
       coding: [
@@ -136,8 +136,8 @@ export function mapMedicationToFHIR(
       text: row.medication_name,
     },
     subject: { reference: `Patient/${patientId}` },
-    authoredOn: row.start_date
-      ? new Date(row.start_date as string).toISOString()
+    authoredOn: row.start_datetime
+      ? new Date(row.start_datetime as string).toISOString()
       : undefined,
   };
 }

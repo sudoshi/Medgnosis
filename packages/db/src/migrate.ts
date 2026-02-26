@@ -53,9 +53,10 @@ async function applyMigration(name: string): Promise<void> {
     await tx.unsafe(content);
 
     // Record it
-    await tx`
-      INSERT INTO _migrations (name) VALUES (${name})
-    `;
+    await tx.unsafe(
+      `INSERT INTO _migrations (name) VALUES ($1)`,
+      [name],
+    );
   });
 
   const elapsed = Date.now() - start;

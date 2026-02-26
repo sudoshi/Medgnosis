@@ -81,7 +81,7 @@ async function evalConditions(patientId: string): Promise<RiskFactor> {
     SELECT COUNT(*)::int AS active_count
     FROM phm_edw.condition_diagnosis cd
     WHERE cd.patient_id = ${patientId}::int
-      AND cd.condition_status = 'active'
+      AND cd.diagnosis_status = 'active'
       AND cd.active_ind = 'Y'
   `;
 
@@ -109,22 +109,22 @@ async function evalVitals(patientId: string): Promise<RiskFactor> {
   const WEIGHT = 20;
 
   const vitals = await sql`
-    SELECT o.observation_type, o.observation_value::numeric
+    SELECT o.observation_code, o.value_numeric
     FROM phm_edw.observation o
     WHERE o.patient_id = ${patientId}::int
       AND o.active_ind = 'Y'
-      AND o.observation_type IN ('systolic_bp', 'diastolic_bp', 'heart_rate', 'bmi')
-    ORDER BY o.observation_date DESC
+      AND o.observation_code IN ('systolic_bp', 'diastolic_bp', 'heart_rate', 'bmi')
+    ORDER BY o.observation_datetime DESC
     LIMIT 10
   `;
 
   let contribution = 0;
   for (const v of vitals) {
-    const val = Number(v.observation_value);
-    if (v.observation_type === 'systolic_bp' && val >= 180) contribution += 10;
-    else if (v.observation_type === 'systolic_bp' && val >= 140) contribution += 5;
-    if (v.observation_type === 'bmi' && (val >= 40 || val < 16)) contribution += 5;
-    if (v.observation_type === 'heart_rate' && (val > 120 || val < 50)) contribution += 5;
+    const val = Number(v.value_numeric);
+    if (v.observation_code === 'systolic_bp' && val >= 180) contribution += 10;
+    else if (v.observation_code === 'systolic_bp' && val >= 140) contribution += 5;
+    if (v.observation_code === 'bmi' && (val >= 40 || val < 16)) contribution += 5;
+    if (v.observation_code === 'heart_rate' && (val > 120 || val < 50)) contribution += 5;
   }
 
   return {
@@ -148,9 +148,9 @@ async function evalLabs(patientId: string): Promise<RiskFactor> {
     FROM phm_edw.observation o
     WHERE o.patient_id = ${patientId}::int
       AND o.active_ind = 'Y'
-      AND o.observation_type NOT IN ('systolic_bp', 'diastolic_bp', 'heart_rate', 'bmi')
+      AND o.observation_code NOT IN ('systolic_bp', 'diastolic_bp', 'heart_rate', 'bmi')
       AND o.abnormal_flag = 'Y'
-      AND o.observation_date >= NOW() - INTERVAL '6 months'
+      AND o.observation_datetime >= NOW() - INTERVAL '6 months'
   `;
 
   const abnormals = row?.abnormal_count ?? 0;
@@ -210,7 +210,7 @@ async function evalEncounters(patientId: string): Promise<RiskFactor> {
     FROM phm_edw.encounter
     WHERE patient_id = ${patientId}::int
       AND active_ind = 'Y'
-      AND encounter_date >= NOW() - INTERVAL '12 months'
+      AND encounter_datetime >= NOW() - INTERVAL '12 months'
   `;
 
   const count = row?.encounter_count ?? 0;
@@ -241,7 +241,7 @@ async function evalMedications(patientId: string): Promise<RiskFactor> {
     FROM phm_edw.medication_order
     WHERE patient_id = ${patientId}::int
       AND active_ind = 'Y'
-      AND order_status = 'active'
+      AND prescription_status = 'active'
   `;
 
   const count = row?.med_count ?? 0;

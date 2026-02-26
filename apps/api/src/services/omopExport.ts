@@ -5,6 +5,51 @@
 
 import { sql } from '@medgnosis/db';
 
+// ---------------------------------------------------------------------------
+// OMOP Vocabulary Lookups
+// Standard concept IDs from the OMOP CDM v5.4 vocabulary.
+// In production, use a full concept table; these map the most common
+// Synthea-generated SNOMED/LOINC codes to OMOP concept IDs.
+// ---------------------------------------------------------------------------
+
+const RACE_CONCEPT: Record<string, number> = {
+  white: 8527, black: 8516, asian: 8515, native: 8557, other: 8522,
+};
+const ETHNICITY_CONCEPT: Record<string, number> = {
+  hispanic: 38003563, nonhispanic: 38003564,
+};
+
+const SNOMED_TO_OMOP: Record<string, number> = {
+  '44054006': 201826, '73211009': 316866, '59621000': 320128, '38341003': 317309,
+  '13645005': 4185932, '195662009': 257007, '40055000': 4134120, '162864005': 436659,
+  '15777000': 4185711, '230690007': 381316, '22298006': 4329847, '53741008': 257628,
+  '233604007': 255848, '68496003': 443904, '126906006': 4112853, '254837009': 4112853,
+};
+
+const LOINC_TO_OMOP: Record<string, number> = {
+  '8302-2': 3036277, '29463-7': 3025315, '39156-5': 3038553,
+  '8480-6': 3004249, '8462-4': 3012888, '2093-3': 3027114,
+  '2571-8': 3028437, '2085-9': 3007070, '4548-4': 3004410,
+  '6299-2': 3001604, '2160-0': 3016723, '2345-7': 3004501,
+  '6690-2': 3000963, '718-7': 3000963, '4544-3': 3024929, '777-3': 3024929,
+};
+
+function lookupSnomedConcept(code: string): number {
+  return SNOMED_TO_OMOP[code] ?? 0;
+}
+function lookupLoincConcept(code: string): number {
+  return LOINC_TO_OMOP[code] ?? 0;
+}
+function lookupRaceConcept(race: string | null): number {
+  if (!race) return 0;
+  return RACE_CONCEPT[race.toLowerCase()] ?? 0;
+}
+function lookupEthnicityConcept(ethnicity: string | null): number {
+  if (!ethnicity) return 0;
+  return ethnicity.toLowerCase().includes('hispanic')
+    ? ETHNICITY_CONCEPT.hispanic : ETHNICITY_CONCEPT.nonhispanic;
+}
+
 interface OmopPerson {
   person_id: number;
   gender_concept_id: number;
@@ -54,8 +99,8 @@ export async function exportPatientsToOmop(
       year_of_birth: dob?.getFullYear() ?? 0,
       month_of_birth: dob ? dob.getMonth() + 1 : 0,
       day_of_birth: dob?.getDate() ?? 0,
-      race_concept_id: 0, // Would map from race value
-      ethnicity_concept_id: 0,
+      race_concept_id: lookupRaceConcept(p.race as string | null),
+      ethnicity_concept_id: lookupEthnicityConcept(p.ethnicity as string | null),
       person_source_value: `${p.first_name} ${p.last_name}`,
     };
   });
@@ -66,23 +111,29 @@ export async function exportConditionsToOmop(
 ): Promise<OmopConditionOccurrence[]> {
   const conditions = patientId
     ? await sql`
-        SELECT condition_id, patient_id, condition_name, condition_code, onset_date, resolved_date, status
-        FROM phm_edw.condition WHERE patient_id = ${patientId}
+        SELECT cd.condition_diagnosis_id, cd.patient_id, c.condition_name, c.condition_code,
+               cd.onset_date, cd.resolution_date, cd.diagnosis_status
+        FROM phm_edw.condition_diagnosis cd
+        JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+        WHERE cd.patient_id = ${patientId}
       `
     : await sql`
-        SELECT condition_id, patient_id, condition_name, condition_code, onset_date, resolved_date, status
-        FROM phm_edw.condition LIMIT 5000
+        SELECT cd.condition_diagnosis_id, cd.patient_id, c.condition_name, c.condition_code,
+               cd.onset_date, cd.resolution_date, cd.diagnosis_status
+        FROM phm_edw.condition_diagnosis cd
+        JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+        LIMIT 5000
       `;
 
   return conditions.map((c) => ({
-    condition_occurrence_id: Number(c.condition_id),
+    condition_occurrence_id: Number(c.condition_diagnosis_id),
     person_id: Number(c.patient_id),
-    condition_concept_id: 0, // Would map SNOMED→OMOP
+    condition_concept_id: lookupSnomedConcept(c.condition_code as string),
     condition_start_date: c.onset_date
       ? new Date(c.onset_date as string).toISOString().split('T')[0]
       : '',
-    condition_end_date: c.resolved_date
-      ? new Date(c.resolved_date as string).toISOString().split('T')[0]
+    condition_end_date: c.resolution_date
+      ? new Date(c.resolution_date as string).toISOString().split('T')[0]
       : null,
     condition_type_concept_id: 32817, // EHR
     condition_source_value: (c.condition_code as string) ?? (c.condition_name as string),
@@ -94,41 +145,35 @@ export async function exportMeasurementsToOmop(
 ): Promise<OmopMeasurement[]> {
   const obs = patientId
     ? await sql`
-        SELECT observation_id, patient_id, observation_type, observation_code,
-               value_numeric, value_text, unit, observation_date
+        SELECT observation_id, patient_id, observation_desc, observation_code,
+               value_numeric, value_text, units, observation_datetime
         FROM phm_edw.observation WHERE patient_id = ${patientId}
       `
     : await sql`
-        SELECT observation_id, patient_id, observation_type, observation_code,
-               value_numeric, value_text, unit, observation_date
+        SELECT observation_id, patient_id, observation_desc, observation_code,
+               value_numeric, value_text, units, observation_datetime
         FROM phm_edw.observation LIMIT 5000
       `;
 
   return obs.map((o) => ({
     measurement_id: Number(o.observation_id),
     person_id: Number(o.patient_id),
-    measurement_concept_id: 0, // Would map LOINC→OMOP
-    measurement_date: o.observation_date
-      ? new Date(o.observation_date as string).toISOString().split('T')[0]
+    measurement_concept_id: lookupLoincConcept(o.observation_code as string),
+    measurement_date: o.observation_datetime
+      ? new Date(o.observation_datetime as string).toISOString().split('T')[0]
       : '',
     value_as_number: o.value_numeric != null ? Number(o.value_numeric) : null,
     value_as_concept_id: null,
     unit_concept_id: 0,
     measurement_source_value:
-      (o.observation_code as string) ?? (o.observation_type as string),
+      (o.observation_code as string) ?? (o.observation_desc as string),
   }));
 }
 
 export async function generateDeidentifiedCohort(
-  cohortCriteria: { min_age?: number; max_age?: number; conditions?: string[] },
+  _cohortCriteria: { min_age?: number; max_age?: number; conditions?: string[] },
   limit = 500,
 ) {
-  let query = sql`
-    SELECT p.patient_id, p.date_of_birth, p.gender, p.race, p.ethnicity
-    FROM phm_edw.patient p
-    WHERE 1=1
-  `;
-
   // Note: Dynamic cohort criteria would be applied here with parameterized queries
   const patients = await sql`
     SELECT p.patient_id, p.date_of_birth, p.gender, p.race, p.ethnicity

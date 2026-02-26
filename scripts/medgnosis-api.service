@@ -1,0 +1,25 @@
+[Unit]
+Description=Medgnosis API Server (Production)
+After=network.target postgresql.service redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=smudoshi
+Group=smudoshi
+WorkingDirectory=/home/smudoshi/Github/Medgnosis/apps/api
+EnvironmentFile=/home/smudoshi/Github/Medgnosis/.env.production
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=medgnosis-api
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/smudoshi/Github/Medgnosis
+
+[Install]
+WantedBy=multi-user.target

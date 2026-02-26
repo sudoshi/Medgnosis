@@ -40,6 +40,7 @@ declare module 'fastify' {
     requireRole: (
       roles: UserRole[],
     ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    optionalAuth: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
 
@@ -81,6 +82,17 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
           });
         }
       },
+  );
+
+  fastify.decorate(
+    'optionalAuth',
+    async (request: FastifyRequest, _reply: FastifyReply): Promise<void> => {
+      try {
+        await request.jwtVerify<JwtPayload>();
+      } catch {
+        // Token missing or invalid — continue as unauthenticated
+      }
+    },
   );
 }
 

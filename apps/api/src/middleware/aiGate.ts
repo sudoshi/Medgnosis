@@ -10,7 +10,7 @@ export async function aiGateMiddleware(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const userId = (req.user as { id: number }).id;
+  const userId = (req.user as unknown as { id: number }).id;
 
   // Check if user has given AI consent
   const [consent] = await sql`

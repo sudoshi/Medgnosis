@@ -1,0 +1,21 @@
+[Unit]
+Description=Medgnosis Auto-Deploy Daemon
+After=medgnosis-api.service medgnosis-worker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/smudoshi/Github/Medgnosis
+ExecStart=/home/smudoshi/Github/Medgnosis/scripts/auto-deploy.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=medgnosis-auto-deploy
+
+# Run npm as smudoshi but systemctl as root
+Environment=HOME=/home/smudoshi
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target

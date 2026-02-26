@@ -21,11 +21,13 @@
       "outputs": ["coverage/**"]
     },
     "db:migrate": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
     },
     "db:seed": {
       "cache": false,
-      "dependsOn": ["db:migrate"]
+      "dependsOn": ["db:migrate"],
+      "passThroughEnv": ["DATABASE_URL"]
     }
   }
 }

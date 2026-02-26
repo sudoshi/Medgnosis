@@ -4,6 +4,7 @@
 // =============================================================================
 
 import Fastify from 'fastify';
+import type { FastifyRequest } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
@@ -75,7 +76,7 @@ export async function buildApp() {
     global: true,
     max: 200,
     timeWindow: '1 minute',
-    allowList: (request: { headers: Record<string, string | undefined> }) =>
+    allowList: (request: FastifyRequest, _key: string) =>
       request.headers['upgrade'] === 'websocket',
     errorResponseBuilder: (_request, context) => ({
       success: false,

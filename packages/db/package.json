@@ -19,11 +19,13 @@
     "db:seed-demo": "node --import tsx/esm src/seed-demo.ts"
   },
   "dependencies": {
-    "postgres": "^3.4.5",
-    "@medgnosis/shared": "*"
+    "@medgnosis/shared": "*",
+    "bcrypt": "^6.0.0",
+    "postgres": "^3.4.5"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "tsx": "^4.19.2"
+    "@types/bcrypt": "^6.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

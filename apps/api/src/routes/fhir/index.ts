@@ -14,7 +14,7 @@ import {
 
 export default async function fhirRoutes(app: FastifyInstance) {
   // FHIR Patient endpoint
-  app.get('/Patient', { preHandler: [app.authenticate] }, async (req) => {
+  app.get('/Patient', { preHandler: [app.authenticate] }, async (_req) => {
     const patients = await sql`
       SELECT patient_id, first_name, last_name, date_of_birth, gender, mrn
       FROM phm_edw.patient
@@ -40,13 +40,18 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const { patient } = req.query as { patient?: string };
     const conditions = patient
       ? await sql`
-          SELECT c.condition_id, c.condition_name, c.condition_code, c.onset_date, c.status, c.patient_id
-          FROM phm_edw.condition c
-          WHERE c.patient_id = ${patient}
+          SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
+                 cd.onset_date, cd.diagnosis_status, cd.patient_id
+          FROM phm_edw.condition_diagnosis cd
+          JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+          WHERE cd.patient_id = ${patient}
         `
       : await sql`
-          SELECT c.condition_id, c.condition_name, c.condition_code, c.onset_date, c.status, c.patient_id
-          FROM phm_edw.condition c LIMIT 100
+          SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
+                 cd.onset_date, cd.diagnosis_status, cd.patient_id
+          FROM phm_edw.condition_diagnosis cd
+          JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+          LIMIT 100
         `;
     const resources = conditions.map((c) =>
       mapConditionToFHIR(c, String(c.patient_id)),
@@ -59,17 +64,17 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const { patient } = req.query as { patient?: string };
     const obs = patient
       ? await sql`
-          SELECT o.observation_id, o.observation_type, o.observation_code,
-                 o.value_numeric, o.value_text, o.unit, o.observation_date, o.patient_id
+          SELECT o.observation_id, o.observation_desc, o.observation_code,
+                 o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
           FROM phm_edw.observation o
           WHERE o.patient_id = ${patient}
-          ORDER BY o.observation_date DESC LIMIT 50
+          ORDER BY o.observation_datetime DESC LIMIT 50
         `
       : await sql`
-          SELECT o.observation_id, o.observation_type, o.observation_code,
-                 o.value_numeric, o.value_text, o.unit, o.observation_date, o.patient_id
+          SELECT o.observation_id, o.observation_desc, o.observation_code,
+                 o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
           FROM phm_edw.observation o
-          ORDER BY o.observation_date DESC LIMIT 100
+          ORDER BY o.observation_datetime DESC LIMIT 100
         `;
     const resources = obs.map((o) =>
       mapObservationToFHIR(o, String(o.patient_id)),
@@ -82,15 +87,18 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const { patient } = req.query as { patient?: string };
     const meds = patient
       ? await sql`
-          SELECT m.medication_id, m.medication_name, m.medication_code,
-                 m.start_date, m.status, m.patient_id
-          FROM phm_edw.medication m
-          WHERE m.patient_id = ${patient}
+          SELECT mo.medication_order_id, m.medication_name, m.medication_code,
+                 mo.start_datetime, mo.prescription_status, mo.patient_id
+          FROM phm_edw.medication_order mo
+          JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
+          WHERE mo.patient_id = ${patient}
         `
       : await sql`
-          SELECT m.medication_id, m.medication_name, m.medication_code,
-                 m.start_date, m.status, m.patient_id
-          FROM phm_edw.medication m LIMIT 100
+          SELECT mo.medication_order_id, m.medication_name, m.medication_code,
+                 mo.start_datetime, mo.prescription_status, mo.patient_id
+          FROM phm_edw.medication_order mo
+          JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
+          LIMIT 100
         `;
     const resources = meds.map((m) =>
       mapMedicationToFHIR(m, String(m.patient_id)),
@@ -112,9 +120,27 @@ export default async function fhirRoutes(app: FastifyInstance) {
       if (!patient) return reply.status(404).send({ error: 'Patient not found' });
 
       const [conditions, observations, medications] = await Promise.all([
-        sql`SELECT * FROM phm_edw.condition WHERE patient_id = ${id}`,
-        sql`SELECT * FROM phm_edw.observation WHERE patient_id = ${id} ORDER BY observation_date DESC LIMIT 50`,
-        sql`SELECT * FROM phm_edw.medication WHERE patient_id = ${id}`,
+        sql`
+          SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
+                 cd.onset_date, cd.diagnosis_status, cd.patient_id
+          FROM phm_edw.condition_diagnosis cd
+          JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+          WHERE cd.patient_id = ${id}
+        `,
+        sql`
+          SELECT o.observation_id, o.observation_desc, o.observation_code,
+                 o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
+          FROM phm_edw.observation o
+          WHERE o.patient_id = ${id}
+          ORDER BY o.observation_datetime DESC LIMIT 50
+        `,
+        sql`
+          SELECT mo.medication_order_id, m.medication_name, m.medication_code,
+                 mo.start_datetime, mo.prescription_status, mo.patient_id
+          FROM phm_edw.medication_order mo
+          JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
+          WHERE mo.patient_id = ${id}
+        `,
       ]);
 
       const resources = [

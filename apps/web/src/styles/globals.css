@@ -1,100 +1,561 @@
+/* =============================================================================
+   Medgnosis Web — Global Styles
+   Design System: "Clinical Obsidian" — v2.0
+   ============================================================================= */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Base Layer ──────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --padding-card: 1.5rem;
-    --padding-tight: 1rem;
-    --padding-compact: 0.75rem;
-    --radius-large: 0.75rem;
-    --radius-medium: 0.5rem;
-    --radius-small: 0.375rem;
-    --shadow-subtle: 0 2px 8px -2px rgba(0, 0, 0, 0.06);
-    --shadow-soft: 0 4px 24px -2px rgba(0, 0, 0, 0.08);
-    --shadow-emphasis: 0 4px 24px -2px rgba(0, 0, 0, 0.08),
-      0 2px 8px -2px rgba(0, 0, 0, 0.06);
-    --blur-backdrop: 12px;
-    --blur-heavy: 16px;
-    --transition-duration: 200ms;
-    --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
-    --border-opacity: 0.15;
-    --border-opacity-hover: 0.25;
-    --panel-inner-glow: 0 0 20px rgba(255, 255, 255, 0.03);
+    color-scheme: dark;
+
+    /* Spatial tokens */
+    --padding-page:    1.5rem;     /* outer page padding */
+    --padding-panel:   1.25rem;    /* inside panels/cards */
+    --padding-compact: 0.75rem;    /* tight inner padding */
+    --radius-panel:    12px;
+    --radius-card:     8px;
+    --radius-pill:     999px;
+    --radius-btn:      6px;
+    --radius-input:    6px;
+
+    /* Timing */
+    --duration-fast:   150ms;
+    --duration-std:    200ms;
+    --duration-slow:   350ms;
+    --ease-std:        cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out:        cubic-bezier(0, 0, 0.2, 1);
+    --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* Surface colors (referenced in JS/inline styles) */
+    --color-void:    #060A14;
+    --color-s0:      #0C1320;
+    --color-s1:      #111B2E;
+    --color-s2:      #172239;
+    --color-edge:    #1E4478;
+    --color-bright:  #EDF2FF;
+    --color-dim:     #5E7FA3;
+    --color-ghost:   #2D4060;
+    --color-teal:    #0DD9D9;
+    --color-amber:   #F5A623;
+    --color-crimson: #E8394A;
+    --color-emerald: #10C981;
+    --color-violet:  #8B5CF6;
+  }
+
+  html,
+  body {
+    @apply bg-void text-bright font-ui;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Headings use medium weight by default */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-ui font-semibold text-bright;
+  }
+
+  /* All numeric/code elements use data font */
+  code, kbd, samp, pre {
+    @apply font-data;
+  }
+
+  /* Focus ring — accessible, teal */
+  :focus-visible {
+    @apply outline-none ring-2 ring-teal ring-offset-2 ring-offset-void;
+  }
+
+  /* Selection color */
+  ::selection {
+    background: rgba(13, 217, 217, 0.2);
+    color: #EDF2FF;
   }
 }
 
+/* ─── Component Layer ─────────────────────────────────────────────────────── */
 @layer components {
-  /* Base Panel Styles */
-  .panel-base {
-    @apply rounded-xl border;
-    @apply bg-light-primary/90 dark:bg-dark-primary/90 backdrop-blur-md;
-    @apply text-light-text-primary dark:text-dark-text-primary;
-    @apply border-light-border/20 dark:border-accent-primary/20;
-    @apply transition-all;
-    padding: var(--padding-card);
-    box-shadow: var(--shadow-emphasis), var(--panel-inner-glow);
-    transition-duration: var(--transition-duration);
-    transition-timing-function: var(--transition-timing);
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     SURFACES — depth-layered dark panels
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .surface {
+    @apply bg-s0 rounded-panel border border-edge/35;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+    padding: var(--padding-panel);
+    transition: box-shadow var(--duration-std) var(--ease-std),
+                border-color var(--duration-std) var(--ease-std);
   }
 
-  .panel-base:hover {
-    @apply border-light-border/30 dark:border-accent-primary/30;
-    box-shadow: 0 6px 28px -4px rgba(0, 0, 0, 0.1),
-      0 4px 12px -2px rgba(0, 0, 0, 0.08), var(--panel-inner-glow);
+  .surface-raised {
+    @apply bg-s1 rounded-panel border border-edge/35;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+    padding: var(--padding-panel);
+  }
+
+  .surface-hover {
+    @apply transition-colors;
+    transition-duration: var(--duration-fast);
+  }
+  .surface-hover:hover {
+    @apply bg-s1;
+  }
+
+  .surface-interactive {
+    @apply surface cursor-pointer;
+  }
+  .surface-interactive:hover {
+    @apply border-edge/60;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.6), 0 8px 30px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
+  .surface-selected {
+    @apply border-teal/35 bg-teal/5;
+  }
+
+  /* Compact variant — less padding */
+  .surface-compact {
+    @apply surface;
+    padding: var(--padding-compact);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LEGACY PANEL ALIASES — keep existing pages working during migration
+     Remove in Phase 11 once all pages are rewritten.
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .panel-base {
+    @apply surface;
   }
 
   .panel-stat {
-    @apply panel-base relative;
-    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply surface;
   }
 
   .panel-analytics {
-    @apply panel-base relative;
-    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply surface;
   }
 
   .panel-detail {
-    @apply panel-base relative;
-    @apply bg-gradient-light dark:bg-gradient-dark;
+    @apply surface;
   }
 
   .panel-filter {
-    @apply panel-base;
-    padding: var(--padding-tight);
+    @apply surface-compact;
   }
 
   .panel-list {
-    @apply panel-base;
+    @apply surface;
     @apply h-[400px] overflow-hidden;
   }
 
   .panel-interactive {
-    @apply hover:bg-light-secondary/80 dark:hover:bg-dark-primary/80;
-    transition: background-color var(--transition-duration)
-        var(--transition-timing),
-      box-shadow var(--transition-duration) var(--transition-timing);
+    @apply surface-hover;
   }
 
-  /* Modal Specific */
+  /* ══════════════════════════════════════════════════════════════════════════
+     TYPOGRAPHY HELPERS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  /* UI text hierarchy */
+  .text-primary   { @apply text-bright font-ui; }
+  .text-secondary { @apply text-dim font-ui; }
+  .text-muted     { @apply text-ghost font-ui; }
+
+  /* Data/metric values — always Fira Code, tabular numbers */
+  .data-value {
+    @apply font-data text-bright;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Section/column labels */
+  .data-label {
+    @apply font-ui text-xs font-medium uppercase tracking-wider text-dim;
+  }
+
+  /* IDs, MRNs, codes, timestamps */
+  .data-id {
+    @apply font-data text-xs text-dim;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     STATUS BADGES
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-pill text-xs font-medium;
+    @apply font-ui;
+  }
+
+  .badge-crimson { @apply badge bg-crimson/10 text-crimson border border-crimson/25; }
+  .badge-amber   { @apply badge bg-amber/10   text-amber   border border-amber/25; }
+  .badge-teal    { @apply badge bg-teal/10    text-teal    border border-teal/25; }
+  .badge-emerald { @apply badge bg-emerald/10 text-emerald border border-emerald/25; }
+  .badge-violet  { @apply badge bg-violet/10  text-violet  border border-violet/25; }
+  .badge-dim     { @apply badge bg-s2         text-dim     border border-edge/35; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     BUTTONS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-ui font-medium text-sm;
+    @apply rounded-btn px-4 py-2;
+    @apply transition-all;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-std);
+  }
+
+  /* Primary — teal filled */
+  .btn-primary {
+    @apply btn bg-teal text-void;
+  }
+  .btn-primary:hover {
+    @apply bg-teal-dark;
+    box-shadow: 0 4px 18px rgba(13, 217, 217, 0.35);
+  }
+  .btn-primary:active { @apply scale-[0.98]; }
+
+  /* Secondary — s1 surface with border */
+  .btn-secondary {
+    @apply btn bg-s1 text-bright border border-edge/50;
+  }
+  .btn-secondary:hover {
+    @apply bg-s2 border-edge/80;
+  }
+
+  /* Ghost — transparent, text only */
+  .btn-ghost {
+    @apply btn bg-transparent text-dim;
+  }
+  .btn-ghost:hover {
+    @apply bg-s2 text-bright;
+  }
+
+  /* Danger — crimson */
+  .btn-danger {
+    @apply btn bg-crimson/10 text-crimson border border-crimson/25;
+  }
+  .btn-danger:hover {
+    @apply bg-crimson/20;
+    box-shadow: 0 4px 18px rgba(232, 57, 74, 0.25);
+  }
+
+  /* Icon button — square, no label */
+  .btn-icon {
+    @apply btn p-2 w-9 h-9;
+  }
+
+  /* Size modifiers */
+  .btn-sm { @apply text-xs px-3 py-1.5 gap-1.5; }
+  .btn-lg { @apply text-base px-5 py-2.5 gap-2.5; }
+
+  /* Disabled state */
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    @apply opacity-40 cursor-not-allowed pointer-events-none;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     FORM ELEMENTS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .input-field {
+    @apply w-full bg-s0 border border-edge/50 rounded-input;
+    @apply text-bright font-ui text-sm;
+    @apply px-3 py-2.5;
+    @apply placeholder:text-ghost;
+    @apply transition-colors;
+    transition-duration: var(--duration-fast);
+  }
+  .input-field:focus {
+    @apply outline-none border-teal/60;
+    box-shadow: 0 0 0 3px rgba(13, 217, 217, 0.12);
+  }
+
+  .select-field {
+    @apply input-field;
+    @apply appearance-none pr-8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235E7FA3' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     PROGRESS BARS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .progress-track {
+    @apply h-1.5 rounded-pill bg-s2 overflow-hidden;
+  }
+
+  .progress-bar {
+    @apply h-full rounded-pill;
+    animation: barFill 0.8s cubic-bezier(0.4,0,0.2,1) both;
+    animation-delay: var(--bar-delay, 0ms);
+    width: var(--bar-width, 0%);
+  }
+
+  .progress-teal    { @apply progress-bar bg-teal; }
+  .progress-amber   { @apply progress-bar bg-amber; }
+  .progress-crimson { @apply progress-bar bg-crimson; }
+  .progress-emerald { @apply progress-bar bg-emerald; }
+  .progress-violet  { @apply progress-bar bg-violet; }
+  .progress-dim     { @apply progress-bar bg-dim; }
+
+  /* Tall variant for dashboards */
+  .progress-track-md { @apply progress-track h-2.5; }
+  .progress-track-lg { @apply progress-track h-4; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     TIMELINE
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .timeline-container {
+    @apply relative;
+  }
+
+  /* The vertical connecting spine */
+  .timeline-spine {
+    @apply absolute left-[7px] top-4 bottom-0;
+    width: 1px;
+    background: linear-gradient(to bottom, rgba(30,68,120,0.6) 0%, rgba(30,68,120,0.1) 100%);
+  }
+
+  .timeline-item {
+    @apply relative pl-8 pb-6 animate-fade-up;
+  }
+  .timeline-item:last-child { @apply pb-0; }
+  .timeline-item:last-child .timeline-spine { display: none; }
+
+  /* Node sits on the spine */
+  .timeline-node {
+    @apply absolute left-0 top-1 flex items-center justify-center;
+    @apply w-4 h-4 rounded-full border-2;
+  }
+
+  .timeline-node-encounter  { @apply bg-teal/15    border-teal/60; }
+  .timeline-node-observation { @apply bg-emerald/15 border-emerald/60; }
+  .timeline-node-condition   { @apply bg-amber/15   border-amber/60; }
+  .timeline-node-gap         { @apply bg-crimson/15 border-crimson/60; }
+
+  .timeline-date {
+    @apply font-data text-data-xs text-dim;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timeline-group-header {
+    @apply data-label py-2 mb-2 border-b border-edge/25;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     SKELETON LOADERS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .skeleton {
+    @apply rounded-card;
+    background: linear-gradient(
+      90deg,
+      rgba(17,27,46,1) 0%,
+      rgba(30,68,120,0.3) 50%,
+      rgba(17,27,46,1) 100%
+    );
+    background-size: 400% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  .skeleton-text {
+    @apply skeleton h-4 w-full;
+  }
+
+  .skeleton-text-sm {
+    @apply skeleton h-3 w-3/4;
+  }
+
+  .skeleton-circle {
+    @apply skeleton rounded-full;
+  }
+
+  .skeleton-btn {
+    @apply skeleton h-9 w-24 rounded-btn;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MODAL / OVERLAY
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .overlay-backdrop {
+    @apply fixed inset-0 z-40;
+    background: rgba(6, 10, 20, 0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .command-panel {
+    @apply bg-s0 border border-teal/25 rounded-panel overflow-hidden;
+    box-shadow: 0 0 0 1px rgba(13,217,217,0.08),
+                0 24px 64px rgba(0,0,0,0.7),
+                0 0 40px rgba(13,217,217,0.08);
+  }
+
+  /* Legacy modal classes — keep for unmigrated components */
   .modal-backdrop {
-    @apply bg-light-primary/60 dark:bg-dark-primary/60;
-    backdrop-filter: blur(var(--blur-backdrop));
+    @apply overlay-backdrop;
   }
 
   .modal-container {
-    @apply panel-base;
-    @apply bg-gradient-light dark:bg-gradient-dark;
-    backdrop-filter: blur(var(--blur-heavy));
+    @apply command-panel;
+    padding: var(--padding-panel);
   }
 
-  /* Custom Scrollbar */
+  .modal-content {
+    animation: fadeIn 0.25s ease-out both;
+  }
+
+  .modal-animate {
+    animation: fadeIn 0.25s ease-out both;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     STATS STRIP — horizontal stat bar used across Dashboard/Patients/Care Lists
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .stats-strip {
+    @apply surface grid;
+    padding: var(--padding-compact) var(--padding-panel);
+    gap: 0;
+  }
+
+  .stats-strip-cell {
+    @apply px-6 py-2 border-r border-edge/25 last:border-r-0;
+  }
+
+  .stats-strip-value {
+    @apply data-value text-data-lg;
+  }
+
+  .stats-strip-label {
+    @apply data-label text-xs mt-0.5;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     PATIENT AVATAR
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .patient-avatar {
+    @apply flex-shrink-0 flex items-center justify-center rounded-full font-ui font-semibold;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .patient-avatar-sm  { @apply patient-avatar w-8  h-8  text-xs; }
+  .patient-avatar-md  { @apply patient-avatar w-10 h-10 text-sm; }
+  .patient-avatar-lg  { @apply patient-avatar w-12 h-12 text-base; }
+  .patient-avatar-xl  { @apply patient-avatar w-16 h-16 text-xl; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     TABLE
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .data-table {
+    @apply w-full;
+  }
+
+  .data-table thead {
+    @apply sticky top-0 bg-s0 z-10;
+  }
+
+  .data-table th {
+    @apply data-label px-4 py-3 text-left border-b border-edge/40;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-edge/20;
+    @apply transition-colors;
+    transition-duration: var(--duration-fast);
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-s1;
+  }
+
+  /* Row risk accent — apply teal left border on hover */
+  .data-table tbody tr:hover td:first-child {
+    box-shadow: inset 3px 0 0 #0DD9D9;
+  }
+
+  .data-table td {
+    @apply px-4 py-3.5 text-sm text-bright;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     NAVIGATION (sidebar) — used by AppShell
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .nav-item {
+    @apply relative flex items-center gap-3 rounded-card text-dim;
+    @apply transition-colors;
+    transition-duration: var(--duration-fast);
+    padding: 0.625rem 0.75rem;
+  }
+
+  .nav-item:hover {
+    @apply bg-s2 text-bright;
+  }
+
+  .nav-item-active {
+    @apply bg-s2 text-teal;
+    box-shadow: inset 3px 0 0 #0DD9D9;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LIVE INDICATOR — pulsing dot for WebSocket connection
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .live-dot {
+    @apply inline-block w-2 h-2 rounded-full bg-emerald;
+    animation: pulseDot 2.2s ease-in-out infinite;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     DIVIDERS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .divider {
+    @apply border-t border-edge/30;
+  }
+
+  .divider-label {
+    @apply relative flex items-center gap-3 text-xs text-dim my-4;
+  }
+
+  .divider-label::before,
+  .divider-label::after {
+    content: '';
+    @apply flex-1 border-t border-edge/30;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     SCROLLBAR — ultra-thin, near-invisible
+     ══════════════════════════════════════════════════════════════════════════ */
+
   .scrollbar-thin {
     scrollbar-width: thin;
+    scrollbar-color: rgba(30, 68, 120, 0.5) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
+    height: 4px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -102,42 +563,146 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-light-border/50 dark:bg-dark-secondary/50 rounded-sm;
+    background: rgba(30, 68, 120, 0.5);
+    border-radius: 999px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-light-border/60 dark:bg-dark-border/60;
+    background: rgba(30, 68, 120, 0.8);
+  }
+
+  /* Hide scrollbar visually but keep functionality */
+  .scrollbar-hidden {
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar { display: none; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     EMPTY STATE
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center text-center py-16 px-6;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 rounded-full flex items-center justify-center mb-4;
+    @apply bg-s2 text-dim;
+  }
+
+  .empty-state-title {
+    @apply text-base font-medium text-bright mb-1;
+  }
+
+  .empty-state-desc {
+    @apply text-sm text-dim max-w-sm;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     RISK GAUGE — SVG arc used in Patient Detail / Measures
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .gauge-track {
+    fill: none;
+    stroke: #172239;
+    stroke-width: 8;
+    stroke-linecap: round;
+  }
+
+  .gauge-fill {
+    fill: none;
+    stroke-width: 8;
+    stroke-linecap: round;
+    animation: gaugeFill 1s cubic-bezier(0.4,0,0.2,1) both;
+    animation-delay: var(--gauge-delay, 100ms);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     LOGIN PAGE — animated background mesh
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .login-mesh-blob {
+    @apply absolute rounded-full;
+    @apply pointer-events-none;
+    filter: blur(80px);
+    animation: meshDrift 28s ease-in-out infinite alternate;
+  }
+
+  .login-mesh-blob:nth-child(2) {
+    animation-delay: -9s;
+    animation-direction: alternate-reverse;
+  }
+
+  .login-mesh-blob:nth-child(3) {
+    animation-delay: -18s;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     ALERT SEVERITY ACCENTS
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .alert-critical {
+    @apply border-l-4 border-l-crimson;
+    background: rgba(232, 57, 74, 0.06);
+    box-shadow: -4px 0 20px rgba(232, 57, 74, 0.12);
+  }
+
+  .alert-high {
+    @apply border-l-4 border-l-amber;
+    background: rgba(245, 166, 35, 0.05);
+  }
+
+  .alert-medium {
+    @apply border-l-2 border-l-amber/60;
+  }
+
+  .alert-low,
+  .alert-info {
+    @apply border-l-2 border-l-teal/40;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     STAGGER UTILITIES — animation delay helpers
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  .stagger-1 { animation-delay:  50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+  .stagger-5 { animation-delay: 250ms; }
+  .stagger-6 { animation-delay: 300ms; }
+  .stagger-7 { animation-delay: 350ms; }
+  .stagger-8 { animation-delay: 400ms; }
+
+}
+
+/* ─── Utilities Layer (one-off helpers) ───────────────────────────────────── */
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Prevent text overflow in table cells / list items */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
-@keyframes modalGlow {
-  0% {
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.15),
-      0 0 30px rgba(59, 130, 246, 0.05);
+/* ─── Reduced Motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
-  50% {
-    box-shadow: 0 0 25px rgba(59, 130, 246, 0.25),
-      0 0 50px rgba(59, 130, 246, 0.1);
-  }
-  100% {
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.15),
-      0 0 30px rgba(59, 130, 246, 0.05);
-  }
-}
-
-@keyframes modalScale {
-  0% {
-    transform: scale(0.98);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.modal-animate {
-  animation: modalGlow 3s infinite ease-in-out;
-}
-
-.modal-content {
-  animation: modalScale 0.3s ease-out forwards;
 }

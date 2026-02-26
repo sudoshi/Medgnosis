@@ -5,8 +5,8 @@
 // =============================================================================
 
 import { Worker, Queue } from 'bullmq';
-import { sql } from '@medgnosis/db';
 import { connection } from './rules-engine.js';
+import { executeMeasure, executeAllMeasures } from '../services/measureEngine.js';
 
 export const MEASURE_QUEUE_NAME = 'medgnosis-measure-calc';
 
@@ -21,23 +21,24 @@ export const measureQueue = new Queue(MEASURE_QUEUE_NAME, {
 });
 
 export interface MeasureJobData {
-  measureId?: string; // specific measure, or null for all
+  measureCode?: string; // specific measure code (e.g. 'CMS122v12'), or omit for all
   triggerType: 'nightly' | 'manual';
 }
 
 async function processMeasureJob(job: { data: MeasureJobData }): Promise<void> {
-  const { measureId, triggerType } = job.data;
+  const { measureCode, triggerType } = job.data;
   console.info(`[measure-calc] ${triggerType} calculation starting...`);
 
-  if (measureId) {
-    // Calculate single measure
-    console.info(`[measure-calc] Calculating measure ${measureId}`);
-    // TODO: Load and execute the specific eCQM SQL from measure_definition
+  if (measureCode) {
+    const result = await executeMeasure(measureCode);
+    if (result) {
+      console.info(`[measure-calc] ${measureCode}: denom=${result.denominator}, numer=${result.numerator}, rate=${result.performanceRate}%`);
+    } else {
+      console.warn(`[measure-calc] ${measureCode}: no result (SQL file missing or error)`);
+    }
   } else {
-    // Refresh entire star schema (runs ETL_edw_to_star equivalent)
-    console.info('[measure-calc] Refreshing star schema for all measures...');
-    // The ETL scripts are idempotent and can be re-run
-    // For now, log that this would run the star schema refresh
+    const results = await executeAllMeasures();
+    console.info(`[measure-calc] All measures complete: ${results.length} succeeded.`);
   }
 
   console.info(`[measure-calc] ${triggerType} calculation complete.`);

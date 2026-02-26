@@ -21,10 +21,11 @@ CREATE TABLE IF NOT EXISTS app_users (
     role                TEXT        NOT NULL CHECK (role IN (
                             'provider', 'analyst', 'admin', 'care_coordinator'
                         )),
-    org_id              INTEGER     REFERENCES phm_edw.organization(organization_id),
+    org_id              INTEGER     REFERENCES phm_edw.organization(org_id),
     mfa_enabled         BOOLEAN     NOT NULL DEFAULT FALSE,
     mfa_secret          TEXT,
     session_timeout_min INTEGER     NOT NULL DEFAULT 30,
+    ai_consent_given_at TIMESTAMPTZ,
     is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
     last_login_at       TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -162,8 +163,8 @@ END $$;
 INSERT INTO app_users (email, password_hash, first_name, last_name, role, mfa_enabled)
 VALUES (
   'admin@medgnosis.app',
-  -- bcrypt hash of 'password' — DEVELOPMENT ONLY
-  '$2b$10$8K1p/a0dL1rJv7o4vInJSOenQr.YhGqKiQ0fNs9EXg7/Hh1nGQHPq',
+  -- bcrypt hash of 'password' (cost 12) — DEVELOPMENT ONLY
+  '$2b$12$pPXmDkFeXOHoiTqfjKKK3eW19IgPuxHQFMpdB/4c2uvXI4BykFesu',
   'System',
   'Admin',
   'admin',

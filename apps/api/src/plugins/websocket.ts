@@ -19,27 +19,35 @@ import { WS_EVENTS } from '@medgnosis/shared';
 
 let publisher: Redis | null = null;
 let subscriber: Redis | null = null;
+let redisAvailable = false;
 
-const redisOpts = {
-  host: new URL(config.redisUrl).hostname,
-  port: Number(new URL(config.redisUrl).port || 6379),
-  lazyConnect: true,
-  maxRetriesPerRequest: null,
-};
+function parseRedisOpts(): { host: string; port: number; lazyConnect: boolean; maxRetriesPerRequest: null } {
+  try {
+    const url = new URL(config.redisUrl);
+    return {
+      host: url.hostname,
+      port: Number(url.port || 6379),
+      lazyConnect: true,
+      maxRetriesPerRequest: null,
+    };
+  } catch {
+    return {
+      host: 'localhost',
+      port: 6379,
+      lazyConnect: true,
+      maxRetriesPerRequest: null,
+    };
+  }
+}
 
-export function getPublisher(): Redis {
+export function getPublisher(): Redis | null {
+  if (!redisAvailable) return null;
   if (!publisher) {
-    publisher = new Redis(redisOpts);
+    publisher = new Redis(parseRedisOpts());
   }
   return publisher;
 }
 
-function getSubscriber(): Redis {
-  if (!subscriber) {
-    subscriber = new Redis(redisOpts);
-  }
-  return subscriber;
-}
 
 // ---------------------------------------------------------------------------
 // Alert publish helpers — called by rules engine and alert routes
@@ -59,11 +67,16 @@ export async function publishAlert(
   event: AlertEventPayload,
 ): Promise<void> {
   const pub = getPublisher();
+  if (!pub) return;
   const payload = JSON.stringify({
     type: WS_EVENTS.ALERT_CREATED,
     data: { ...event, patientId },
   });
-  await pub.publish(`medgnosis:alerts:${orgId}`, payload);
+  try {
+    await pub.publish(`medgnosis:alerts:${orgId}`, payload);
+  } catch {
+    // Redis unavailable — alert still saved to DB, just not broadcast
+  }
 }
 
 export async function publishCareGapClosed(
@@ -72,11 +85,16 @@ export async function publishCareGapClosed(
   gapId: string,
 ): Promise<void> {
   const pub = getPublisher();
+  if (!pub) return;
   const payload = JSON.stringify({
     type: WS_EVENTS.CARE_GAP_CLOSED,
     data: { patientId, gapId },
   });
-  await pub.publish(`medgnosis:alerts:${orgId}`, payload);
+  try {
+    await pub.publish(`medgnosis:alerts:${orgId}`, payload);
+  } catch {
+    // Redis unavailable — care gap closure still saved to DB, just not broadcast
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,17 +141,35 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
     options: { maxPayload: 4096 },
   });
 
-  const sub = getSubscriber();
-  await sub.connect();
+  // Try to connect to Redis — degrade gracefully if unavailable
+  try {
+    const opts = parseRedisOpts();
+    subscriber = new Redis(opts);
+    publisher = new Redis(opts);
 
-  sub.on('pmessage', (_pattern: string, channel: string, message: string) => {
-    const parts = channel.split(':');
-    const orgId = parts[2];
-    if (orgId) broadcast(orgId, message);
-  });
+    await subscriber.connect();
 
-  await sub.psubscribe('medgnosis:alerts:*');
-  await getPublisher().connect();
+    subscriber.on('pmessage', (_pattern: string, channel: string, message: string) => {
+      const parts = channel.split(':');
+      const orgId = parts[2];
+      if (orgId) broadcast(orgId, message);
+    });
+
+    await subscriber.psubscribe('medgnosis:alerts:*');
+    await publisher.connect();
+
+    redisAvailable = true;
+    fastify.log.info('[ws] Redis pub/sub connected');
+  } catch (err) {
+    redisAvailable = false;
+    // Clean up any partially-created clients
+    if (subscriber) { try { subscriber.disconnect(); } catch { /* ignore */ } subscriber = null; }
+    if (publisher) { try { publisher.disconnect(); } catch { /* ignore */ } publisher = null; }
+    fastify.log.warn(
+      { err },
+      '[ws] Redis unavailable — WebSocket broadcast disabled, API continues without real-time alerts',
+    );
+  }
 
   // GET /ws — WebSocket upgrade endpoint (authenticated users only)
   fastify.get(
@@ -181,9 +217,21 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
 
   // Graceful shutdown
   fastify.addHook('onClose', async () => {
-    await sub.punsubscribe();
-    sub.disconnect();
-    publisher?.disconnect();
+    if (subscriber) {
+      try {
+        await subscriber.punsubscribe();
+        subscriber.disconnect();
+      } catch {
+        // already disconnected
+      }
+    }
+    if (publisher) {
+      try {
+        publisher.disconnect();
+      } catch {
+        // already disconnected
+      }
+    }
   });
 }
 

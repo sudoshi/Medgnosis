@@ -31,8 +31,7 @@ export default async function careGapRoutes(fastify: FastifyInstance): Promise<v
         md.measure_name AS measure,
         cg.gap_status AS status,
         cg.identified_date,
-        cg.due_date,
-        cg.closed_date,
+        cg.resolved_date,
         cg.active_ind
       FROM phm_edw.care_gap cg
       JOIN phm_edw.patient p ON p.patient_id = cg.patient_id
@@ -40,7 +39,7 @@ export default async function careGapRoutes(fastify: FastifyInstance): Promise<v
       WHERE cg.active_ind = 'Y'
         ${query.status ? sql`AND cg.gap_status = ${query.status}` : sql``}
         ${query.patient_id ? sql`AND cg.patient_id = ${query.patient_id}::int` : sql``}
-      ORDER BY cg.due_date ASC
+      ORDER BY cg.identified_date ASC
       LIMIT ${perPage}
       OFFSET ${offset}
     `;
@@ -81,7 +80,7 @@ export default async function careGapRoutes(fastify: FastifyInstance): Promise<v
     const [updated] = await sql`
       UPDATE phm_edw.care_gap
       SET gap_status = ${status},
-          closed_date = ${status === 'closed' ? new Date().toISOString() : null},
+          resolved_date = ${status === 'closed' ? new Date().toISOString() : null},
           updated_date = NOW()
       WHERE care_gap_id = ${id}::int AND active_ind = 'Y'
       RETURNING care_gap_id AS id, gap_status AS status

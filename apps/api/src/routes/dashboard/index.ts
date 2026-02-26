@@ -34,35 +34,24 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         FROM phm_edw.care_gap
         WHERE active_ind = 'Y'
       `,
-      // Risk stratification from star schema
-      sql`
-        SELECT risk_level, COUNT(*)::int AS count
-        FROM (
-          SELECT
-            CASE
-              WHEN fr.risk_score >= 75 THEN 'critical'
-              WHEN fr.risk_score >= 50 THEN 'high'
-              WHEN fr.risk_score >= 25 THEN 'moderate'
-              ELSE 'low'
-            END AS risk_level
-          FROM phm_star.fact_measure_result fr
-          WHERE fr.active_ind = 'Y'
-        ) sub
-        GROUP BY risk_level
-      `.catch(() => []),
+      // Risk stratification placeholder (fact_measure_result has no risk_score column)
+      Promise.resolve([]),
       // Recent encounters
       sql`
         SELECT
           e.encounter_id AS id,
-          e.encounter_date AS date,
+          e.encounter_datetime AS date,
           e.encounter_type AS type,
           p.first_name || ' ' || p.last_name AS patient_name
         FROM phm_edw.encounter e
         JOIN phm_edw.patient p ON p.patient_id = e.patient_id
         WHERE e.active_ind = 'Y'
-        ORDER BY e.encounter_date DESC
+        ORDER BY e.encounter_datetime DESC
         LIMIT 10
-      `.catch(() => []),
+      `.catch((err) => {
+        fastify.log.error({ err }, 'Dashboard: recent encounters query failed');
+        return [];
+      }),
     ]);
 
     const stats = patientStats[0] ?? { total: 0, active: 0 };

@@ -37,7 +37,7 @@ export const sql = postgres(required('DATABASE_URL'), {
 
   // Debug logging in development
   debug: process.env['NODE_ENV'] === 'development'
-    ? (connection, query, params) => {
+    ? (_connection, query, params) => {
         console.debug(`[sql] ${query.substring(0, 200)}`, params?.length ? `(${params.length} params)` : '');
       }
     : undefined,

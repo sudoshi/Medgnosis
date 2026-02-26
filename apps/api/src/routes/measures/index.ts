@@ -11,14 +11,14 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
 
   // GET /measures — List quality measures
   fastify.get('/', async (request, reply) => {
-    const _params = measureFilterSchema.parse(request.query);
+    measureFilterSchema.parse(request.query);
 
     const measures = await sql`
       SELECT
         md.measure_id AS id,
         md.measure_name AS title,
         md.measure_code AS code,
-        md.measure_description AS description,
+        md.description,
         md.active_ind
       FROM phm_edw.measure_definition md
       WHERE md.active_ind = 'Y'
@@ -40,7 +40,7 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
         md.measure_id AS id,
         md.measure_name AS title,
         md.measure_code AS code,
-        md.measure_description AS description,
+        md.description,
         md.active_ind
       FROM phm_edw.measure_definition md
       WHERE md.measure_id = ${id}::int
@@ -57,11 +57,14 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
     const populationStats = await sql`
       SELECT
         COUNT(*)::int AS total_patients,
-        COUNT(*) FILTER (WHERE numerator_flag = 'Y')::int AS compliant,
-        COUNT(*) FILTER (WHERE denominator_flag = 'Y')::int AS eligible
+        COUNT(*) FILTER (WHERE numerator_flag = TRUE)::int AS compliant,
+        COUNT(*) FILTER (WHERE denominator_flag = TRUE)::int AS eligible
       FROM phm_star.fact_measure_result
-      WHERE measure_key = ${id}::int AND active_ind = 'Y'
-    `.catch(() => [{ total_patients: 0, compliant: 0, eligible: 0 }]);
+      WHERE measure_key = ${id}::int
+    `.catch((err) => {
+      fastify.log.error({ err, measureId: id }, 'Measures: population stats query failed');
+      return [{ total_patients: 0, compliant: 0, eligible: 0 }];
+    });
 
     return reply.send({
       success: true,

@@ -5,15 +5,26 @@
 // =============================================================================
 
 import { sql } from './client.js';
+import bcrypt from 'bcrypt';
+
+const BCRYPT_ROUNDS = 12;
 
 async function main(): Promise<void> {
   console.info('[seed] Seeding reference data...');
 
-  // Ensure test user exists for development
+  // Ensure default organization exists
   await sql`
     INSERT INTO phm_edw.organization (organization_id, organization_name, organization_type, active_ind, created_date, updated_date)
     VALUES (1, 'Medgnosis Health System', 'Health System', 'Y', NOW(), NOW())
     ON CONFLICT DO NOTHING
+  `;
+
+  // Ensure admin user exists with proper bcrypt hash
+  const passwordHash = await bcrypt.hash('password', BCRYPT_ROUNDS);
+  await sql`
+    INSERT INTO app_users (email, password_hash, first_name, last_name, role, mfa_enabled)
+    VALUES ('admin@medgnosis.app', ${passwordHash}, 'System', 'Admin', 'admin', FALSE)
+    ON CONFLICT (email) DO UPDATE SET password_hash = ${passwordHash}
   `;
 
   console.info('[seed] Reference data seeded successfully.');

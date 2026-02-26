@@ -5,7 +5,9 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { loginRequestSchema } from '@medgnosis/shared';
+import type { UserRole } from '@medgnosis/shared';
 import crypto from 'node:crypto';
+import bcrypt from 'bcrypt';
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /auth/login
@@ -65,7 +67,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as UserRole,
       org_id: String(user.org_id ?? ''),
     };
 
@@ -148,10 +150,31 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       WHERE token_hash = ${tokenHash}
     `;
 
-    if (!token || token.revoked || new Date(token.expires_at) < new Date()) {
+    if (!token) {
       return reply.status(401).send({
         success: false,
         error: { code: 'INVALID_TOKEN', message: 'Invalid or expired refresh token' },
+      });
+    }
+
+    // Replay detection: a revoked token being reused indicates potential theft.
+    // Revoke ALL tokens for the user as a precaution.
+    if (token.revoked) {
+      await sql`
+        UPDATE refresh_tokens SET revoked = TRUE
+        WHERE user_id = ${token.user_id}::UUID AND revoked = FALSE
+      `;
+      fastify.log.warn({ userId: token.user_id }, 'Refresh token replay detected — all tokens revoked');
+      return reply.status(401).send({
+        success: false,
+        error: { code: 'TOKEN_REUSE', message: 'Token reuse detected. All sessions have been revoked.' },
+      });
+    }
+
+    if (new Date(token.expires_at) < new Date()) {
+      return reply.status(401).send({
+        success: false,
+        error: { code: 'TOKEN_EXPIRED', message: 'Refresh token has expired' },
       });
     }
 
@@ -178,7 +201,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as UserRole,
       org_id: String(user.org_id ?? ''),
     };
 
@@ -239,27 +262,15 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 }
 
 // ---------------------------------------------------------------------------
-// Password verification
+// Password hashing & verification (bcrypt, cost factor 12)
 // ---------------------------------------------------------------------------
 
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  // In development, accept the plain text comparison for the seeded password
-  if (password === 'password' && hash.startsWith('$2')) {
-    // For the seeded admin user, accept 'password' during development
-    return true;
-  }
+const BCRYPT_ROUNDS = 12;
 
-  // For production, use proper bcrypt verification
-  // This will be implemented with a proper bcrypt library
-  try {
-    const crypto = await import('node:crypto');
-    const inputHash = crypto
-      .createHash('sha256')
-      .update(password)
-      .digest('hex');
-    // Placeholder — replace with bcrypt.compare in production
-    return inputHash === hash;
-  } catch {
-    return false;
-  }
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
 }

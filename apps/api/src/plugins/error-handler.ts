@@ -3,11 +3,11 @@
 // Normalizes all errors into a consistent { success, error } envelope.
 // =============================================================================
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyError } from 'fastify';
 import fp from 'fastify-plugin';
 
 async function errorHandlerPlugin(fastify: FastifyInstance): Promise<void> {
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error: FastifyError, request, reply) => {
     const statusCode = error.statusCode ?? 500;
 
     // Log server errors at error level; client errors at warn

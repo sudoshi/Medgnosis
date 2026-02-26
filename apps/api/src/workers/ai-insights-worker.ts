@@ -42,11 +42,12 @@ async function processInsightJob(job: { data: InsightJobData }): Promise<void> {
   }
 
   if (!config.aiInsightsEnabled) return;
-  if (config.aiProvider !== 'ollama' && !config.anthropicBaaSigned) return;
+  // Ollama (local inference) doesn't require a BAA; Anthropic (cloud) does
+  if (config.aiProvider === 'anthropic' && !config.anthropicBaaSigned) return;
 
   if (type === 'care_gap_analysis') {
     const gaps = await sql`
-      SELECT md.measure_name, cg.gap_status, cg.due_date
+      SELECT md.measure_name, cg.gap_status, cg.identified_date
       FROM phm_edw.care_gap cg
       LEFT JOIN phm_edw.measure_definition md ON md.measure_id = cg.measure_id
       WHERE cg.patient_id = ${patientId}::int AND cg.active_ind = 'Y'
@@ -57,7 +58,7 @@ async function processInsightJob(job: { data: InsightJobData }): Promise<void> {
     const prompt = `You are a population health clinical analyst. Analyze the following care gaps for patient ${patientId} and provide prioritized recommendations.
 
 Care gaps:
-${gaps.map((g) => `- ${g.measure_name}: ${g.gap_status} (due: ${g.due_date})`).join('\n')}
+${gaps.map((g) => `- ${g.measure_name}: ${g.gap_status} (identified: ${g.identified_date})`).join('\n')}
 
 Respond with JSON: { "priority_actions": [...], "summary": "..." }`;
 
