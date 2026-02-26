@@ -44,6 +44,9 @@ const config: Config = {
         crimson: '#E8394A',
         emerald: '#10C981',
         violet:  '#8B5CF6',
+        // Clinical informational blue (distinct from interactive teal)
+        // Per ISMP/HL7 IEC 60446: blue = neutral/informational, never critical
+        info:    '#4B9EDB',
 
         // ─── Legacy aliases ─────────────────────────────────────────────────
         // These keep existing pages functional during migration.
@@ -95,14 +98,17 @@ const config: Config = {
         data: ['"Fira Code"', '"Fira Mono"', 'monospace'],
       },
       fontSize: {
-        // Data scale — for numbers, IDs, timestamps, metrics
-        'data-xs':  ['11px', { lineHeight: '1.4', letterSpacing: '0.01em' }],
-        'data-sm':  ['13px', { lineHeight: '1.4', letterSpacing: '0.01em' }],
-        'data-md':  ['16px', { lineHeight: '1.3', letterSpacing: '0.01em' }],
-        'data-lg':  ['20px', { lineHeight: '1.2', letterSpacing: '0.01em' }],
-        'data-xl':  ['28px', { lineHeight: '1.1', letterSpacing: '-0.01em' }],
-        'data-2xl': ['40px', { lineHeight: '1.0', letterSpacing: '-0.02em' }],
-        'data-3xl': ['56px', { lineHeight: '1.0', letterSpacing: '-0.03em' }],
+        // Data scale — for numbers, IDs, timestamps, metrics.
+        // Values in rem (anchored to 17px root) so they scale with the
+        // fluid html font-size alongside all standard Tailwind text-* utilities.
+        //   rem = px / 17  →  at 17px root: same as before; at 21px root: +24%
+        'data-xs':  ['0.647rem', { lineHeight: '1.4', letterSpacing: '0.01em' }],  // ~11px @ 17px root
+        'data-sm':  ['0.765rem', { lineHeight: '1.4', letterSpacing: '0.01em' }],  // ~13px @ 17px root
+        'data-md':  ['0.941rem', { lineHeight: '1.3', letterSpacing: '0.01em' }],  // ~16px @ 17px root
+        'data-lg':  ['1.176rem', { lineHeight: '1.2', letterSpacing: '0.01em' }],  // ~20px @ 17px root
+        'data-xl':  ['1.647rem', { lineHeight: '1.1', letterSpacing: '-0.01em' }], // ~28px @ 17px root
+        'data-2xl': ['2.353rem', { lineHeight: '1.0', letterSpacing: '-0.02em' }], // ~40px @ 17px root
+        'data-3xl': ['3.294rem', { lineHeight: '1.0', letterSpacing: '-0.03em' }], // ~56px @ 17px root
       },
 
       // ─── BORDER RADIUS ─────────────────────────────────────────────────────

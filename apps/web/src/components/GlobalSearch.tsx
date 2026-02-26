@@ -8,6 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { Search, X, ArrowUp, ArrowDown, CornerDownLeft, Clock } from 'lucide-react';
 import { useUiStore } from '../stores/ui.js';
 import { api } from '../services/api.js';
+import { formatDate } from '../utils/time.js';
+import { PatientAvatar, getInitialsFromParts } from './PatientAvatar.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,20 +20,6 @@ interface SearchResult {
   mrn: string;
   date_of_birth: string;
   similarity: number;
-}
-
-// ─── Avatar color — deterministic per patient_id ──────────────────────────────
-
-const AVATAR_PALETTE = [
-  { bg: 'bg-teal/20',    text: 'text-teal' },
-  { bg: 'bg-violet/20',  text: 'text-violet' },
-  { bg: 'bg-amber/20',   text: 'text-amber' },
-  { bg: 'bg-emerald/20', text: 'text-emerald' },
-  { bg: 'bg-crimson/20', text: 'text-crimson' },
-];
-
-function getAvatarColor(id: number) {
-  return AVATAR_PALETTE[id % AVATAR_PALETTE.length];
 }
 
 // ─── Recent searches — persisted to sessionStorage ────────────────────────────
@@ -70,15 +58,8 @@ function ResultRow({
   onSelect: () => void;
   onMouseEnter: () => void;
 }) {
-  const color = getAvatarColor(result.patient_id);
-  const initials = `${result.first_name[0] ?? ''}${result.last_name[0] ?? ''}`.toUpperCase();
-  const dob = result.date_of_birth
-    ? new Date(result.date_of_birth).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : '—';
+  const initials = getInitialsFromParts(result.first_name, result.last_name);
+  const dob      = formatDate(result.date_of_birth);
 
   return (
     <button
@@ -92,17 +73,7 @@ function ResultRow({
       ].join(' ')}
     >
       {/* Patient avatar */}
-      <div
-        className={[
-          'flex-shrink-0 flex items-center justify-center',
-          'w-9 h-9 rounded-full text-sm font-semibold font-ui',
-          color.bg,
-          color.text,
-        ].join(' ')}
-        aria-hidden="true"
-      >
-        {initials}
-      </div>
+      <PatientAvatar initials={initials} seed={result.patient_id} />
 
       {/* Patient info */}
       <div className="flex-1 min-w-0">
@@ -139,7 +110,12 @@ export function GlobalSearch() {
   const [results, setResults]           = useState<SearchResult[]>([]);
   const [loading, setLoading]           = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [recent]                        = useState<SearchResult[]>(loadRecent);
+  const [recent, setRecent]             = useState<SearchResult[]>(loadRecent);
+
+  const clearRecent = () => {
+    try { sessionStorage.removeItem(RECENT_KEY); } catch { /* ignore */ }
+    setRecent([]);
+  };
 
   const inputRef    = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -320,10 +296,19 @@ export function GlobalSearch() {
           {/* Recent searches */}
           {showRecent && (
             <div>
-              <p className="px-4 pt-3 pb-1.5 data-label flex items-center gap-1.5">
-                <Clock size={11} strokeWidth={1.5} aria-hidden="true" />
-                Recent
-              </p>
+              <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+                <p className="data-label flex items-center gap-1.5">
+                  <Clock size={11} strokeWidth={1.5} aria-hidden="true" />
+                  Recent
+                </p>
+                <button
+                  onClick={clearRecent}
+                  className="text-[10px] font-ui text-ghost hover:text-dim transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal/50 rounded"
+                  aria-label="Clear recent searches"
+                >
+                  Clear
+                </button>
+              </div>
               {recent.map((r, i) => (
                 <ResultRow
                   key={r.patient_id}

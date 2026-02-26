@@ -179,3 +179,80 @@ export interface LabComponent {
   reference_range: string;
   status: string;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 10: Clinical workspace types
+// ---------------------------------------------------------------------------
+
+export interface MedicationOrder {
+  id: number;
+  name: string;
+  code: string;
+  code_system: string | null;
+  form: string | null;
+  strength: string | null;
+  dosage: string | null;
+  frequency: string | null;
+  route: string | null;
+  status: string | null;
+  start_datetime: string | null;
+  end_datetime: string | null;
+  refill_count: number | null;
+  prescriber: string | null;
+}
+
+export interface PatientAllergy {
+  id: number;
+  name: string;
+  code: string;
+  category: string | null;
+  reaction: string | null;
+  severity: string | null;
+  onset_date: string | null;
+  status: string | null;
+}
+
+export interface ObservationRecord {
+  id: number;
+  code: string;
+  description: string | null;
+  value: string | null;
+  value_numeric: number | null;
+  unit: string | null;
+  reference_range: string | null;
+  abnormal_flag: string | null;
+  status: string | null;
+  date: string;
+  encounter_id: number | null;
+}
+
+export interface EnhancedEncounter {
+  id: number;
+  date: string;
+  type: string;
+  reason: string | null;
+  status: string | null;
+  disposition: string | null;
+  provider_name: string | null;
+  provider_specialty: string | null;
+  facility: string | null;
+}
+
+export interface FlowsheetRow {
+  code: string;
+  name: string;
+  unit: string | null;
+  reference_range: string | null;
+  date: string;
+  value_numeric: number | null;
+  value_text: string | null;
+  abnormal_flag: string | null;
+}
+
+export interface TrendingPoint {
+  date: string;
+  value: number;
+  unit: string | null;
+  reference_range: string | null;
+  abnormal_flag: string | null;
+}

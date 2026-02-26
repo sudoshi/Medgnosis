@@ -13,8 +13,9 @@ import {
   Info,
   CheckCircle2,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { api } from '../services/api.js';
+import { relativeTime } from '../utils/time.js';
+import { useToast } from '../stores/ui.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,16 +30,6 @@ interface Alert {
   acknowledged_at: string | null;
   auto_resolved: boolean;
   created_at: string;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function relativeTime(dateStr: string): string {
-  try {
-    return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
-  } catch {
-    return '—';
-  }
 }
 
 // Severity → visual tokens (card styles, icon, badge)
@@ -59,12 +50,12 @@ const SEVERITY_CARD: Record<string, { style: React.CSSProperties; borderClass: s
     bg: 'bg-s1',
   },
   low: {
-    style: { boxShadow: 'inset 2px 0 0 rgba(13, 217, 217, 0.3)' },
+    style: { boxShadow: 'inset 2px 0 0 rgba(75, 158, 219, 0.3)' },
     borderClass: 'border border-edge/25',
     bg: 'bg-s1',
   },
   info: {
-    style: { boxShadow: 'inset 2px 0 0 rgba(13, 217, 217, 0.3)' },
+    style: { boxShadow: 'inset 2px 0 0 rgba(75, 158, 219, 0.3)' },
     borderClass: 'border border-edge/25',
     bg: 'bg-s1',
   },
@@ -82,9 +73,16 @@ function SeverityIcon({ severity }: { severity: string }) {
     case 'high':
       return <AlertCircle size={18} strokeWidth={1.5} className={`${cls} text-amber`} aria-hidden="true" />;
     case 'medium':
-      return <AlertCircle size={18} strokeWidth={1.5} className={`${cls} text-amber/70`} aria-hidden="true" />;
+      // Muted amber: same icon shape as high but visually softer
+      return <AlertCircle size={18} strokeWidth={1.5} className={`${cls} text-amber opacity-60`} aria-hidden="true" />;
+    case 'low':
+      // Neutral — dim, not teal (teal = interactive UI element, not severity)
+      return <Info size={18} strokeWidth={1.5} className={`${cls} text-dim`} aria-hidden="true" />;
+    case 'info':
+      // Clinical informational blue per IEC 60446
+      return <Info size={18} strokeWidth={1.5} className={`${cls} text-info`} aria-hidden="true" />;
     default:
-      return <Info size={18} strokeWidth={1.5} className={`${cls} text-teal/70`} aria-hidden="true" />;
+      return <Info size={18} strokeWidth={1.5} className={`${cls} text-ghost`} aria-hidden="true" />;
   }
 }
 
@@ -92,8 +90,12 @@ function SeverityBadge({ severity }: { severity: string }) {
   switch (severity) {
     case 'critical': return <span className="badge badge-crimson capitalize">{severity}</span>;
     case 'high':     return <span className="badge badge-amber capitalize">{severity}</span>;
-    case 'medium':   return <span className="badge badge-amber capitalize">{severity}</span>;
-    case 'low':      return <span className="badge badge-teal capitalize">{severity}</span>;
+    // medium = below urgent threshold; caution badge is muted amber
+    case 'medium':   return <span className="badge badge-caution capitalize">{severity}</span>;
+    // low = no clinical urgency; dim badge (no color signal)
+    case 'low':      return <span className="badge badge-dim capitalize">{severity}</span>;
+    // info = purely informational; clinical blue per IEC 60446
+    case 'info':     return <span className="badge badge-info capitalize">{severity}</span>;
     default:         return <span className="badge badge-dim capitalize">{severity || 'info'}</span>;
   }
 }
@@ -216,6 +218,7 @@ function AlertCard({
 export function AlertsPage() {
   const [filter, setFilter] = useState<'all' | 'unread' | 'acknowledged'>('all');
   const queryClient         = useQueryClient();
+  const toast               = useToast();
 
   const { data, isLoading } = useQuery({
     queryKey: ['alerts', filter],
@@ -232,6 +235,11 @@ export function AlertsPage() {
     mutationFn: (id: string) => api.post(`/alerts/${id}/acknowledge`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      void queryClient.invalidateQueries({ queryKey: ['alerts', 'unread-count'] });
+      toast.success('Alert acknowledged');
+    },
+    onError: () => {
+      toast.error('Failed to acknowledge alert');
     },
   });
 

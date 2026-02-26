@@ -121,6 +121,149 @@ export function useSearch(query: string) {
   });
 }
 
+// ---- Patient Sub-Resources (Phase 10: Clinical Workspace) ----
+
+export function usePatientMedications(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'medications'],
+    queryFn: () => api.get(`/patients/${patientId}/medications`),
+    enabled: !!patientId,
+  });
+}
+
+export function usePatientAllergies(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'allergies'],
+    queryFn: () => api.get(`/patients/${patientId}/allergies`),
+    enabled: !!patientId,
+  });
+}
+
+export function usePatientObservations(
+  patientId: string | undefined,
+  params: { category?: string; limit?: number; offset?: number } = {},
+) {
+  const qs = new URLSearchParams();
+  if (params.category) qs.set('category', params.category);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+
+  return useQuery({
+    queryKey: ['patient', patientId, 'observations', params],
+    queryFn: () => api.get(`/patients/${patientId}/observations?${qs}`),
+    enabled: !!patientId,
+  });
+}
+
+export function useObservationTrending(patientId: string | undefined, code: string | null) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'observations', 'trending', code],
+    queryFn: () => api.get(`/patients/${patientId}/observations/trending?code=${encodeURIComponent(code!)}`),
+    enabled: !!patientId && !!code,
+  });
+}
+
+export function usePatientEncounters(
+  patientId: string | undefined,
+  params: { limit?: number; page?: number } = {},
+) {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.page) qs.set('page', String(params.page));
+
+  return useQuery({
+    queryKey: ['patient', patientId, 'encounters', params],
+    queryFn: () => api.get<Record<string, unknown>[]>(`/patients/${patientId}/encounters?${qs}`),
+    enabled: !!patientId,
+  });
+}
+
+export function usePatientFlowsheet(patientId: string | undefined, category?: string) {
+  const qs = new URLSearchParams();
+  if (category) qs.set('category', category);
+
+  return useQuery({
+    queryKey: ['patient', patientId, 'flowsheet', category],
+    queryFn: () => api.get(`/patients/${patientId}/flowsheet?${qs}`),
+    enabled: !!patientId,
+  });
+}
+
+// ---- Care Gap Bundles (Phase 10.6) ----
+
+export function usePatientCareBundle(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'care-bundle'],
+    queryFn: () => api.get(`/patients/${patientId}/care-bundle`),
+    enabled: !!patientId,
+  });
+}
+
+export function useConditionBundles() {
+  return useQuery({
+    queryKey: ['bundles'],
+    queryFn: () => api.get('/bundles'),
+  });
+}
+
+export function useConditionBundle(bundleCode: string | undefined) {
+  return useQuery({
+    queryKey: ['bundles', bundleCode],
+    queryFn: () => api.get(`/bundles/${bundleCode}`),
+    enabled: !!bundleCode,
+  });
+}
+
+// ---- Clinical Notes (Phase 10.3: Encounter Note + AI Scribe) ----
+
+export function usePatientNotes(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'notes'],
+    queryFn: () => api.get(`/patients/${patientId}/notes`),
+    enabled: !!patientId,
+  });
+}
+
+export function useCreateClinicalNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { patient_id: number; visit_type?: string; encounter_id?: number; chief_complaint?: string }) =>
+      api.post('/clinical-notes', data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['patient', String(variables.patient_id), 'notes'] });
+    },
+  });
+}
+
+export function useUpdateClinicalNote() {
+  return useMutation({
+    mutationFn: ({ noteId, data }: { noteId: string; data: Record<string, unknown> }) =>
+      api.patch(`/clinical-notes/${noteId}`, data),
+  });
+}
+
+export function useFinalizeClinicalNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => api.post(`/clinical-notes/${noteId}/finalize`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clinical-note'] });
+    },
+  });
+}
+
+export function useAiScribe() {
+  return useMutation({
+    mutationFn: (data: {
+      patient_id: number;
+      visit_type: string;
+      sections: string[];
+      chief_complaint?: string;
+      existing_content?: Record<string, string>;
+    }) => api.post('/clinical-notes/scribe', data),
+  });
+}
+
 // ---- AI Insights ----
 
 export function useAiChat() {
@@ -128,14 +271,16 @@ export function useAiChat() {
     mutationFn: ({
       message,
       patient_id,
+      history,
     }: {
       message: string;
       patient_id?: number;
+      history?: Array<{ role: 'user' | 'assistant'; content: string }>;
     }) =>
       api.post('/insights/chat', {
         message,
         patient_id,
-        provider: 'ollama',
+        history,
       }),
   });
 }

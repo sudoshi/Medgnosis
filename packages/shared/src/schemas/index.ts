@@ -47,7 +47,10 @@ export const patientCreateSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const careGapUpdateSchema = z.object({
-  status: z.enum(['open', 'closed', 'in_progress']),
+  status: z.enum([
+    'open', 'closed', 'in_progress',
+    'met', 'not_met', 'overdue', 'due_soon', 'due', 'ongoing', 'na', 'at_risk',
+  ]),
   notes: z.string().optional(),
 });
 
@@ -72,6 +75,34 @@ export const measureFilterSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Clinical note schemas
+// ---------------------------------------------------------------------------
+
+export const clinicalNoteCreateSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  visit_type: z.enum(['initial', 'followup', 'procedure', 'telehealth']).default('followup'),
+  encounter_id: z.coerce.number().int().positive().optional(),
+  chief_complaint: z.string().optional(),
+});
+
+export const clinicalNoteUpdateSchema = z.object({
+  chief_complaint: z.string().optional(),
+  subjective: z.string().optional(),
+  objective: z.string().optional(),
+  assessment: z.string().optional(),
+  plan_text: z.string().optional(),
+  visit_type: z.enum(['initial', 'followup', 'procedure', 'telehealth']).optional(),
+});
+
+export const scribeRequestSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  visit_type: z.enum(['initial', 'followup', 'procedure', 'telehealth']).default('followup'),
+  sections: z.array(z.enum(['subjective', 'objective', 'assessment', 'plan_text'])).min(1),
+  chief_complaint: z.string().optional(),
+  existing_content: z.record(z.string()).optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
 
@@ -82,3 +113,6 @@ export type PatientCreateRequest = z.infer<typeof patientCreateSchema>;
 export type CareGapUpdateRequest = z.infer<typeof careGapUpdateSchema>;
 export type AlertAcknowledgeRequest = z.infer<typeof alertAcknowledgeSchema>;
 export type MeasureFilterParams = z.infer<typeof measureFilterSchema>;
+export type ClinicalNoteCreateRequest = z.infer<typeof clinicalNoteCreateSchema>;
+export type ClinicalNoteUpdateRequest = z.infer<typeof clinicalNoteUpdateSchema>;
+export type ScribeRequest = z.infer<typeof scribeRequestSchema>;

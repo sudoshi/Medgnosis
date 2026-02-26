@@ -15,6 +15,8 @@ import insightsRoutes from './insights/index.js';
 import searchRoutes from './search/index.js';
 import fhirRoutes from './fhir/index.js';
 import adminRoutes from './admin/index.js';
+import bundleRoutes from './bundles/index.js';
+import clinicalNoteRoutes from './clinical-notes/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -33,6 +35,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(searchRoutes, { prefix: '/search' });
       await api.register(fhirRoutes, { prefix: '/fhir' });
       await api.register(adminRoutes, { prefix: '/admin' });
+      await api.register(bundleRoutes, { prefix: '/bundles' });
+      await api.register(clinicalNoteRoutes, { prefix: '/clinical-notes' });
     },
     { prefix: API_PREFIX },
   );

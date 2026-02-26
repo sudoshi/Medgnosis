@@ -3,14 +3,17 @@
 // 2-column: measure list left, detail panel right
 // =============================================================================
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   Search,
   BarChart3,
   Users,
   CheckCircle2,
   ChevronRight,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { api } from '../services/api.js';
 
@@ -90,6 +93,24 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
   );
 }
 
+// ─── TrendBadge ───────────────────────────────────────────────────────────────
+
+function TrendBadge({ value, label }: { value: number; label: string }) {
+  if (value === 0) return <span className="text-xs text-ghost">{label}</span>;
+  const up = value > 0;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs ${up ? 'text-emerald' : 'text-crimson'}`}>
+      {up ? (
+        <TrendingUp size={11} strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <TrendingDown size={11} strokeWidth={2} aria-hidden="true" />
+      )}
+      <span className="font-data tabular-nums">{Math.abs(value)}%</span>
+      <span className="text-ghost">{label}</span>
+    </span>
+  );
+}
+
 // ─── MeasureDetailPanel ───────────────────────────────────────────────────────
 
 function MeasureDetailPanel({ measureId }: { measureId: number }) {
@@ -164,25 +185,36 @@ function MeasureDetailPanel({ measureId }: { measureId: number }) {
             <p className={`font-data text-data-lg tabular-nums leading-none ${rateClass}`}>
               {rate}%
             </p>
+            <div className="mt-1">
+              <TrendBadge value={0} label="vs last month" />
+            </div>
           </div>
-          <div className="flex-1 px-4 py-3 min-w-0">
+          <Link
+            to={`/patients?measure=${detail.code}&cohort=eligible`}
+            className="flex-1 px-4 py-3 min-w-0 hover:bg-s1 transition-colors group"
+            title="View eligible patients"
+          >
             <div className="flex items-center gap-2 mb-0.5">
-              <Users size={13} strokeWidth={1.5} className="text-dim" aria-hidden="true" />
+              <Users size={13} strokeWidth={1.5} className="text-dim group-hover:text-teal transition-colors" aria-hidden="true" />
               <p className="data-label">Eligible</p>
             </div>
-            <p className="font-data text-data-lg text-bright tabular-nums leading-none">
+            <p className="font-data text-data-lg text-bright tabular-nums leading-none group-hover:text-teal transition-colors">
               {eligible.toLocaleString()}
             </p>
-          </div>
-          <div className="flex-1 px-4 py-3 min-w-0">
+          </Link>
+          <Link
+            to={`/patients?measure=${detail.code}&cohort=compliant`}
+            className="flex-1 px-4 py-3 min-w-0 hover:bg-s1 transition-colors group"
+            title="View compliant patients"
+          >
             <div className="flex items-center gap-2 mb-0.5">
               <CheckCircle2 size={13} strokeWidth={1.5} className="text-emerald" aria-hidden="true" />
               <p className="data-label">Compliant</p>
             </div>
-            <p className="font-data text-data-lg text-bright tabular-nums leading-none">
+            <p className="font-data text-data-lg text-bright tabular-nums leading-none group-hover:text-emerald transition-colors">
               {compliant.toLocaleString()}
             </p>
-          </div>
+          </Link>
         </div>
       </div>
 
@@ -282,6 +314,13 @@ export function MeasuresPage() {
   });
 
   const measures = data?.data ?? [];
+
+  // Auto-select the first measure when the list loads
+  useEffect(() => {
+    if (!selectedId && measures.length > 0) {
+      setSelectedId(measures[0].id);
+    }
+  }, [measures, selectedId]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return measures;

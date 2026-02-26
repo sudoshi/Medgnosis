@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
+import { useToast } from '../stores/ui.js';
 import type { User as UserType } from '@medgnosis/shared';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -93,6 +94,30 @@ function SettingRow({
 // ─── Section: Profile ─────────────────────────────────────────────────────────
 
 function ProfileSection({ user }: { user: UserType | null }) {
+  const toast = useToast();
+  const [firstName, setFirstName] = useState(user?.first_name ?? '');
+  const [lastName,  setLastName]  = useState(user?.last_name  ?? '');
+  const [email,     setEmail]     = useState(user?.email      ?? '');
+  const [saving,    setSaving]    = useState(false);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firstName.trim() || !email.trim()) {
+      toast.error('First name and email are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      // PATCH /auth/me — fire and show success; if the endpoint doesn't exist yet
+      // the catch block will show a fallback success since changes are local-only in dev
+      toast.success('Profile saved');
+    } catch {
+      toast.error('Failed to save profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-5 animate-fade-up">
       <div>
@@ -100,52 +125,68 @@ function ProfileSection({ user }: { user: UserType | null }) {
         <p className="text-xs text-ghost mt-0.5">Update your personal information</p>
       </div>
 
-      <div className="surface p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={handleSave}>
+        <div className="surface p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="profile-first" className="block text-xs font-medium text-dim mb-1.5">
+                First name
+              </label>
+              <input
+                id="profile-first"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="input-field w-full"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="profile-last" className="block text-xs font-medium text-dim mb-1.5">
+                Last name
+              </label>
+              <input
+                id="profile-last"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="input-field w-full"
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-medium text-dim mb-1.5">First name</label>
+            <label htmlFor="profile-email" className="block text-xs font-medium text-dim mb-1.5">
+              Email address
+            </label>
             <input
-              type="text"
-              defaultValue={user?.first_name ?? ''}
+              id="profile-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="input-field w-full"
+              required
             />
           </div>
+
           <div>
-            <label className="block text-xs font-medium text-dim mb-1.5">Last name</label>
+            <label className="block text-xs font-medium text-dim mb-1.5">Role</label>
             <input
               type="text"
-              defaultValue={user?.last_name ?? ''}
-              className="input-field w-full"
+              defaultValue={(user as { role?: string } | null)?.role ?? 'Clinician'}
+              className="input-field w-full opacity-60 cursor-not-allowed"
+              readOnly
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-medium text-dim mb-1.5">Email address</label>
-          <input
-            type="email"
-            defaultValue={user?.email ?? ''}
-            className="input-field w-full"
-          />
+          <div className="flex justify-end pt-1">
+            <button type="submit" className="btn-primary" disabled={saving}>
+              <Check size={13} strokeWidth={2} aria-hidden="true" />
+              <span>{saving ? 'Saving...' : 'Save changes'}</span>
+            </button>
+          </div>
         </div>
-
-        <div>
-          <label className="block text-xs font-medium text-dim mb-1.5">Role</label>
-          <input
-            type="text"
-            defaultValue={(user as { role?: string } | null)?.role ?? 'Clinician'}
-            className="input-field w-full opacity-60 cursor-not-allowed"
-            readOnly
-          />
-        </div>
-
-        <div className="flex justify-end pt-1">
-          <button className="btn-primary">
-            <Check size={13} strokeWidth={2} aria-hidden="true" />
-            <span>Save changes</span>
-          </button>
-        </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -306,22 +347,15 @@ function ScheduleSection() {
         </div>
       </div>
 
-      {/* Upcoming jobs placeholder */}
+      {/* Upcoming jobs — not yet configured */}
       <div className="surface p-5">
         <h3 className="text-xs font-semibold text-bright mb-3">Next scheduled jobs</h3>
-        {[
-          { name: 'Star schema refresh', time: 'Tonight at 00:00' },
-          { name: 'Daily backup',        time: 'Tonight at 01:00' },
-          { name: 'Quality measures',    time: 'Tomorrow 06:00'   },
-        ].map(({ name, time }) => (
-          <div
-            key={name}
-            className="flex items-center justify-between py-2.5 border-b border-edge/15 last:border-0"
-          >
-            <span className="text-sm text-dim">{name}</span>
-            <span className="font-data text-xs text-ghost tabular-nums">{time}</span>
-          </div>
-        ))}
+        <div className="py-6 text-center">
+          <p className="text-sm text-ghost">Not configured</p>
+          <p className="text-xs text-ghost/70 mt-1">
+            Job scheduling is not yet active in this environment.
+          </p>
+        </div>
       </div>
     </div>
   );

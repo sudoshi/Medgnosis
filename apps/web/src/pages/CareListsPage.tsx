@@ -3,7 +3,7 @@
 // Population care gap management with status grouping
 // =============================================================================
 
-import { useState, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -16,6 +16,11 @@ import {
   Users,
 } from 'lucide-react';
 import { api } from '../services/api.js';
+import { formatDate } from '../utils/time.js';
+import { PatientAvatar, getInitials } from '../components/PatientAvatar.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
+import { Pagination } from '../components/Pagination.js';
+import { useToast } from '../stores/ui.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,38 +36,6 @@ interface CareGap {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const AVATAR_PALETTE = [
-  'bg-teal/20 text-teal',
-  'bg-violet/20 text-violet',
-  'bg-amber/20 text-amber',
-  'bg-emerald/20 text-emerald',
-  'bg-crimson/20 text-crimson',
-];
-
-function avatarColor(id: number): string {
-  return AVATAR_PALETTE[id % AVATAR_PALETTE.length];
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return parts.length >= 2
-    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-    : name.slice(0, 2).toUpperCase();
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
 
 function isOpenStatus(status: string): boolean {
   const s = status?.toLowerCase() ?? '';
@@ -121,7 +94,6 @@ function CareGapRow({
   resolving: boolean;
 }) {
   const initials = getInitials(gap.patient_name || `P${gap.patient_id}`);
-  const color    = avatarColor(gap.patient_id);
   const open     = isOpenStatus(gap.status);
 
   return (
@@ -134,23 +106,14 @@ function CareGapRow({
       ].join(' ')}
     >
       {/* Patient avatar */}
-      <div
-        className={[
-          'flex-shrink-0 flex items-center justify-center',
-          'w-8 h-8 rounded-full text-xs font-semibold font-ui',
-          color,
-        ].join(' ')}
-        aria-hidden="true"
-      >
-        {initials}
-      </div>
+      <PatientAvatar initials={initials} seed={gap.patient_id} size="sm" />
 
       {/* Patient name + measure */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <Link
             to={`/patients/${gap.patient_id}`}
-            className="text-sm font-medium text-bright hover:text-teal transition-colors truncate"
+            className="text-sm font-medium text-bright hover:text-teal transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 rounded"
           >
             {gap.patient_name || `Patient ${gap.patient_id}`}
           </Link>
@@ -172,7 +135,7 @@ function CareGapRow({
         <span
           className={[
             'badge',
-            open ? 'badge-crimson' : 'badge-emerald',
+            open ? 'badge-amber' : 'badge-emerald',
           ].join(' ')}
         >
           {gap.status || 'open'}
@@ -190,6 +153,7 @@ function CareGapRow({
               'border border-emerald/30 text-emerald bg-emerald/5',
               'hover:bg-emerald/15 hover:border-emerald/50',
               'transition-colors duration-100',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald/50',
               resolving ? 'opacity-50 cursor-not-allowed' : '',
             ].join(' ')}
             aria-label="Mark as resolved"
@@ -209,21 +173,40 @@ function CareGapRow({
 
 // ─── CareListsPage ────────────────────────────────────────────────────────────
 
+const PER_PAGE_OPTIONS = [25, 50, 100] as const;
+
 export function CareListsPage() {
-  const [search, setSearch]         = useState('');
+  const [search, setSearch]             = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [page, setPage]                 = useState(1);
+  const [perPage, setPerPage]           = useState<25 | 50 | 100>(25);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     open: true,
     closed: false,
   });
+  const [pendingResolveId, setPendingResolveId] = useState<number | null>(null);
 
   const queryClient = useQueryClient();
+  const toast       = useToast();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // ── Debounce search input ──────────────────────────────────────────────────
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['care-gaps', statusFilter],
+    queryKey: ['care-gaps', statusFilter, debouncedSearch, page, perPage],
     queryFn: () => {
-      const params = new URLSearchParams({ per_page: '100' });
+      const params = new URLSearchParams({ per_page: String(perPage), page: String(page) });
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
       return api.get<CareGap[]>(`/care-gaps?${params}`);
     },
   });
@@ -233,29 +216,31 @@ export function CareListsPage() {
       api.patch(`/care-gaps/${id}`, { status: 'resolved' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['care-gaps'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Care gap resolved');
+      setPendingResolveId(null);
+    },
+    onError: () => {
+      toast.error('Failed to resolve care gap');
+      setPendingResolveId(null);
     },
   });
 
   const careGaps  = data?.data ?? [];
-  const meta      = data?.meta;
+  const meta      = data?.meta as { total?: number; total_pages?: number; page?: number } | undefined;
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return careGaps;
-    const s = search.toLowerCase();
-    return careGaps.filter(
-      (g) =>
-        g.patient_name?.toLowerCase().includes(s) ||
-        g.measure?.toLowerCase().includes(s),
-    );
-  }, [careGaps, search]);
-
-  const openGaps   = filtered.filter((g) => isOpenStatus(g.status));
-  const closedGaps = filtered.filter((g) => !isOpenStatus(g.status));
+  // Client-side section split (search is already server-side)
+  const openGaps   = careGaps.filter((g) => isOpenStatus(g.status));
+  const closedGaps = careGaps.filter((g) => !isOpenStatus(g.status));
   const uniquePatients = new Set(careGaps.map((g) => g.patient_id)).size;
+
+  const totalPages = meta?.total_pages ?? 1;
 
   function toggleSection(key: string) {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }
+
+  const pendingGap = careGaps.find((g) => g.id === pendingResolveId);
 
   return (
     <div className="space-y-5">
@@ -287,14 +272,14 @@ export function CareListsPage() {
 
           {/* Open */}
           <div className="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-            <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-card bg-crimson/10">
-              <AlertCircle size={15} className="text-crimson" strokeWidth={1.5} />
+            <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-card bg-amber/10">
+              <AlertCircle size={15} className="text-amber" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="font-data text-data-lg text-crimson tabular-nums leading-none">
+              <p className="font-data text-data-lg text-amber tabular-nums leading-none">
                 {isLoading ? '—' : openGaps.length.toLocaleString()}
               </p>
-              <p className="data-label mt-0.5">Open</p>
+              <p className="data-label mt-0.5">Open (this page)</p>
             </div>
           </div>
 
@@ -307,7 +292,7 @@ export function CareListsPage() {
               <p className="font-data text-data-lg text-emerald tabular-nums leading-none">
                 {isLoading ? '—' : closedGaps.length.toLocaleString()}
               </p>
-              <p className="data-label mt-0.5">Resolved</p>
+              <p className="data-label mt-0.5">Resolved (this page)</p>
             </div>
           </div>
 
@@ -320,7 +305,7 @@ export function CareListsPage() {
               <p className="font-data text-data-lg text-bright tabular-nums leading-none">
                 {isLoading ? '—' : uniquePatients.toLocaleString()}
               </p>
-              <p className="data-label mt-0.5">Patients</p>
+              <p className="data-label mt-0.5">Patients (this page)</p>
             </div>
           </div>
         </div>
@@ -340,7 +325,7 @@ export function CareListsPage() {
             placeholder="Search by patient or measure..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="input-field pl-9 w-full"
+            className="input-field pl-9 w-full focus-visible:ring-2 focus-visible:ring-teal/50"
             autoComplete="off"
             spellCheck={false}
             aria-label="Search care gaps"
@@ -352,9 +337,10 @@ export function CareListsPage() {
           {(['all', 'open', 'resolved'] as const).map((s) => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => { setStatusFilter(s); setPage(1); }}
               className={[
                 'px-3 py-1.5 text-xs font-medium font-ui capitalize transition-colors duration-100',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50',
                 statusFilter === s
                   ? 'bg-teal/15 text-teal'
                   : 'text-ghost hover:text-dim hover:bg-s1',
@@ -364,13 +350,28 @@ export function CareListsPage() {
             </button>
           ))}
         </div>
+
+        {/* Per-page selector */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-xs text-ghost">Per page:</span>
+          <select
+            value={perPage}
+            onChange={(e) => { setPerPage(Number(e.target.value) as 25 | 50 | 100); setPage(1); }}
+            className="input-field text-xs py-1 pr-6 h-auto w-auto"
+            aria-label="Results per page"
+          >
+            {PER_PAGE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* ── Care gap list ────────────────────────────────────────────────── */}
       <div className="surface p-0 overflow-hidden animate-fade-up stagger-3">
 
-        {/* Table header */}
-        <div className="flex items-center px-4 py-2.5 border-b border-edge/35 select-none">
+        {/* Sticky table header */}
+        <div className="sticky top-0 bg-s0 z-10 flex items-center px-4 py-2.5 border-b border-edge/35 select-none">
           <div className="w-8 flex-shrink-0 mr-3" /> {/* avatar */}
           <div className="flex-1 data-label">Patient / Measure</div>
           <div className="hidden md:block w-[120px] flex-shrink-0 data-label">Identified</div>
@@ -403,13 +404,13 @@ export function CareListsPage() {
           </div>
         )}
 
-        {!isLoading && filtered.length === 0 && (
+        {!isLoading && careGaps.length === 0 && (
           <div className="empty-state py-16">
             <p className="empty-state-title">No care gaps found</p>
-            {search ? (
+            {debouncedSearch ? (
               <p className="empty-state-desc">
                 No results for{' '}
-                <span className="text-bright font-medium">"{search}"</span>
+                <span className="text-bright font-medium">"{debouncedSearch}"</span>
               </p>
             ) : (
               <p className="empty-state-desc text-emerald">
@@ -419,7 +420,7 @@ export function CareListsPage() {
           </div>
         )}
 
-        {!isLoading && filtered.length > 0 && (
+        {!isLoading && careGaps.length > 0 && (
           <div>
             {/* ── Open gaps section ────────────────────────────────── */}
             {openGaps.length > 0 && (
@@ -430,7 +431,7 @@ export function CareListsPage() {
                     count={openGaps.length}
                     open={openSections.open ?? true}
                     onToggle={() => toggleSection('open')}
-                    colorClass="text-crimson"
+                    colorClass="text-amber"
                   />
                 </div>
 
@@ -439,7 +440,7 @@ export function CareListsPage() {
                     <CareGapRow
                       key={gap.id}
                       gap={gap}
-                      onResolve={resolveGap}
+                      onResolve={(id) => setPendingResolveId(id)}
                       resolving={resolvingId === gap.id}
                     />
                   ))}
@@ -464,7 +465,7 @@ export function CareListsPage() {
                     <CareGapRow
                       key={gap.id}
                       gap={gap}
-                      onResolve={resolveGap}
+                      onResolve={(id) => setPendingResolveId(id)}
                       resolving={resolvingId === gap.id}
                     />
                   ))}
@@ -474,17 +475,36 @@ export function CareListsPage() {
         )}
       </div>
 
-      {/* Pagination info */}
-      {meta && meta.total > careGaps.length && (
-        <div className="flex items-center justify-between text-xs text-ghost animate-fade-up stagger-4">
-          <p className="font-data tabular-nums">
-            Showing {careGaps.length.toLocaleString()} of {meta.total.toLocaleString()} gaps
-          </p>
-          <p>
-            Use status filters or search to narrow results
-          </p>
+      {/* ── Pagination ───────────────────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="animate-fade-up stagger-4">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={meta?.total}
+            perPage={perPage}
+            itemLabel="gaps"
+            onPageChange={setPage}
+          />
         </div>
       )}
+
+      {/* ── Confirm resolve modal ─────────────────────────────────────────── */}
+      <ConfirmModal
+        open={pendingResolveId !== null}
+        title="Mark care gap as resolved?"
+        body={
+          pendingGap
+            ? `This will close the care gap for ${pendingGap.patient_name || 'this patient'}: ${pendingGap.measure || 'Unknown Measure'}.`
+            : undefined
+        }
+        confirmLabel="Resolve"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (pendingResolveId !== null) resolveGap(pendingResolveId);
+        }}
+        onCancel={() => setPendingResolveId(null)}
+      />
     </div>
   );
 }

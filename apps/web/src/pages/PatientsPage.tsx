@@ -10,10 +10,12 @@ import {
   Users,
   Search,
   ChevronRight,
-  ChevronLeft,
   ArrowUpDown,
 } from 'lucide-react';
 import { api } from '../services/api.js';
+import { formatDate, calcAge } from '../utils/time.js';
+import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
+import { Pagination } from '../components/Pagination.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,66 +30,11 @@ interface PatientRow {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const AVATAR_PALETTE = [
-  'bg-teal/20 text-teal',
-  'bg-violet/20 text-violet',
-  'bg-amber/20 text-amber',
-  'bg-emerald/20 text-emerald',
-  'bg-crimson/20 text-crimson',
-];
-
-function avatarColor(id: number): string {
-  return AVATAR_PALETTE[id % AVATAR_PALETTE.length];
-}
-
-function getInitials(first: string, last: string): string {
-  return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
-}
-
-function formatDOB(dob: string): string {
-  if (!dob) return '—';
-  try {
-    return new Date(dob).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function calcAge(dob: string): number | null {
-  if (!dob) return null;
-  try {
-    const today = new Date();
-    const birth = new Date(dob);
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age;
-  } catch {
-    return null;
-  }
-}
-
 function formatGender(g: string): string {
   if (!g) return '—';
   if (g.toUpperCase().startsWith('M')) return 'Male';
   if (g.toUpperCase().startsWith('F')) return 'Female';
   return g;
-}
-
-// ─── Pagination range ─────────────────────────────────────────────────────────
-// Returns up to 7 items: page numbers + '…' ellipsis placeholders
-
-function getPaginationRange(current: number, total: number): (number | '…')[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  if (current <= 4) return [1, 2, 3, 4, 5, '…', total];
-  if (current >= total - 3) {
-    return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
-  }
-  return [1, '…', current - 1, current, current + 1, '…', total];
 }
 
 // ─── PatientsPage ─────────────────────────────────────────────────────────────
@@ -255,11 +202,9 @@ export function PatientsPage() {
         {!isLoading && patients.length > 0 && (
           <div>
             {patients.map((p) => {
-              const initials = getInitials(p.first_name, p.last_name);
-              const color    = avatarColor(p.id);
-              const age      = calcAge(p.date_of_birth);
-              const dob      = formatDOB(p.date_of_birth);
-              const gender   = formatGender(p.gender);
+              const age    = calcAge(p.date_of_birth);
+              const dob    = formatDate(p.date_of_birth);
+              const gender = formatGender(p.gender);
 
               return (
                 <Link
@@ -274,16 +219,10 @@ export function PatientsPage() {
                 >
                   {/* Patient cell — avatar + name */}
                   <div className="flex-[2.5] flex items-center gap-3 min-w-0">
-                    <div
-                      className={[
-                        'flex-shrink-0 flex items-center justify-center',
-                        'w-9 h-9 rounded-full text-sm font-semibold font-ui',
-                        color,
-                      ].join(' ')}
-                      aria-hidden="true"
-                    >
-                      {initials}
-                    </div>
+                    <PatientAvatar
+                      initials={getInitialsFromParts(p.first_name, p.last_name)}
+                      seed={p.id}
+                    />
                     <p className="text-sm font-medium text-bright truncate group-hover:text-teal transition-colors duration-100">
                       {p.last_name}, {p.first_name}
                     </p>
@@ -348,75 +287,16 @@ export function PatientsPage() {
       </div>
 
       {/* ── Pagination ───────────────────────────────────────────────────── */}
-      {meta && totalPages > 1 && (
-        <div className="flex items-center justify-between animate-fade-up stagger-4">
-          <p className="text-xs text-ghost font-data tabular-nums">
-            {from.toLocaleString()}–{to.toLocaleString()} of{' '}
-            {meta.total.toLocaleString()} patients
-          </p>
-
-          <div className="flex items-center gap-1" role="navigation" aria-label="Pagination">
-            {/* Previous */}
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className={[
-                'flex items-center justify-center w-8 h-8 rounded-card',
-                'border transition-colors duration-100',
-                page <= 1
-                  ? 'text-ghost/30 border-edge/15 cursor-not-allowed'
-                  : 'text-dim border-edge/35 hover:text-bright hover:bg-s1 hover:border-edge/55',
-              ].join(' ')}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} strokeWidth={1.5} />
-            </button>
-
-            {/* Page numbers */}
-            {getPaginationRange(page, totalPages).map((p, i) =>
-              p === '…' ? (
-                <span
-                  key={`ell-${i}`}
-                  className="w-8 h-8 flex items-center justify-center font-data text-xs text-ghost"
-                  aria-hidden="true"
-                >
-                  …
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => setPage(p as number)}
-                  className={[
-                    'w-8 h-8 flex items-center justify-center rounded-card',
-                    'font-data text-xs tabular-nums border transition-colors duration-100',
-                    p === page
-                      ? 'bg-teal/15 text-teal border-teal/30 font-medium'
-                      : 'text-dim border-edge/35 hover:text-bright hover:bg-s1 hover:border-edge/55',
-                  ].join(' ')}
-                  aria-label={`Page ${p}`}
-                  aria-current={p === page ? 'page' : undefined}
-                >
-                  {p}
-                </button>
-              ),
-            )}
-
-            {/* Next */}
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className={[
-                'flex items-center justify-center w-8 h-8 rounded-card',
-                'border transition-colors duration-100',
-                page >= totalPages
-                  ? 'text-ghost/30 border-edge/15 cursor-not-allowed'
-                  : 'text-dim border-edge/35 hover:text-bright hover:bg-s1 hover:border-edge/55',
-              ].join(' ')}
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} strokeWidth={1.5} />
-            </button>
-          </div>
+      {meta && (
+        <div className="animate-fade-up stagger-4">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            totalItems={meta.total}
+            perPage={meta.per_page}
+            itemLabel="patients"
+          />
         </div>
       )}
     </div>

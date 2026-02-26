@@ -5,6 +5,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth.js';
+import { useWsStore } from '../stores/ws.js';
 
 type AlertMessage = {
   type: string;
@@ -15,6 +16,7 @@ export function useAlertSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const queryClient = useQueryClient();
   const { tokens, isAuthenticated } = useAuthStore();
+  const setStatus = useWsStore((s) => s.setStatus);
 
   const connect = useCallback(() => {
     if (!isAuthenticated || !tokens?.access_token) return;
@@ -25,6 +27,11 @@ export function useAlertSocket() {
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
+    setStatus('reconnecting');
+
+    ws.onopen = () => {
+      setStatus('connected');
+    };
 
     ws.onmessage = (event) => {
       try {
@@ -47,19 +54,22 @@ export function useAlertSocket() {
     };
 
     ws.onclose = () => {
+      setStatus('reconnecting');
       // Reconnect after 5 seconds
       setTimeout(connect, 5000);
     };
 
     ws.onerror = () => {
+      setStatus('disconnected');
       ws.close();
     };
-  }, [isAuthenticated, tokens?.access_token, queryClient]);
+  }, [isAuthenticated, tokens?.access_token, queryClient, setStatus]);
 
   useEffect(() => {
     connect();
     return () => {
       wsRef.current?.close();
+      setStatus('disconnected');
     };
-  }, [connect]);
+  }, [connect, setStatus]);
 }

@@ -3,6 +3,7 @@ import { LoginPage } from './pages/LoginPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { PatientsPage } from './pages/PatientsPage.js';
 import { PatientDetailPage } from './pages/PatientDetailPage.js';
+import { EncounterNotePage } from './pages/EncounterNotePage.js';
 import { MeasuresPage } from './pages/MeasuresPage.js';
 import { CareListsPage } from './pages/CareListsPage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
@@ -37,6 +38,7 @@ export function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/patients" element={<PatientsPage />} />
             <Route path="/patients/:patientId" element={<PatientDetailPage />} />
+            <Route path="/patients/:patientId/encounter-note" element={<EncounterNotePage />} />
             <Route path="/measures" element={<MeasuresPage />} />
             <Route path="/care-lists" element={<CareListsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />

@@ -11,6 +11,8 @@ export type * from './types/dashboard.js';
 export type * from './types/clinical.js';
 export type * from './types/fhir.js';
 export type * from './types/api.js';
+export type * from './types/bundle.js';
+export type * from './types/encounter-note.js';
 
 // Constants
 export {
@@ -32,6 +34,9 @@ export {
   careGapUpdateSchema,
   alertAcknowledgeSchema,
   measureFilterSchema,
+  clinicalNoteCreateSchema,
+  clinicalNoteUpdateSchema,
+  scribeRequestSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -41,4 +46,7 @@ export type {
   CareGapUpdateRequest,
   AlertAcknowledgeRequest,
   MeasureFilterParams,
+  ClinicalNoteCreateRequest,
+  ClinicalNoteUpdateRequest,
+  ScribeRequest,
 } from './schemas/index.js';

@@ -44,6 +44,16 @@
     --color-crimson: #E8394A;
     --color-emerald: #10C981;
     --color-violet:  #8B5CF6;
+    --color-info:    #4B9EDB;
+  }
+
+  html {
+    /* Fluid root font size: 17px at ≤1440px, scales to 21px at ≥1800px.
+       Every rem-based Tailwind utility (text-xs, text-sm, etc.) scales
+       automatically — no component changes needed.
+       Formula: preferred = 1.1vw + 1.2px
+         ~17px at 1440px (laptop) → ~21px at 1800px+ (desktop/large monitor) */
+    font-size: clamp(17px, 1.1vw + 1.2px, 21px);
   }
 
   html,
@@ -52,6 +62,15 @@
     font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Ambient top-center glow — adds depth to the otherwise flat void background */
+  body {
+    background-image: radial-gradient(
+      ellipse 80% 45% at 50% -4%,
+      rgba(13, 217, 217, 0.028) 0%,
+      transparent 100%
+    );
   }
 
   /* Headings use medium weight by default */
@@ -85,8 +104,14 @@
 
   .surface {
     @apply bg-s0 rounded-panel border border-edge/35;
+    /* Micro-gradient overlay: simulates light catching the top-left edge */
+    background-image: linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.022) 0%,
+      transparent 55%
+    );
     box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
-                inset 0 1px 0 rgba(255,255,255,0.04);
+                inset 0 1px 0 rgba(255,255,255,0.05);
     padding: var(--padding-panel);
     transition: box-shadow var(--duration-std) var(--ease-std),
                 border-color var(--duration-std) var(--ease-std);
@@ -94,6 +119,11 @@
 
   .surface-raised {
     @apply bg-s1 rounded-panel border border-edge/35;
+    background-image: linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.018) 0%,
+      transparent 55%
+    );
     box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
                 inset 0 1px 0 rgba(255,255,255,0.04);
     padding: var(--padding-panel);
@@ -109,11 +139,18 @@
 
   .surface-interactive {
     @apply surface cursor-pointer;
+    transition: box-shadow var(--duration-std) var(--ease-std),
+                border-color var(--duration-std) var(--ease-std),
+                transform var(--duration-fast) var(--ease-out);
   }
   .surface-interactive:hover {
     @apply border-edge/60;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.6), 0 8px 30px rgba(0,0,0,0.5),
-                inset 0 1px 0 rgba(255,255,255,0.06);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 12px 40px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,255,255,0.07);
+  }
+  .surface-interactive:active {
+    transform: translateY(0) scale(0.995);
   }
 
   .surface-selected {
@@ -196,12 +233,16 @@
     @apply font-ui;
   }
 
-  .badge-crimson { @apply badge bg-crimson/10 text-crimson border border-crimson/25; }
-  .badge-amber   { @apply badge bg-amber/10   text-amber   border border-amber/25; }
-  .badge-teal    { @apply badge bg-teal/10    text-teal    border border-teal/25; }
-  .badge-emerald { @apply badge bg-emerald/10 text-emerald border border-emerald/25; }
-  .badge-violet  { @apply badge bg-violet/10  text-violet  border border-violet/25; }
+  .badge-crimson { @apply badge bg-crimson/10 text-crimson border border-crimson/25; box-shadow: inset 0 1px 8px rgba(232, 57,  74,  0.12); }
+  .badge-amber   { @apply badge bg-amber/10   text-amber   border border-amber/25;   box-shadow: inset 0 1px 8px rgba(245, 166, 35,  0.12); }
+  .badge-teal    { @apply badge bg-teal/10    text-teal    border border-teal/25;     box-shadow: inset 0 1px 8px rgba(13,  217, 217, 0.14); }
+  .badge-emerald { @apply badge bg-emerald/10 text-emerald border border-emerald/25; box-shadow: inset 0 1px 8px rgba(16,  201, 129, 0.12); }
+  .badge-violet  { @apply badge bg-violet/10  text-violet  border border-violet/25;  box-shadow: inset 0 1px 8px rgba(139, 92,  246, 0.12); }
   .badge-dim     { @apply badge bg-s2         text-dim     border border-edge/35; }
+  /* Clinical informational blue — neutral/non-urgent per IEC 60446 */
+  .badge-info    { @apply badge bg-info/10    text-info    border border-info/25;    box-shadow: inset 0 1px 8px rgba(75,  158, 219, 0.12); }
+  /* Caution: medium-severity (below amber/high, above dim/low) — muted amber */
+  .badge-caution { @apply badge bg-amber/5    text-amber   border border-amber/15;  opacity: 0.78; }
 
   /* ══════════════════════════════════════════════════════════════════════════
      BUTTONS
@@ -219,19 +260,33 @@
   /* Primary — teal filled */
   .btn-primary {
     @apply btn bg-teal text-void;
+    transition: background-color var(--duration-fast) var(--ease-std),
+                box-shadow       var(--duration-fast) var(--ease-std),
+                transform        var(--duration-fast) var(--ease-out);
   }
   .btn-primary:hover {
     @apply bg-teal-dark;
-    box-shadow: 0 4px 18px rgba(13, 217, 217, 0.35);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(13, 217, 217, 0.4), 0 2px 6px rgba(0,0,0,0.3);
   }
-  .btn-primary:active { @apply scale-[0.98]; }
+  .btn-primary:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
+  }
 
   /* Secondary — s1 surface with border */
   .btn-secondary {
     @apply btn bg-s1 text-bright border border-edge/50;
+    transition: background-color var(--duration-fast) var(--ease-std),
+                border-color     var(--duration-fast) var(--ease-std),
+                transform        var(--duration-fast) var(--ease-out);
   }
   .btn-secondary:hover {
     @apply bg-s2 border-edge/80;
+    transform: translateY(-1px);
+  }
+  .btn-secondary:active {
+    transform: translateY(0) scale(0.98);
   }
 
   /* Ghost — transparent, text only */
@@ -279,8 +334,9 @@
     transition-duration: var(--duration-fast);
   }
   .input-field:focus {
-    @apply outline-none border-teal/60;
-    box-shadow: 0 0 0 3px rgba(13, 217, 217, 0.12);
+    @apply outline-none border-teal/70;
+    box-shadow: 0 0 0 3px rgba(13, 217, 217, 0.16),
+                0 0 12px rgba(13, 217, 217, 0.08);
   }
 
   .select-field {
@@ -306,11 +362,12 @@
     width: var(--bar-width, 0%);
   }
 
-  .progress-teal    { @apply progress-bar bg-teal; }
-  .progress-amber   { @apply progress-bar bg-amber; }
-  .progress-crimson { @apply progress-bar bg-crimson; }
-  .progress-emerald { @apply progress-bar bg-emerald; }
-  .progress-violet  { @apply progress-bar bg-violet; }
+  /* Gradient fills give bars a sense of luminosity and depth */
+  .progress-teal    { @apply progress-bar; background: linear-gradient(90deg, #0BB5B5, #0DD9D9 60%, #6EF0F0); }
+  .progress-amber   { @apply progress-bar; background: linear-gradient(90deg, #D4891E, #F5A623 60%, #F9C168); }
+  .progress-crimson { @apply progress-bar; background: linear-gradient(90deg, #C42A3A, #E8394A 60%, #F07878); }
+  .progress-emerald { @apply progress-bar; background: linear-gradient(90deg, #0DA86A, #10C981 60%, #52DBA5); }
+  .progress-violet  { @apply progress-bar; background: linear-gradient(90deg, #7C3AED, #8B5CF6 60%, #B595FA); }
   .progress-dim     { @apply progress-bar bg-dim; }
 
   /* Tall variant for dashboards */
@@ -364,14 +421,17 @@
 
   .skeleton {
     @apply rounded-card;
+    /* High-contrast shimmer: base → navy → subtle teal flash → navy → base */
     background: linear-gradient(
       90deg,
-      rgba(17,27,46,1) 0%,
-      rgba(30,68,120,0.3) 50%,
-      rgba(17,27,46,1) 100%
+      rgba(17, 27,  46,  1)    0%,
+      rgba(30, 68,  120, 0.6)  35%,
+      rgba(13, 217, 217, 0.08) 50%,
+      rgba(30, 68,  120, 0.6)  65%,
+      rgba(17, 27,  46,  1)    100%
     );
-    background-size: 400% 100%;
-    animation: shimmer 1.6s ease-in-out infinite;
+    background-size: 300% 100%;
+    animation: shimmer 2s ease-in-out infinite;
   }
 
   .skeleton-text {
@@ -513,7 +573,9 @@
   }
 
   .nav-item-active {
-    @apply bg-s2 text-teal;
+    /* Directional gradient: teal glow bleeds from the left accent inward */
+    background: linear-gradient(90deg, rgba(13,217,217,0.14) 0%, rgba(13,217,217,0.03) 70%, transparent 100%);
+    @apply text-teal;
     box-shadow: inset 3px 0 0 #0DD9D9;
   }
 
@@ -523,7 +585,17 @@
 
   .live-dot {
     @apply inline-block w-2 h-2 rounded-full bg-emerald;
+    position: relative;
     animation: pulseDot 2.2s ease-in-out infinite;
+  }
+  /* Expanding ring that fades out — reinforces the "live broadcast" metaphor */
+  .live-dot::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(16, 201, 129, 0.5);
+    animation: liveDotRing 2.2s ease-in-out infinite;
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -531,7 +603,16 @@
      ══════════════════════════════════════════════════════════════════════════ */
 
   .divider {
-    @apply border-t border-edge/30;
+    /* Fade-to-transparent edges — softer than a hard 1px rule */
+    height: 1px;
+    border: none;
+    background: linear-gradient(
+      90deg,
+      transparent              0%,
+      rgba(30, 68, 120, 0.45) 15%,
+      rgba(30, 68, 120, 0.45) 85%,
+      transparent             100%
+    );
   }
 
   .divider-label {
@@ -694,6 +775,15 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+}
+
+/* ─── Additional Keyframes ────────────────────────────────────────────────── */
+
+/* Live-dot ring expansion — radiates outward and fades */
+@keyframes liveDotRing {
+  0%   { transform: scale(1);   opacity: 0.5; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
 }
 
 /* ─── Reduced Motion ──────────────────────────────────────────────────────── */

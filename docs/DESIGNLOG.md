@@ -1,7 +1,7 @@
 # Medgnosis — UI/UX Redesign Log
 > **"Clinical Obsidian"** — A precision-engineered dark interface for healthcare workers
 >
-> Started: 2026-02-25 | Status: **Phases 1–10 Complete** — Phase 11 (polish + shared components) remaining
+> Started: 2026-02-25 | Status: **Phases 1–18 Complete** ✓ | Clinical Workspace UI Complete ✓
 
 ---
 
@@ -785,6 +785,66 @@ Total: 87,432  │  Open: 51,209  │  High Priority: 24,891  │  Patients: 18,
 - Role/title display
 - Input fields use `input-field` class
 
+### 5.9 EncounterNotePage (Clinical Workspace — Module 10.3)
+
+**Files:**
+- `apps/web/src/pages/EncounterNotePage.tsx` — Full SOAP encounter note page
+- `apps/web/src/components/encounter/SOAPSectionEditor.tsx` — TipTap rich text editor per section
+
+**Purpose:** Clinical encounter note with AI Scribe (Ollama/MedGemma). Navigated from PatientBanner "New Note" button → `/patients/:patientId/encounter-note`.
+
+**Layout:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ← Back to Patient   │  Patient: Name (MRN)     │  DRAFT   │
+├─────────────────────────────────────────────────────────────┤
+│  Visit Type: [followup ▾]   Chief Complaint: [__________]  │
+│                                      [✨ AI Scribe All]     │
+├─────────────────────────────────────────────────────────────┤
+│  ┌── Subjective ──────────────────────── [✨ AI] ────────┐  │
+│  │  TipTap rich text editor (Lexend prose, dark theme)   │  │
+│  │  Bold | Italic | Strike | List | OL | Quote | Code    │  │
+│  └───────────────────────────────────────────────────────┘  │
+│  ┌── Objective ───────────────────────── [✨ AI] ────────┐  │
+│  │  TipTap rich text editor                              │  │
+│  └───────────────────────────────────────────────────────┘  │
+│  ┌── Assessment ──────────────────────── [✨ AI] ────────┐  │
+│  │  TipTap rich text editor                              │  │
+│  └───────────────────────────────────────────────────────┘  │
+│  ┌── Plan ────────────────────────────── [✨ AI] ────────┐  │
+│  │  TipTap rich text editor                              │  │
+│  └───────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  [Save Draft]                           [Finalize & Sign]   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key behaviors:**
+- Creates draft note on mount via `POST /clinical-notes`; loads existing via `?noteId=` query param
+- 4 independent TipTap editor instances (one per SOAP section) with full toolbar
+- **Per-section AI:** Each section has a teal "✨ AI" button that generates only that section via `POST /clinical-notes/scribe`
+- **AI Scribe All:** Top-level button generates all 4 sections sequentially with loading overlays
+- AI-generated sections marked with teal `ring-1 ring-teal/20` border + "AI-assisted" badge
+- **Auto-save:** Debounced PATCH (3s timer via `useRef`) on any content change
+- **Finalize & Sign:** Confirmation modal → locks note to read-only, sets `finalized_at`
+- Status badge in header: `badge-teal` for draft, `badge-emerald` for finalized
+
+**SOAPSectionEditor component:**
+- TipTap extensions: StarterKit (h3/h4), Highlight, Typography, Link, TaskList, TaskItem
+- Toolbar: lucide-react icons (Bold, Italic, Strikethrough, List, ListOrdered, Quote, Code, Undo2, Redo2)
+- Loading overlay: center-positioned spinner + "Generating {section}..." text with `opacity-50 pointer-events-none` on editor
+- Syncs external value changes (from AI scribe) via `useEffect` watching `value` prop
+- Prose classes: `prose prose-invert prose-sm` with teal links, dim paragraph text, ghost blockquotes
+
+**Design tokens used:**
+- Surfaces: `surface`, `bg-s0`, `bg-edge/30`
+- Text: `text-bright`, `text-dim`, `text-ghost`, `text-teal`
+- Buttons: `btn-primary`, `btn-secondary`, `btn-ghost`, `btn-xs`
+- Badges: `badge-teal`, `badge-emerald`
+- Forms: `input-field`, `select-field`
+- Status: `ring-1 ring-teal/20` for AI-generated indicator
+
 ---
 
 ## 6. Implementation Todo List
@@ -993,7 +1053,16 @@ Total: 87,432  │  Open: 51,209  │  High Priority: 24,891  │  Patients: 18,
 | 2026-02-25 | Phase 7 ✓ | CareListsPage: stats strip (crimson open/emerald resolved/violet patients), status filter tabs, collapsible SectionHeader with ChevronDown rotation, CareGapRow with avatar+Link+measure+date+badge+resolve button, useMutation for PATCH /care-gaps/:id, per-row loading via variables. isOpenStatus() helper. Build: ✓ clean. |
 | 2026-02-25 | Phase 8 ✓ | AlertsPage: UUID id, severity-differentiated cards via inline boxShadow (inset 4px 0 0 #E8394A + 0 0 16px glow), SEVERITY_CARD map, live-dot in header, critical alert summary banner, filter tabs (all/unread/acknowledged), acknowledge button with spinner, formatDistanceToNow timestamps. Build: ✓ clean. |
 | 2026-02-25 | Phase 9 ✓ | LoginPage: full-screen bg-void, embedded CSS keyframes (login-blob-1 22s/login-blob-2 30s/login-grid-pulse 12s), radial-gradient teal + violet blobs with blur-[130px], animated grid overlay (52px × 52px) + radial vignette to fade edges, MG monogram with box-shadow glow, surface card with input-field/btn-primary, crimson error banner with AlertCircle icon, live-dot "All systems operational" footer. Build: ✓ clean. |
+| 2026-02-25 | Visual delight pass ✓ | globals.css: (1) Ambient body background — radial-gradient teal breath at top-center (2.8% opacity); (2) Surface micro-gradient overlay — 2.2% white highlight from top-left simulates light catch; (3) surface-interactive: translateY(-1px) lift + :active scale; (4) Badge inner glow — inset box-shadow per accent color; (5) btn-primary/secondary: translateY(-1px) on hover, translateY(0)+scale on :active; (6) Skeleton shimmer — higher contrast (edge 60% + teal 8% at peak vs old flat navy); (7) Progress bars — gradient fills (dark→accent→bright) for luminosity; (8) Active nav — directional gradient bleeding teal inward from left accent; (9) Dividers — fade-to-transparent gradient edges, no harsh 1px line; (10) live-dot::before — expanding ring keyframe (liveDotRing: scale 1→2.2, opacity 0.5→0); (11) input:focus — increased teal glow intensity. Also fixed 3 pre-existing TS bugs: PatientBanner prop types (pcp/insurance/address field names), OverviewTab call site (patient→individual arrays), EncountersTab missing generic on api.get. Build: ✓ 2607 modules. |
+| 2026-02-25 | Typography fix ✓ | Fluid root font-size: `clamp(17px, 1.1vw + 1.2px, 21px)` on `html` in globals.css. 17px at ≤1440px (laptop), scales to 21px at ≥1800px (desktop). All rem-based Tailwind utilities (text-xs, text-sm, etc.) scale automatically. Converted `data-*` fontSize scale from hard-coded px → rem (÷17) so stat numbers and timestamps also scale. Zero component changes required. Build: ✓ clean. |
 | 2026-02-25 | Phase 10 ✓ | SettingsPage: left-nav tab layout (5 tabs: Profile/Notifications/Data/Schedule/Security, w-[196px] surface nav), right content area with per-section components (animate-fade-up), custom pill Toggle (w-9 h-5 rounded-full, teal on/s2+edge off, white knob translate), SettingRow reusable component with label+description+toggle, ProfileSection (2-col name grid + email + readOnly role), NotificationsSection (4 toggles), DataSection (3 toggles + DB overview table), ScheduleSection (2 selects + next-jobs list), SecuritySection (2FA button + session info + danger zone). Build: ✓ 1977 modules. |
+| 2026-02-25 | Phase 13 ✓ | Dashboard redesign — layout, typography, and panel elegance. Problems fixed: (1) Stats strip moved from below panels to top — numbers are now the first thing scanned; (2) 3-equal-column layout replaced with 5:3 grid (Schedule wider than Alerts, Abby removed from prime real estate); (3) Population Health made always-visible — removed collapsible toggle entirely, content is core product value; (4) Section dividers (SectionDivider component — small uppercase label + fade-to-transparent gradient line) separate major sections without harsh borders; (5) Top-border accents per panel type: teal for Schedule, adaptive crimson/amber for Alerts depending on whether criticals exist, violet for Abigail; (6) Font size bumps: panel headers text-sm→text-base, patient names text-xs→text-sm, time slots text-xs→text-sm, stats values using text-data-xl with uppercase tracking labels, secondary info text-[10px]→text-xs minimum; (7) Stats strip redesigned with icons (Users/Activity/AlertCircle/AlertTriangle) in colored icon wells, divide-x separators, color-coded numbers (amber for gaps, crimson for high risk); (8) Schedule rows enhanced: vertical spine divider between time and patient, reason shown inline, group-hover name→teal; (9) Abby moved to bottom-right of last row — compact, graceful placeholder with violet glow; (10) Removed useState (was only for collapsed pop health toggle). Build: ✓ 2607 modules. |
+| 2026-02-25 | Phase 11 ✓ | Shared component extraction & deduplication. Created `src/utils/time.ts` (relativeTime, formatDate, formatTime, calcAge, getGreeting — replaces 6+ inline copies). Created `src/components/PatientAvatar.tsx` (PatientAvatar, avatarColor, getInitials, getInitialsFromParts — deterministic palette coloring via hash % 5; xs/sm/md/lg size variants). Created `src/components/Pagination.tsx` (numbered paginator with ellipsis, item count label, renders null if ≤1 page). Updated: AlertsPage (→ relativeTime from utils), DashboardPage (→ PatientAvatar + time utils, removed 5 inline helpers, added SectionDivider), PatientsPage (→ PatientAvatar + Pagination + formatDate + calcAge, removed ~80 lines of duplicates), CareListsPage (→ PatientAvatar + getInitials + formatDate, removed duplicates), GlobalSearch (→ PatientAvatar + getInitialsFromParts + formatDate, removed AVATAR_PALETTE + getAvatarColor), PatientBanner (→ PatientAvatar size="lg" + getInitialsFromParts + calcAge + formatDate, removed 5 inline helpers). NotFoundPage: replaced legacy tokens (bg-gradient-dark, text-dark-text-primary, bg-accent-primary) with canonical tokens (bg-void, text-bright, btn btn-primary). Build: ✓ 2610 modules. |
+| 2026-02-25 | Phase 12 ✓ | Healthcare color & icon standards (ISMP/FDA/HL7 IEC 60446). Added `info: '#4B9EDB'` color token (clinical blue — distinct from interactive teal, never used for navigation). Added `--color-info` CSS var. Added `.badge-info` (blue, for purely informational alerts) and `.badge-caution` (muted amber at 78% opacity, for medium severity below urgent threshold). AlertsPage: SEVERITY_CARD low/info now use info blue left border (was teal, which is interactive color); SeverityIcon — medium now muted amber opacity-60, low → text-dim, info → text-info, default → text-ghost; SeverityBadge — medium → badge-caution, low → badge-dim, info → badge-info (was all collapsing to amber or teal, now fully differentiated 5-tier hierarchy: crimson→amber→caution→dim→info). CareListsPage: open gap stats strip icon+number→amber (was crimson); SectionHeader open colorClass→amber; CareGapRow status badge→badge-amber (was badge-crimson). CareGapsTab: AlertCircle icon→amber, count badge→badge-amber, border-l-amber bg-amber/5 (was crimson). OverviewTab: gapStatusBadge open→badge-amber; AlertCircle icon+count badge→amber; care gap card border-l-amber bg-amber/5. Rationale: care gaps = missed preventive care = *warnings*, not life-threatening. Crimson reserved exclusively for: lab critical values, severe allergies, truly life-threatening alerts. Build: ✓ 2607 modules. |
+| 2026-02-25 | Backend: Phase 6 Star Schema v2 ✓ | **Star schema v2 complete (3 migrations + 1 script).** Migration 010 adds: 5 new dimensions (dim_payer, dim_allergy, dim_care_gap_bundle, bridge_bundle_measure, dim_risk_model), ALTERs dim_measure (+7 cols) and fact_care_gap (+4 cols), 9 new fact tables (fact_patient_bundle, fact_patient_bundle_detail, fact_patient_composite, fact_provider_quality, fact_ai_risk_score, fact_population_snapshot, fact_immunization, fact_patient_insurance, fact_sdoh), 27 performance indexes, 4 materialized views (mv_patient_dashboard, mv_bundle_compliance_by_provider, mv_population_overview, mv_care_gap_worklist). Migration 011 seeds dim_care_gap_bundle (45 bundles from phm_edw.condition_bundle with hard-coded disease_category), bridge_bundle_measure (~350 rows with shared-measure and dedup_domain detection), and dim_risk_model (4 Abigail AI models). Migration 013 provides ETL Steps 16–27: dim_payer/allergy/bundle/bridge reload, fact_care_gap UPSERT (gap closures, backfill bundle_key/provider_key/days_open), fact_patient_bundle (ICD-10 pattern qualification + compliance calc), fact_patient_bundle_detail (dedup via ROW_NUMBER PARTITION BY patient_key+dedup_domain), fact_patient_composite (10-CTE join, risk_tier from abigail_priority_score thresholds), fact_provider_quality (PERCENT_RANK), fact_population_snapshot (PERCENTILE_CONT median), incremental immunization/insurance/sdoh inserts. Step 27 (REFRESH MATERIALIZED VIEW CONCURRENTLY) extracted to packages/db/scripts/refresh_star_views.sql (cannot run inside transaction). |
+| 2026-02-25 | Clinical Workspace: Module 10.3 ✓ | **Encounter Note with AI Scribe** — full SOAP note editor. Created `EncounterNotePage.tsx` (~350 lines): visit type selector (followup/initial/urgent/telehealth), chief complaint input, "AI Scribe All" button, 4 SOAPSectionEditor instances with TipTap rich text, auto-save via debounced PATCH (3s useRef timer), finalize with confirmation dialog, status badge (draft/finalized), AI-generated section tracking via `Set<string>`. Created `components/encounter/SOAPSectionEditor.tsx` (~230 lines): TipTap editor with StarterKit+Highlight+Typography+Link+TaskList+TaskItem extensions, 9-button toolbar (Bold/Italic/Strike/List/OL/Quote/Code/Undo/Redo via lucide-react), per-section AI generate button with loading overlay (opacity-50+spinner), "AI-assisted" teal badge, external value sync via useEffect, prose-invert dark theme classes. Backend: 7 Fastify endpoints in `routes/clinical-notes/index.ts` (CRUD + finalize + amend + AI scribe), scribe gathers patient context from 6 parallel DB queries (conditions/meds/vitals/allergies/care-gaps/encounters), builds clinical prompt, calls `generateCompletion({jsonMode:true, temperature:0.3})`. Database: `012_clinical_notes.sql` migration (UUID PK, SOAP text columns, JSONB ai_generated provenance, status workflow). 5 React Query hooks added to useApi.ts. Route wired in App.tsx. Build: ✓ 4/4 packages clean. |
+| 2026-02-26 | Patient-Context Abby Chat ✓ | **Full AI clinical assistant with EHR context injection.** Backend: Created `services/patientContext.ts` — extracted 6 parallel SQL queries (conditions, medications, vitals, allergies, care gaps, encounters) + formatting logic into shared helper; refactored clinical-notes scribe to import shared helper (eliminated ~100 lines of duplication). Enhanced `POST /insights/chat` endpoint: accepts optional `patient_id`, verifies patient exists, fetches clinical context via `getPatientClinicalContext()`, builds enriched system prompt with patient summary, caps history at 16 turns for token budget (gemma:7b 4K context), returns `context_summary` for UI display; added `aiGateMiddleware` preHandler. Frontend: Created `components/patient/AbbyTab.tsx` (~300 lines) — full chat UI with violet top-border branding, collapsible clinical context summary panel (ChevronDown toggle), message area with auto-scroll (useRef + scrollIntoView), user messages (teal/10) + Abby messages (bg-s1 with inline Sparkles icon), thinking spinner, quick-action suggestion chips ("Summarize care gaps", "Drug interaction check", "Quality measures", "Risk assessment"), multi-turn history sent with each request, clinical decision support disclaimer, loading skeleton on initial chart review. Wired into PatientDetailPage as 8th tab (`'abby'` TabId, Sparkles icon via TabBar `icon` prop). Fixed Dashboard AbbyChat bug: `data.reply` → `data.response` (API returns `response` field). Enhanced `useAiChat` hook: added `history` parameter, removed hardcoded `provider: 'ollama'`. Build: ✓ 4/4 packages, 2726 modules. |
+| 2026-02-25 | Phases 14–18 ✓ | **Phase 14 — Toast & Feedback System:** Created `stores/ui.ts` toast slice (addToast/removeToast, MAX_TOASTS=3), `stores/ws.ts` (WsStatus: connected/reconnecting/disconnected), `Toast.tsx` (ToastContainer + ToastItem, animate-fade-up, auto-dismiss 4s, 4 severity icons + border colors), `ConfirmModal.tsx` (generic dialog, danger/primary variant, focus-trap, Esc-to-cancel, Enter-to-confirm). Wired: CareListsPage (ConfirmModal before resolve → success/error toast), AlertsPage (toast on acknowledge), AppShell (ConfirmModal for logout), SettingsPage (controlled profile form, save toast, removed fake scheduled jobs with "Not configured" state). **Phase 15 — AppShell & Dashboard Interactivity:** AppShell: useQuery for unread alert count (refetchInterval 60s) → crimson badge on Bell; WsIndicator component hooks to useWsStore (connected=green live-dot, reconnecting=amber static dot, disconnected=WifiOff grey); useAlertSocket updated to write to useWsStore on open/close/error. Dashboard: DonutChart segments now clickable (navigate to /care-lists?status=open); risk stratification bar rows wrapped in `<button>` → navigate to /patients?risk=:level; recent encounter rows wrapped in `<Link>` with group-hover teal; Abby placeholder replaced with full chat textarea + useMutation POST /insights/chat, chat history display, Enter-to-send. **Phase 16 — Patient Detail Enrichment:** OverviewTab: RiskTierCard mini-arc-gauge (48px, emerald/amber/crimson based on compliance_pct) shown in right column when bundle data loads; abnormal count badge on Recent Results header; each abnormal observation gets an "Abnormal" badge. LabsVitalsTab: "X abnormal" toggle button filters list to show only flagged results; abnormal values show badge-crimson "Abnormal" label. MedicationsTab: strength + form fields now rendered. PatientBanner: insurance prefers payer_name over payer, shows plan_type. TabBar: full ARIA tablist/tab/tabpanel roles, ArrowLeft/Right/Home/End keyboard navigation, tabIndex roving. **Phase 17 — Care Lists & Measures:** CareListsPage: server-side search with 300ms debounce, per-page selector (25/50/100), Pagination component wired to meta.total_pages, sticky table header (sticky top-0 bg-s0 z-10). MeasuresPage: auto-select first measure on load (useEffect), TrendBadge added to performance stat, Eligible/Compliant counts wrapped in Link → /patients?measure=:code&cohort=eligible|compliant. **Phase 18 — Accessibility & Polish:** GlobalSearch: "Clear" button in recent searches header (clears sessionStorage key). TabBar: focus-visible:ring-2 ring-inset, tabIndex roving (-1 for non-active tabs). AppShell: focus-visible rings on logout button and search trigger. CareListsPage: focus-visible rings on resolve button and status filter tabs. PatientDetailPage: tabpanel div gets role="tabpanel" + aria-labelledby. Build: ✓ 4/4 packages, 0 errors. |
 
 ---
 
@@ -1179,7 +1248,77 @@ Used in `LoginPage.tsx` for the three background blob/grid animations. Prefix cl
 
 ---
 
-### 8.9 Phase 11 — What Still Needs Doing
+### 8.9 TipTap Rich Text Editor — Clinical Note Integration
+
+**Setup:** 8 TipTap packages already in `apps/web/package.json`: `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-highlight`, `@tiptap/extension-image`, `@tiptap/extension-link`, `@tiptap/extension-task-item`, `@tiptap/extension-task-list`, `@tiptap/extension-typography`.
+
+**External value sync:** AI-generated content must be pushed into the editor from outside. Use `useEffect` watching the `value` prop:
+```tsx
+useEffect(() => {
+  if (editor && value !== editor.getHTML()) {
+    editor.commands.setContent(value || '<p></p>');
+  }
+}, [value, editor]);
+```
+Without the `value !== editor.getHTML()` guard, this creates an infinite loop (setContent triggers onUpdate → onChange → new value → setContent → ...).
+
+**Read-only toggle:** When note status changes (draft → finalized), toggle editor editability:
+```tsx
+useEffect(() => {
+  if (editor) editor.setEditable(!readOnly);
+}, [readOnly, editor]);
+```
+
+**Dark theme prose classes:** TipTap renders into a `div.ProseMirror`. Style it via `editorProps.attributes.class`:
+```tsx
+editorProps: {
+  attributes: {
+    class: [
+      'prose prose-invert prose-sm max-w-none focus:outline-none min-h-[120px] px-4 py-3',
+      'prose-headings:text-bright prose-headings:font-semibold',
+      'prose-p:my-2 prose-p:leading-relaxed prose-p:text-dim',
+      'prose-a:text-teal prose-a:no-underline hover:prose-a:underline',
+      'prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5',
+      'prose-li:my-0.5 prose-li:text-dim',
+      'prose-blockquote:border-l-2 prose-blockquote:border-teal/40 prose-blockquote:pl-3',
+      'prose-code:rounded prose-code:bg-edge/40 prose-code:px-1 prose-code:text-xs',
+    ].join(' '),
+  },
+}
+```
+This integrates cleanly with Clinical Obsidian tokens without any custom CSS file.
+
+**Auto-save debounce:** Use `useRef` for the timer to avoid stale closures:
+```tsx
+const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+const handleContentChange = (section: string, html: string) => {
+  setSections(prev => ({ ...prev, [section]: html }));
+  clearTimeout(saveTimer.current);
+  saveTimer.current = setTimeout(() => updateNote.mutate({ noteId, data: { [section]: html } }), 3000);
+};
+```
+
+---
+
+### 8.10 SQL `Row[]` Typing — The Tagged Template Trap
+
+**Problem:** The `sql` tagged template from `@medgnosis/db` returns `Row[]` type. Explicit type annotations on `.map()` callbacks conflict:
+```typescript
+// FAILS: TS2345 — '(c: {condition_name: string}) => string' not assignable to '(value: Row) => string'
+conditions.map((c: { condition_name: string }) => c.condition_name)
+```
+
+**Fix:** Cast the array to `Record<string, unknown>[]` and access properties without parameter annotations:
+```typescript
+type R = Record<string, unknown>;
+(conditions as R[]).map((c) => `${c.condition_name} (${c.condition_code})`)
+```
+
+This pattern is needed wherever SQL query results are processed in route handlers with `.map()`, `.filter()`, or `.reduce()`.
+
+---
+
+### 8.11 Phase 11 — What Still Needs Doing
 
 The following were deferred from the implementation phases. Priority order for Phase 11:
 
@@ -1214,6 +1353,24 @@ The following were deferred from the implementation phases. Priority order for P
 | `apps/web/src/components/RiskGauge.tsx` | New component | 11.2 |
 | `apps/web/src/utils/time.ts` | New utility | 11.3 |
 | `apps/web/src/components/Pagination.tsx` | New component | 11.5 |
+| `apps/web/src/pages/EncounterNotePage.tsx` | New page — SOAP encounter note with AI Scribe | 10.3 |
+| `apps/web/src/components/encounter/SOAPSectionEditor.tsx` | New component — TipTap rich text editor per SOAP section | 10.3 |
+| `apps/web/src/hooks/useApi.ts` | Added 5 clinical note hooks | 10.3 |
+| `apps/web/src/App.tsx` | Added `/patients/:patientId/encounter-note` route | 10.3 |
+| `apps/api/src/routes/clinical-notes/index.ts` | New route module — CRUD + AI Scribe (7 endpoints) | 10.3 |
+| `apps/api/src/routes/index.ts` | Registered `/clinical-notes` prefix | 10.3 |
+| `apps/api/src/routes/patients/index.ts` | Added `GET /:id/notes` endpoint | 10.3 |
+| `packages/shared/src/types/encounter-note.ts` | New types — ClinicalNote, ScribeRequest/Response | 10.3 |
+| `packages/shared/src/schemas/index.ts` | Added 3 clinical note Zod schemas | 10.3 |
+| `packages/shared/src/index.ts` | Added encounter-note type exports | 10.3 |
+| `packages/db/migrations/012_clinical_notes.sql` | DDL — clinical_note table + indexes | 10.3 |
+| `apps/api/src/services/patientContext.ts` | New service — shared patient context fetcher (6 SQL queries) | Abby Chat |
+| `apps/web/src/components/patient/AbbyTab.tsx` | New tab — full AI chat with EHR context injection | Abby Chat |
+| `apps/api/src/routes/insights/index.ts` | Enhanced — patient_id handling, context injection, aiGateMiddleware | Abby Chat |
+| `apps/api/src/routes/clinical-notes/index.ts` | Refactored — scribe uses shared patientContext helper | Abby Chat |
+| `apps/web/src/pages/PatientDetailPage.tsx` | Added 'abby' tab (8th tab with Sparkles icon) | Abby Chat |
+| `apps/web/src/pages/DashboardPage.tsx` | Bugfix — data.reply → data.response | Abby Chat |
+| `apps/web/src/hooks/useApi.ts` | Enhanced — useAiChat with history param | Abby Chat |
 
 ---
 
@@ -1336,6 +1493,91 @@ interface DashboardData {
     recent_encounters: { patient_id: number; patient_name: string; encounter_type: string; encounter_date: string }[];
   };
 }
+```
+
+### `POST /clinical-notes` → `ApiResponse<ClinicalNote>`
+```typescript
+// Request body:
+interface CreateNoteRequest {
+  patient_id: number;
+  visit_type?: string;    // 'followup' | 'initial' | 'urgent' | 'telehealth'
+  encounter_id?: number;
+  chief_complaint?: string;
+}
+```
+
+### `GET /clinical-notes/:noteId` → `ApiResponse<ClinicalNote>`
+```typescript
+interface ClinicalNote {
+  note_id: string;         // UUID
+  patient_id: number;
+  author_user_id: string;  // UUID (matches app_users.id)
+  author_name: string;     // JOINed from app_users
+  encounter_id?: number;
+  visit_type: string;
+  status: string;          // 'draft' | 'finalized' | 'amended'
+  chief_complaint?: string;
+  subjective?: string;     // HTML content
+  objective?: string;      // HTML content
+  assessment?: string;     // HTML content
+  plan_text?: string;      // HTML content
+  ai_generated?: {         // JSONB — AI provenance
+    sections: string[];
+    model: string;
+    generated_at: string;
+  };
+  finalized_at?: string;
+  amended_at?: string;
+  amendment_reason?: string;
+  created_date: string;
+  updated_date: string;
+}
+```
+
+### `PATCH /clinical-notes/:noteId` — Update SOAP sections (auto-save)
+```typescript
+// Request body (all fields optional):
+interface UpdateNoteRequest {
+  chief_complaint?: string;
+  subjective?: string;
+  objective?: string;
+  assessment?: string;
+  plan_text?: string;
+  visit_type?: string;
+}
+// Only draft notes can be updated. Returns 400 if finalized.
+```
+
+### `POST /clinical-notes/:noteId/finalize` — Lock note
+```typescript
+// No body. Sets finalized_at = NOW(), status = 'finalized'.
+// Returns 400 if note is already finalized.
+```
+
+### `POST /clinical-notes/scribe` — AI Scribe (Ollama/MedGemma)
+```typescript
+// Request body:
+interface ScribeRequest {
+  patient_id: number;
+  visit_type: string;
+  sections: string[];       // ['subjective', 'objective', 'assessment', 'plan_text'] — min 1
+  chief_complaint?: string;
+  existing_content?: Record<string, string>;  // preserve existing sections
+}
+// Response:
+interface ScribeResponse {
+  sections: Record<string, string>;  // HTML content per section
+  model: string;                     // e.g. 'gemma:7b'
+  provider: string;                  // e.g. 'ollama'
+}
+// Requires AI consent (aiGateMiddleware). Returns 403 if AI_CONSENT_REQUIRED.
+```
+
+### `GET /patients/:id/notes` → `ApiResponse<ClinicalNote[]>`
+```typescript
+// Optional query param: ?status=draft|finalized|amended
+// Returns notes ordered by created_date DESC
+// Each note includes author_name JOINed from app_users
 ```
 
 ### Authentication

@@ -3,7 +3,9 @@
 // Sidebar (collapsible icon-rail) + Topbar + page outlet
 // =============================================================================
 
+import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Users,
@@ -15,9 +17,14 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  WifiOff,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { useUiStore } from '../stores/ui.js';
+import { useWsStore } from '../stores/ws.js';
+import { api } from '../services/api.js';
+import { ConfirmModal } from './ConfirmModal.js';
+import { ToastContainer } from './Toast.js';
 
 // ─── Nav configuration ────────────────────────────────────────────────────────
 
@@ -95,12 +102,58 @@ function NavItem({ to, icon: Icon, label, end = true, sidebarOpen }: NavItemProp
   );
 }
 
+// ─── WS Live Indicator ────────────────────────────────────────────────────────
+
+function WsIndicator() {
+  const status = useWsStore((s) => s.status);
+
+  const label =
+    status === 'connected'    ? 'Real-time: Connected'    :
+    status === 'reconnecting' ? 'Real-time: Reconnecting' :
+                                'Real-time: Offline';
+
+  if (status === 'connected') {
+    return (
+      <div className="hidden sm:flex items-center gap-1.5" title={label} aria-label={label}>
+        <span className="live-dot" aria-hidden="true" />
+        <span className="text-xs font-ui text-ghost">Live</span>
+      </div>
+    );
+  }
+
+  if (status === 'reconnecting') {
+    return (
+      <div className="hidden sm:flex items-center gap-1.5" title={label} aria-label={label}>
+        <span className="w-2 h-2 rounded-full bg-amber flex-shrink-0" aria-hidden="true" />
+        <span className="text-xs font-ui text-amber">Reconnecting</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hidden sm:flex items-center gap-1.5" title={label} aria-label={label}>
+      <WifiOff size={13} strokeWidth={1.5} className="text-ghost" aria-hidden="true" />
+      <span className="text-xs font-ui text-ghost">Offline</span>
+    </div>
+  );
+}
+
 // ─── AppShell ─────────────────────────────────────────────────────────────────
 
 export function AppShell() {
   const navigate = useNavigate();
   const { user, clearAuth } = useAuthStore();
   const { sidebarOpen, toggleSidebar, toggleSearch } = useUiStore();
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  // ── Unread alert count for badge ──────────────────────────────────────────
+  const { data: alertData } = useQuery({
+    queryKey: ['alerts', 'unread-count'],
+    queryFn: () => api.get<never[]>('/alerts?acknowledged=false&per_page=1'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const unreadCount = (alertData as { meta?: { total?: number } } | undefined)?.meta?.total ?? 0;
 
   const handleLogout = () => {
     clearAuth();
@@ -213,9 +266,9 @@ export function AppShell() {
 
           {/* Logout */}
           <button
-            onClick={handleLogout}
+            onClick={() => setConfirmLogout(true)}
             title={!sidebarOpen ? 'Sign out' : undefined}
-            className="flex items-center rounded-card px-2.5 py-2.5 w-full text-dim hover:bg-s2 hover:text-bright transition-colors duration-150"
+            className="flex items-center rounded-card px-2.5 py-2.5 w-full text-dim hover:bg-s2 hover:text-bright transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
           >
             <LogOut size={20} className="flex-shrink-0" strokeWidth={1.5} />
             <span
@@ -256,7 +309,7 @@ export function AppShell() {
                 {fullName}
               </p>
               <p className="text-xs text-ghost whitespace-nowrap truncate leading-tight capitalize">
-                {(user as any)?.role ?? 'Clinician'}
+                {(user as { role?: string } | null)?.role ?? 'Clinician'}
               </p>
             </div>
           </div>
@@ -280,6 +333,7 @@ export function AppShell() {
               'hover:border-edge/75 hover:text-dim',
               'transition-colors duration-150 cursor-text',
               'flex-1 max-w-sm',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50',
             ].join(' ')}
             aria-label="Search patients"
             aria-haspopup="dialog"
@@ -295,22 +349,24 @@ export function AppShell() {
           <div className="flex-1" />
 
           {/* Live WebSocket indicator */}
-          <div
-            className="hidden sm:flex items-center gap-1.5"
-            aria-label="Real-time connection active"
-          >
-            <span className="live-dot" aria-hidden="true" />
-            <span className="text-xs font-ui text-ghost">Live</span>
-          </div>
+          <WsIndicator />
 
-          {/* Alerts shortcut */}
+          {/* Alerts shortcut + badge */}
           <Link
             to="/alerts"
-            className="p-2 rounded-card text-dim hover:text-bright hover:bg-s1 transition-colors duration-150"
-            aria-label="View alerts"
+            className="relative p-2 rounded-card text-dim hover:text-bright hover:bg-s1 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+            aria-label={unreadCount > 0 ? `View ${unreadCount} unread alerts` : 'View alerts'}
             title="Alerts"
           >
             <Bell size={18} strokeWidth={1.5} />
+            {unreadCount > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-crimson text-white font-data text-[10px] font-medium tabular-nums flex items-center justify-center leading-none"
+                aria-hidden="true"
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </Link>
 
           {/* User display name */}
@@ -326,6 +382,20 @@ export function AppShell() {
           </div>
         </main>
       </div>
+
+      {/* ── Logout confirmation modal ────────────────────────────── */}
+      <ConfirmModal
+        open={confirmLogout}
+        title="Sign out?"
+        body="You will be redirected to the login screen."
+        confirmLabel="Sign out"
+        confirmVariant="danger"
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
+
+      {/* ── Toast notifications ──────────────────────────────────── */}
+      <ToastContainer />
     </div>
   );
 }

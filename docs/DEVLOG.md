@@ -14,6 +14,7 @@
   - [Phase 2 — Modern Web Frontend](#phase-2--modern-web-frontend)
   - [Phase 3 — Enhanced Capabilities](#phase-3--enhanced-capabilities)
   - [Phase 4 — CI/CD](#phase-4--cicd)
+  - [Phase 10 — Core Clinical Workspace](#phase-10--core-clinical-workspace)
 - [Codebase Inventory](#codebase-inventory)
 - [Known Issues & Stubs](#known-issues--stubs)
 - [Next Phases Checklist](#next-phases-checklist)
@@ -26,6 +27,10 @@
   - [Session 2 — Build, Restore & Startup](#session-2--build-restore--startup-feb-25-2026)
   - [Session 3 — E2E Verification & Critical Bug Fixes](#session-3--e2e-verification--critical-bug-fixes-feb-25-2026)
   - [Session 4 — Production Deployment](#session-4--production-deployment-feb-25-2026)
+  - [Session 5 — Core Clinical Workspace (Phase 10)](#session-5--core-clinical-workspace-phase-10-feb-25-2026)
+  - [Session 6 — Bundles 16-45 + Encounter Note AI Scribe](#session-6--bundles-16-45--encounter-note-ai-scribe-feb-25-2026)
+  - [Session 7 — Patient-Context Abby Chat](#session-7--patient-context-abby-chat-feb-26-2026)
+  - [Session 8 — Demo Environment ETL Complete](#session-8--demo-environment-etl-complete-feb-26-2026)
 - [Architecture Reference](#architecture-reference)
 
 ---
@@ -260,19 +265,163 @@ GitHub Actions workflows for continuous integration and deployment.
 
 ---
 
+### Phase 10 — Core Clinical Workspace
+
+**Status: COMPLETE**
+
+Transforms Medgnosis from a population health analytics dashboard into a clinical workspace with patient-centric tabbed charts, condition-based care gap bundles, and a clinician morning view.
+
+#### Module 10.1 — Clinician Morning View Dashboard
+
+Rewrote `DashboardPage.tsx` from a pure population analytics view to a clinician-first morning briefing:
+
+- **Greeting header** — "Good morning, Dr. {lastName}" with time-aware greeting
+- **3-column clinician row** — Today's Schedule (encounter list), Urgent Alerts (severity-colored cards), Abigail AI Briefing (Phase 11 placeholder)
+- **Quick stats row** — Total Patients, Active Patients, Open Care Gaps, High Risk (badge-colored)
+- **Collapsible Population Health** — Existing charts moved to expandable section (starts collapsed)
+- **Backend additions** — 3 new parallel queries in `dashboard/index.ts`: today's encounters, urgent alerts, critical alert count
+
+#### Module 10.2 — Patient Summary Chart (Tabbed Layout)
+
+Rewrote `PatientDetailPage.tsx` (687 → 218 lines) from a flat scrollable layout to a tabbed clinical chart:
+
+- **PatientBanner** — sticky header with demographics, PCP, insurance, allergy badges, "New Note" button
+- **TabBar** — 7 tabs: Overview, Encounters, Conditions, Medications, Labs & Vitals, Allergies, Care Gaps
+- **OverviewTab** — 2-column at-a-glance summary (conditions + encounters + recent results | meds + care bundles)
+- **EncountersTab** — Paginated encounter list with provider/facility, fetches own data
+- **ConditionsTab** — Active/resolved condition cards with ICD-10 codes and onset dates
+- **MedicationsTab** — Active medication orders with dosage, frequency, route, prescriber
+- **AllergiesTab** — Allergy cards with severity badges and reaction details
+
+#### Module 10.4 + 10.5 — Flowsheets & Lab Trending
+
+- **FlowsheetGrid** — Dense clinical table of observations by LOINC category (vitals, BMP, CBC, lipids)
+- **ObservationTrendChart** — Recharts time-series line chart with reference range bands
+- **LabsVitalsTab** — Toggle between list and flowsheet view, click-to-trend any observation code
+- **Backend** — `GET /patients/:id/flowsheet` with LOINC category filtering, `GET /patients/:id/observations/trending` for time-series data
+
+#### Module 10.6 — Care Gap Bundles
+
+Full-stack implementation of condition-based care gap bundles sourced from `docs/Medgnosis_CareGap_Bundles.xlsx` — 15 chronic conditions, 106 evidence-based quality measures, 16 cross-condition deduplication rules.
+
+##### Database (2 migrations)
+
+| Migration | Purpose |
+|-----------|---------|
+| `006_care_gap_bundles.sql` | DDL: 3 new tables (`condition_bundle`, `bundle_measure`, `bundle_overlap_rule`) + ALTER `care_gap` with `bundle_id`, `due_date`, `gap_priority` |
+| `007_seed_bundles_v1.sql` | Seed: 15 bundles, 106 measures into `measure_definition`, 106 `bundle_measure` links, 16 overlap rules. Repeatable CTE pattern for easy bulk extension |
+
+15 condition bundles: DM (8 measures), HTN (6), CAD (8), HF (7), COPD (8), ASTH (7), CKD (9), AFIB (6), MDD (7), OSTEO (6), OB (6), CLD (7), RA (8), PAD (7), HYPO (6).
+
+16 overlap rules: BP Control, Statin Therapy, Smoking Cessation, Antiplatelet, RAAS Inhibitors, SGLT2 Inhibitors, UACR, eGFR, Lipid Panel, Flu Vaccine, Pneumococcal Vaccine, DXA Scan, Fall Risk, Hep B/C Screening, ASCVD Risk, PHQ-9.
+
+##### Shared Types & Schemas
+
+| File | Changes |
+|------|---------|
+| `packages/shared/src/types/bundle.ts` | New — `BundleGapStatus`, `ConditionBundle`, `BundleMeasure`, `PatientBundleMeasure`, `PatientBundle`, `PatientCareBundleResponse`, `BundleComplianceSummary`, `OverlapDeduction`, `OverlapRule` |
+| `packages/shared/src/index.ts` | Added `export type * from './types/bundle.js'` |
+| `packages/shared/src/schemas/index.ts` | Extended `careGapUpdateSchema` status enum with 8 new values: `met`, `not_met`, `overdue`, `due_soon`, `due`, `ongoing`, `na`, `at_risk` |
+
+##### Backend API
+
+| Route | Endpoint | Purpose |
+|-------|----------|---------|
+| `bundles/index.ts` | `GET /bundles` | List all active condition bundles with measure counts |
+| | `GET /bundles/:bundleCode` | Single bundle with all measures |
+| | `GET /bundles/overlaps` | All deduplication rules |
+| `patients/index.ts` | `GET /patients/:id/care-bundle` | Core composition endpoint — matches ICD-10 codes to bundles, fetches measures, applies overlap dedup rules, computes compliance % |
+
+The `/patients/:id/care-bundle` endpoint:
+1. Fetches patient's active ICD-10 codes from `condition_diagnosis`
+2. Matches against `condition_bundle.icd10_pattern` using SQL `LIKE ANY(string_to_array(...))`
+3. Loads all `bundle_measure` rows for matched bundles
+4. Applies overlap rules for shared domains where patient has 2+ applicable bundles
+5. Computes per-bundle and overall compliance percentages
+
+##### Frontend
+
+| Component | Description |
+|-----------|-------------|
+| `CareGapsTab.tsx` | Complete rewrite — from flat open/closed list to bundle-grouped view. Fetches own data via `usePatientCareBundle(patientId)`. Components: `ComplianceRing` (SVG donut), `BundleAccordion` (collapsible per condition), `MeasureRow` (status badge + frequency + dedup indicator), overlap summary |
+| `OverviewTab.tsx` | Replaced flat care gap list with bundle compliance mini-summary (condition name + compliance progress bar, color-coded by threshold) |
+| `PatientDetailPage.tsx` | CareGapsTab now receives `patientId` prop (self-fetching) instead of `careGaps` array |
+| `useApi.ts` | Added `usePatientCareBundle`, `useConditionBundles`, `useConditionBundle` hooks |
+
+Status badge color mapping (Clinical Obsidian v2): met/closed → emerald, overdue → crimson, not_met/at_risk → amber, due_soon → amber/light, due/ongoing → dim, na → dim+opacity. Deduplicated measures shown at 50% opacity with violet "Dedup" badge and source reference.
+
+#### Module 10.6b-d — Care Gap Bundles 16-45 (Bulk Extension)
+
+Extended the bundle system from 15 to 45 condition bundles via programmatic SQL generation from two additional spreadsheets:
+
+| Migration | Source | Bundles | Measures | Overlap Rules |
+|-----------|--------|---------|----------|---------------|
+| `008_seed_bundles_v2.sql` | `docs/Medgnosis_CareGap_Bundles_16-30.xlsx` | 15 (ALZ, STR, PAIN, OA, GERD, BPH, MIG, EPI, HIV, HCV, SCD, SLE, GOUT, OSA, GAD) | 118 | 18 updates + 7 new |
+| `009_seed_bundles_v3.sql` | `docs/Medgnosis_CareGap_Bundles_31-45.xlsx` | 15 (T1D, IBD, MS, PD, PSO, HBV, PAH, ANEM, LIPID, PTSD, BP, TOB, AUD, VTE, WND) | 130 | 18 updates + 7 new |
+
+**Totals after all seeds:** 45 bundles, 354 bundle_measures, 399 measure_definitions, 30 overlap rules.
+
+SQL generated via Python/openpyxl scripts with `ON CONFLICT DO NOTHING` idempotency. Smart quote (U+2018/2019) and stray header row issues resolved during generation.
+
+#### Module 10.3 — Encounter Note with AI Scribe
+
+Full-stack SOAP note editor with AI-powered content generation via Ollama/MedGemma.
+
+##### Database
+
+| Migration | Purpose |
+|-----------|---------|
+| `012_clinical_notes.sql` | `clinical_note` table: UUID PK, SOAP text columns, `ai_generated` JSONB provenance, status workflow (draft→finalized→amended), `chief_complaint`, indexes on patient/author/status |
+
+##### Shared Types & Schemas
+
+| File | Changes |
+|------|---------|
+| `packages/shared/src/types/encounter-note.ts` | New — `ClinicalNote`, `NoteStatus`, `SOAPSection`, `AiProvenance`, `ScribeRequest`, `ScribeResponse` |
+| `packages/shared/src/schemas/index.ts` | Added `clinicalNoteCreateSchema`, `clinicalNoteUpdateSchema`, `scribeRequestSchema` Zod validators |
+| `packages/shared/src/index.ts` | Added encounter-note type + schema exports |
+
+##### Backend API (8 endpoints)
+
+| Route | Endpoint | Purpose |
+|-------|----------|---------|
+| `clinical-notes/index.ts` | `POST /clinical-notes` | Create draft note |
+| | `GET /clinical-notes/:noteId` | Get note with author name |
+| | `PATCH /clinical-notes/:noteId` | Auto-save SOAP sections (drafts only) |
+| | `POST /clinical-notes/:noteId/finalize` | Lock and sign |
+| | `POST /clinical-notes/:noteId/amend` | Amend with reason (finalized notes only) |
+| | `DELETE /clinical-notes/:noteId` | Soft-delete (drafts only) |
+| | `POST /clinical-notes/scribe` | AI Scribe — generates SOAP via Ollama |
+| `patients/index.ts` | `GET /patients/:id/notes` | List notes for patient |
+
+**AI Scribe endpoint** gathers patient context (conditions, medications, vitals, allergies, care gaps, recent encounters), builds a structured clinical prompt, and calls `generateCompletion()` with `jsonMode: true`. Returns per-section HTML strings. Gated by `aiGateMiddleware` (consent check) + `config.aiInsightsEnabled`.
+
+##### Frontend
+
+| Component | Description |
+|-----------|-------------|
+| `EncounterNotePage.tsx` | Full-page SOAP editor: visit type selector, chief complaint input, "AI Scribe All" button, 4 TipTap editors, auto-save (3s debounce), finalize dialog, delete draft |
+| `SOAPSectionEditor.tsx` | TipTap editor per SOAP section: formatting toolbar (lucide-react), per-section AI button, "AI-assisted" teal badge, loading overlay during generation |
+| `App.tsx` | Added `/patients/:patientId/encounter-note` route |
+| `useApi.ts` | Added `useCreateClinicalNote`, `useUpdateClinicalNote`, `useFinalizeClinicalNote`, `useAiScribe`, `usePatientNotes` hooks |
+
+TipTap extensions: StarterKit, Highlight, Typography, Link, TaskList, TaskItem. Toolbar adapted from archive `rich-text-editor.tsx` with lucide-react icons and Clinical Obsidian v2 dark theme styling.
+
+---
+
 ## Codebase Inventory
 
 ### File Counts
 
 | Package | Files | Lines (approx) |
 |---------|-------|-----------------|
-| `apps/api/src/` | 30 | ~2,895 |
-| `apps/web/src/` | 23 | ~2,955 |
-| `packages/shared/src/` | 16 | ~929 |
+| `apps/api/src/` | 33 | ~3,350 |
+| `apps/web/src/` | 27 | ~3,800 |
+| `packages/shared/src/` | 17 | ~1,050 |
 | `packages/db/src/` | 5 | ~224 |
-| `packages/db/migrations/` | 5 SQL | ~2,362 |
+| `packages/db/migrations/` | 10 SQL | ~4,600 |
 | E2E tests | 2 | ~80 |
-| **Total** | **81** | **~9,445** |
+| **Total** | **94** | **~13,104** |
 
 ### Environment Variables (45 total)
 
@@ -408,7 +557,7 @@ Goal: Production-grade reliability and compliance.
 - [ ] **9.6** Implement proper session timeout per role (configurable in config.ts)
 - [ ] **9.7** Add PHI access logging (log all reads of patient data, not just mutations)
 - [ ] **9.8** Port remaining legacy UI components:
-  - [ ] Super Note (TipTap SOAP note editor)
+  - [x] Super Note (TipTap SOAP note editor) — **Done (Module 10.3)** with AI Scribe
   - [ ] Cohort Creator (dynamic population filter builder)
   - [ ] MIPS reporting page
   - [ ] Population analytics page
@@ -890,6 +1039,265 @@ Site:   https://medgnosis.acumenus.net
 
 ---
 
+### Session 5 — Core Clinical Workspace (Phase 10) (Feb 25, 2026)
+
+#### Overview
+
+Transformed Medgnosis from a population health analytics dashboard into a clinical workspace. Built 6 modules across 2 sessions (context continuation): tabbed patient chart, clinician dashboard, flowsheets, lab trending, and condition-based care gap bundles with deduplication.
+
+#### Completed Work
+
+##### Module 10.2: Patient Summary Chart
+
+Rewrote `PatientDetailPage.tsx` from a 687-line flat layout to a tabbed clinical chart with `PatientBanner`, `TabBar`, and 7 tab components. Each clinical tab is a self-contained component that fetches its own sub-resource data.
+
+##### Module 10.4 + 10.5: Flowsheets & Lab Trending
+
+Built `FlowsheetGrid` (dense LOINC-categorized observation table), `ObservationTrendChart` (Recharts time-series with reference ranges), and `LabsVitalsTab` (list/flowsheet toggle with click-to-trend). Backend: two new endpoints for flowsheet data and observation trending.
+
+##### Module 10.1: Clinician Morning View
+
+Enhanced dashboard backend with 3 new parallel queries (today's encounters, urgent alerts, critical count). Rewrote `DashboardPage.tsx` with morning greeting, 3-column clinician row (schedule, alerts, Abigail AI placeholder), quick stats, and collapsible population health section.
+
+##### Module 10.6: Care Gap Bundles (5-step implementation)
+
+Incorporated `docs/Medgnosis_CareGap_Bundles.xlsx` — a clinical reference defining 15 chronic conditions with 106 evidence-based quality measures and 16 cross-condition deduplication rules.
+
+**Step 1 — Database migrations:**
+- `006_care_gap_bundles.sql`: 3 new tables + ALTER care_gap
+- `007_seed_bundles_v1.sql`: Seed 15 bundles, 106 measures, 16 overlap rules
+- Verified: 15 condition_bundles, 151 measure_definitions (106 new + 45 pre-existing), 106 bundle_measures, 16 overlap rules
+
+**Step 2 — Shared types + schemas:**
+- Created `packages/shared/src/types/bundle.ts` (10 interfaces/types)
+- Extended `careGapUpdateSchema` with 8 new status values
+
+**Step 3 — Backend API:**
+- Created `apps/api/src/routes/bundles/index.ts` (3 endpoints)
+- Added `GET /patients/:id/care-bundle` composition endpoint to patients route
+- Registered `/bundles` prefix in route registry
+- Added 3 React Query hooks (`usePatientCareBundle`, `useConditionBundles`, `useConditionBundle`)
+
+**Step 4 — Frontend rewrite:**
+- Rewrote `CareGapsTab.tsx` from flat open/closed list to bundle-grouped view
+- Components: `ComplianceRing`, `BundleAccordion`, `MeasureRow`, overlap summary
+- Status badge color mapping per Clinical Obsidian v2
+
+**Step 5 — Integration:**
+- Updated `PatientDetailPage.tsx` to pass `patientId` to self-fetching CareGapsTab
+- Replaced flat care gap list in `OverviewTab.tsx` with bundle compliance progress bars
+
+#### Files Created (6 files)
+
+| File | Description |
+|------|-------------|
+| `packages/db/migrations/006_care_gap_bundles.sql` | DDL: condition_bundle, bundle_measure, bundle_overlap_rule tables + ALTER care_gap |
+| `packages/db/migrations/007_seed_bundles_v1.sql` | Seed: 15 bundles, 106 measures, 16 overlap rules |
+| `packages/shared/src/types/bundle.ts` | TypeScript interfaces for all bundle-related types |
+| `apps/api/src/routes/bundles/index.ts` | Bundle CRUD API: list, detail, overlap rules |
+| `apps/web/src/components/patient/PatientBanner.tsx` | Sticky patient header with demographics/PCP/insurance/allergies |
+| `apps/web/src/components/patient/TabBar.tsx` | Tab navigation with badge counts |
+
+#### Files Modified (10 files)
+
+| File | Changes |
+|------|---------|
+| `apps/web/src/pages/PatientDetailPage.tsx` | Rewritten: flat layout → tabbed clinical chart |
+| `apps/web/src/pages/DashboardPage.tsx` | Rewritten: analytics dashboard → clinician morning view |
+| `apps/api/src/routes/dashboard/index.ts` | Added clinician queries (encounters, alerts, Abby placeholder) |
+| `apps/api/src/routes/patients/index.ts` | Added `GET /:id/care-bundle` composition endpoint |
+| `apps/api/src/routes/index.ts` | Registered `/bundles` route prefix |
+| `apps/web/src/hooks/useApi.ts` | Added 3 bundle hooks |
+| `apps/web/src/components/patient/CareGapsTab.tsx` | Rewritten: flat gaps → bundle-grouped view with dedup |
+| `apps/web/src/components/patient/OverviewTab.tsx` | Replaced care gap list with bundle compliance bars |
+| `packages/shared/src/index.ts` | Added bundle type exports |
+| `packages/shared/src/schemas/index.ts` | Extended careGapUpdateSchema with bundle statuses |
+
+#### Key Design Decisions
+
+1. **Bundle schema designed for bulk extension**: The seed migration uses a repeatable CTE pattern per bundle — adding 30 more bundles is copy-paste. `icd10_pattern` uses comma-separated LIKE patterns for flexible ICD-10 matching without a range table.
+
+2. **Overlap deduplication at API layer**: Rules stored as CSV bundle codes in `applicable_bundles` for simple bulk loading. The `/care-bundle` endpoint splits and applies rules at runtime — only when a patient has 2+ applicable bundles for a given rule.
+
+3. **Self-fetching tab components**: CareGapsTab and OverviewTab fetch their own bundle data via `usePatientCareBundle` React Query hook, rather than receiving pre-fetched data as props. This keeps the parent page clean and enables independent cache invalidation.
+
+4. **Backward compatibility**: All new `care_gap` columns (bundle_id, due_date, gap_priority) are nullable. Legacy 'open'/'closed' statuses remain valid alongside new bundle statuses.
+
+---
+
+### Session 6 — Bundles 16-45 + Encounter Note AI Scribe (Feb 25, 2026)
+
+#### Overview
+
+Extended care gap bundles from 15 to 45 conditions (bulk SQL generation from spreadsheets), then built the clinical encounter note system with AI-powered SOAP generation via Ollama. Phase 10 is now complete.
+
+#### Completed Work
+
+##### Phase 10.6b-d: Care Gap Bundles 16-45
+
+Used Python/openpyxl to programmatically generate two seed migrations from `docs/Medgnosis_CareGap_Bundles_16-30.xlsx` and `docs/Medgnosis_CareGap_Bundles_31-45.xlsx`. Each migration follows the same `DO $` block pattern as `007_seed_bundles_v1.sql`.
+
+- `008_seed_bundles_v2.sql` — 15 bundles (ALZ through GAD), 118 measures, 18 overlap rule updates + 7 new rules
+- `009_seed_bundles_v3.sql` — 15 bundles (T1D through WND), 130 measures, 18 overlap rule updates + 7 new rules
+- Fixed stray "Post-Traumatic Stress Disorder" header parsed as measure code (bundle_prefix validation)
+- Fixed Unicode smart quotes (U+2018/2019) not caught by SQL escaping
+- Verified: 45 bundles, 354 bundle_measures, 399 measure_definitions, 30 overlap rules — all `bundle_size` counts match
+
+##### Module 10.3: Encounter Note with AI Scribe
+
+Built the full encounter note system from database to UI:
+
+1. **Migration 012**: `clinical_note` table with UUID PK, SOAP columns, AI provenance JSONB, status workflow
+2. **Shared types**: `ClinicalNote`, `ScribeRequest/Response`, Zod schemas for create/update/scribe
+3. **Backend**: 8 API endpoints — CRUD + finalize/amend + AI scribe (gathers patient context, calls `generateCompletion()` with `jsonMode: true`)
+4. **Frontend**: `EncounterNotePage` with 4 independent TipTap SOAP editors, per-section and "Scribe All" AI buttons, auto-save, finalize dialog
+
+#### Files Created (7 files)
+
+| File | Description |
+|------|-------------|
+| `packages/db/migrations/008_seed_bundles_v2.sql` | Seed: bundles 16-30 (15 bundles, 118 measures) |
+| `packages/db/migrations/009_seed_bundles_v3.sql` | Seed: bundles 31-45 (15 bundles, 130 measures) |
+| `packages/db/migrations/012_clinical_notes.sql` | DDL: clinical_note table + indexes |
+| `packages/shared/src/types/encounter-note.ts` | Encounter note TypeScript types |
+| `apps/api/src/routes/clinical-notes/index.ts` | CRUD + AI Scribe API routes (8 endpoints) |
+| `apps/web/src/pages/EncounterNotePage.tsx` | Full encounter note page with SOAP editors |
+| `apps/web/src/components/encounter/SOAPSectionEditor.tsx` | TipTap editor per SOAP section with AI button |
+
+#### Files Modified (7 files)
+
+| File | Changes |
+|------|---------|
+| `packages/shared/src/index.ts` | Added encounter-note type + schema exports |
+| `packages/shared/src/schemas/index.ts` | Added clinical note + scribe Zod schemas |
+| `apps/api/src/routes/index.ts` | Registered `/clinical-notes` route prefix |
+| `apps/api/src/routes/patients/index.ts` | Added `GET /:id/notes` endpoint |
+| `apps/web/src/App.tsx` | Added `/patients/:patientId/encounter-note` route |
+| `apps/web/src/hooks/useApi.ts` | Added 5 clinical note hooks |
+| `apps/web/src/pages/AppShell.tsx` | Removed unused `Wifi` import (pre-existing TS error) |
+
+#### Key Design Decisions
+
+1. **AI Scribe gathers real patient context**: The `/clinical-notes/scribe` endpoint queries 6 DB tables in parallel (conditions, meds, vitals, allergies, care gaps, encounters) to build a context-rich clinical prompt, not just generate from the chief complaint alone.
+
+2. **Per-section and bulk AI generation**: Each SOAP section has its own AI button for targeted generation, plus a "Scribe All" button for full-note generation. Existing content from other sections is passed as context.
+
+3. **AI provenance tracking**: The `ai_generated` JSONB column records which sections were AI-generated, the model used, and when — supporting audit trails and clinician review workflows.
+
+4. **Status workflow protection**: Only drafts can be edited or deleted. Finalized notes are immutable except through the amend flow (requires a reason). This matches clinical documentation standards.
+
+### Session 7 — Patient-Context Abby Chat (Feb 26, 2026)
+
+#### Overview
+
+Built a full patient-context AI clinical assistant ("Abby Chat") powered by Ollama/MedGemma, integrated as a new tab in the patient chart. Clinicians can now have multi-turn conversations about a specific patient with full EHR context (conditions, medications, vitals, allergies, care gaps, encounters) automatically injected into the LLM system prompt. Also fixed a pre-existing Dashboard chat bug and extracted shared infrastructure.
+
+#### Completed Work
+
+##### Patient Context Service (Backend Refactor)
+
+Extracted the 6-table parallel SQL query pattern from the AI Scribe endpoint into a shared `patientContext.ts` service. Both the scribe (`POST /clinical-notes/scribe`) and chat (`POST /insights/chat`) endpoints now use the same `getPatientClinicalContext()` function, eliminating ~100 lines of code duplication.
+
+##### Enhanced Chat Endpoint
+
+Rewrote `POST /insights/chat` to accept an optional `patient_id`. When provided:
+- Verifies the patient exists in `phm_edw.patient`
+- Fetches full clinical context via the shared helper
+- Builds an enriched system prompt with the patient's conditions, meds, vitals, allergies, care gaps, and recent encounters
+- Returns `context_summary` for UI display
+- Caps history at 16 turns for gemma:7b token budget (4K context)
+- Added `aiGateMiddleware` for AI consent gating
+
+##### AbbyTab (Frontend)
+
+Full chat tab component (~300 lines) in the PatientDetailPage tab system:
+- Violet top-border + Sparkles icon branding (Abby's visual identity)
+- Initial chart review: on mount, sends an intro request that returns both a welcome message and the clinical context summary
+- Collapsible context panel showing the patient's raw EHR summary
+- Quick-action suggestion chips: "Summarize care gaps", "Drug interaction check", "Quality measures", "Risk assessment"
+- Multi-turn conversation with full history sent per request
+- Auto-scroll, thinking spinner, clinical decision support disclaimer
+
+##### Bug Fixes
+
+- Dashboard `AbbyChat` was reading `data.reply` but API returns `data.response` — never worked before this fix
+- `useAiChat` hook was sending hardcoded `provider: 'ollama'` and not accepting `history` parameter
+
+#### Files Created (2 files)
+
+| File | Description |
+|------|-------------|
+| `apps/api/src/services/patientContext.ts` | Shared patient context fetcher (6 parallel SQL queries + formatting) |
+| `apps/web/src/components/patient/AbbyTab.tsx` | Full Abby AI chat tab for PatientDetailPage |
+
+#### Files Modified (5 files)
+
+| File | Changes |
+|------|---------|
+| `apps/api/src/routes/insights/index.ts` | Added patient_id handling, context injection, enriched system prompt, aiGateMiddleware |
+| `apps/api/src/routes/clinical-notes/index.ts` | Refactored scribe to use shared `getPatientClinicalContext()` |
+| `apps/web/src/pages/PatientDetailPage.tsx` | Added 'abby' tab (8th tab, Sparkles icon via Tab interface) |
+| `apps/web/src/pages/DashboardPage.tsx` | Fixed `data.reply` → `data.response` bug |
+| `apps/web/src/hooks/useApi.ts` | Enhanced `useAiChat` with `history` param, removed hardcoded provider |
+
+#### Key Design Decisions
+
+1. **Shared patient context helper**: The same 6-query pattern is used by both AI Scribe and Abby Chat, so extracting it prevents drift and ensures consistency.
+
+2. **Token budget management**: gemma:7b has a 4K context window. System prompt (~150 tokens) + patient context (~500 tokens) + history (capped at 16 turns, ~1500 tokens) + response (768 tokens) = ~2918 tokens. Fits comfortably.
+
+3. **No conversation persistence**: Messages are stored in React component state. Switching tabs resets the conversation. Acceptable for v1 — persistence would add DB complexity without clear clinical value.
+
+---
+
+### Session 8 — Demo Environment ETL Complete (Feb 26, 2026)
+
+#### Overview
+
+Fixed all 8+ errors in migration `014_etl_steps_16_27.sql` to fully populate the PHM star schema. The demo environment for Dr. Sanjay Udoshi (provider_id = 2816) is now 100% operational with all EDW + star schema tables seeded and validated.
+
+#### Final Star Schema Counts
+
+| Table | Rows |
+|-------|------|
+| `dim_care_gap_bundle` | 45 bundles |
+| `dim_payer` | 10 payers |
+| `bridge_bundle_measure` | 354 bundle→measure links |
+| `fact_patient_bundle` | 3,698 patient×bundle rows |
+| `fact_patient_bundle_detail` | 26,967 detail rows |
+| `fact_patient_composite` | 1,288 rows (1 per patient) |
+| `fact_ai_risk_score` | 760 rows |
+| `fact_population_snapshot` | 54 rows |
+| `mv_population_by_condition` | 27 rows |
+| `mv_provider_scorecard` | 1 row |
+| `mv_patient_risk_tier` | 4 rows |
+
+#### Bugs Fixed in Migration 014
+
+1. **LATERAL after WHERE clause** (syntax error): Moved `LEFT JOIN LATERAL` for gap_stats before the WHERE clause. SQL requires JOINs before WHERE.
+2. **Missing dim rows**: Added pre-steps 15, 15a, 15b to sync `measure_definition → dim_measure`, insert org 2738 and provider 2816 before star ETL runs.
+3. **`diagnosis_status = 'ACTIVE'` filter**: Synthea data has NULL for this field. Removed all occurrences — 0 rows otherwise.
+4. **`ON CONFLICT (patient_key, bundle_key)`**: No unique constraint on that tuple in `fact_patient_bundle` (only serial PK). Changed to `ON CONFLICT DO NOTHING`.
+5. **Interval→int cast**: `(CURRENT_DATE - cg.identified_date)::INT` fails when `identified_date` is TIMESTAMP. Fixed: `(CURRENT_DATE - cg.identified_date::DATE)::INT`.
+6. **SDOH columns** (`sa.domain`, `sa.risk_level`): Changed to `sa.food_insecurity_ind = 'Y'`, `sa.transportation_ind = 'Y'`, `sa.housing_status IN (...)`.
+7. **`patient_risk_history` columns**: `calculated_at` → `computed_at`, `risk_score` → `score` (integer 0–100, not float 0.0–1.0). Fixed thresholds to `>= 80/60/30`.
+8. **`etl_log` columns**: `step_name/status/rows_affected` → `source_system/load_status/rows_inserted`.
+9. **`bridge_bundle_measure.frequency` truncation**: Source values up to 63 chars. Fixed with `LEFT(bm.frequency, 50)`.
+10. **Performance**: Rewrote Steps 20 and 22 from LATERAL-per-row to set-based CTEs (BOOL_OR + UNION ALL pattern). Reduced runtime from timeout to ~30 seconds.
+11. **Gap status case**: Source data uses lowercase `'open'/'closed'/'excluded'`; fixed all references.
+
+#### Validation Results (migration 023)
+
+- V1: 1,288 patients ✓ — V2: Provider + org ✓ — V3: 4,414 clinical records ✓
+- V4: 26,967 care gaps (65% open, 25% closed, 10% excluded) ✓
+- V6: 15 today appointments ✓ — V10: 192 AI insights, 50 priority queue ✓
+- V11: 600 billing claims, 400 e-Rx, 40 care plans ✓ — V12: 5 cancer patients ✓
+- V15: All star schema tables populated ✓ — V16: All materialized views refreshed ✓
+
+4. **Context summary returned on first call**: The API returns a `context_summary` field so the frontend can display the raw clinical data the AI is working with, providing transparency into what the model "sees."
+
+---
+
 ## Bug Fix Log
 
 | Date | Issue | Resolution | Files Changed |
@@ -920,6 +1328,17 @@ Site:   https://medgnosis.acumenus.net
 | 2026-02-25 | Silent `.catch(() => [])` (Phase 6.7) | Added `fastify.log.error`/`console.error` | 3 files (dashboard, measures, measureEngine) |
 | 2026-02-25 | No refresh token replay detection (Phase 6.8) | Revoked token reuse revokes all user sessions | `apps/api/src/routes/auth/index.ts` |
 | 2026-02-25 | Unused `ChevronRight` import blocks production build (TS6133) | Removed unused import | `apps/web/src/pages/CareListsPage.tsx` |
+| 2026-02-25 | Unused `Wifi` import (TS6133) | Removed from lucide-react imports | `apps/web/src/components/AppShell.tsx` |
+| 2026-02-25 | Unused `useMemo` import (TS6133) | Removed from React imports | `apps/web/src/pages/CareListsPage.tsx` |
+| 2026-02-25 | `AbbyChat` function declaration flagged as unused (TS6133) | Converted to const arrow function | `apps/web/src/pages/DashboardPage.tsx` |
+| 2026-02-25 | Unicode smart quotes (U+2019) in SQL seed data | Post-processing to replace with SQL-escaped ASCII | `008_seed_bundles_v2.sql`, `009_seed_bundles_v3.sql` |
+| 2026-02-25 | Stray "Post-Traumatic Stress Disorder" parsed as measure code | Added bundle_prefix validation + numeric suffix check | Python SQL generator |
+| 2026-02-25 | `app_users.id` is UUID, not INT — FK type mismatch in migration | Changed `author_user_id` from INT to UUID | `012_clinical_notes.sql` |
+| 2026-02-25 | `sql` tagged template returns `Row[]` — explicit type annotations conflict | Used `Record<string, unknown>` casts in `.map()` callbacks | `clinical-notes/index.ts` |
+| 2026-02-26 | Dashboard AbbyChat expects `data.reply` but API returns `data.response` | Changed `reply` → `response` in mutation handler | `DashboardPage.tsx` |
+| 2026-02-26 | `useAiChat` sends hardcoded `provider: 'ollama'` and no history | Removed hardcoded provider, added `history` param | `useApi.ts` |
+| 2026-02-26 | `ApiResponse<unknown>` can't cast directly to `Record<string, unknown>` | Cast through `unknown` first: `res as unknown as Record<string, unknown>` | `AbbyTab.tsx` |
+| 2026-02-26 | PatientDetailPage tabs array type doesn't include `icon` field | Used `Tab & { id: TabId }` type from TabBar interface | `PatientDetailPage.tsx` |
 
 ---
 
@@ -939,15 +1358,15 @@ Medgnosis/
 │   │       ├── sentry.ts       # Error tracking
 │   │       ├── plugins/        # Fastify plugins (auth, error-handler, websocket, audit)
 │   │       ├── middleware/      # Request middleware (aiGate, audit)
-│   │       ├── routes/         # 10 route modules
-│   │       ├── services/       # Business logic (risk scoring, LLM, FHIR, OMOP, measures, cohorts)
+│   │       ├── routes/         # 12 route modules (+ bundles, clinical-notes)
+│   │       ├── services/       # Business logic (risk scoring, LLM, FHIR, OMOP, measures, cohorts, patientContext)
 │   │       └── workers/        # BullMQ workers (rules, AI, measures, ETL, scheduler)
 │   └── web/                    # Vite 6 + React 19 SPA (port 5175)
 │       └── src/
 │           ├── App.tsx         # Router + providers
 │           ├── main.tsx        # React DOM entry
-│           ├── pages/          # 9 page components
-│           ├── components/     # AuthGuard, AppShell, GlobalSearch
+│           ├── pages/          # 10 page components (+ EncounterNotePage)
+│           ├── components/     # AuthGuard, AppShell, GlobalSearch, patient/*, encounter/*
 │           ├── hooks/          # useAlertSocket, useKeyboardShortcuts, useTheme, useApi
 │           ├── stores/         # Zustand (auth, theme, ui)
 │           ├── services/       # API client
