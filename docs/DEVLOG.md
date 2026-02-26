@@ -31,6 +31,7 @@
   - [Session 6 — Bundles 16-45 + Encounter Note AI Scribe](#session-6--bundles-16-45--encounter-note-ai-scribe-feb-25-2026)
   - [Session 7 — Patient-Context Abby Chat](#session-7--patient-context-abby-chat-feb-26-2026)
   - [Session 8 — Demo Environment ETL Complete](#session-8--demo-environment-etl-complete-feb-26-2026)
+  - [Session 9 — Star Schema v2 Consolidation + Phase D Verification](#session-9--star-schema-v2-consolidation--phase-d-verification-feb-26-2026)
 - [Architecture Reference](#architecture-reference)
 
 ---
@@ -1298,6 +1299,70 @@ Fixed all 8+ errors in migration `014_etl_steps_16_27.sql` to fully populate the
 
 ---
 
+### Session 9 — Star Schema v2 Consolidation + Phase D Verification (Feb 26, 2026)
+
+#### Overview
+
+Resolved critical migration conflict: two parallel tracks of star schema migrations (Track A: 010/011/013_star, Track B: 013_enhancement/014_etl) had overlapping table definitions with incompatible column schemas. Consolidated into a single coherent migration path, registered 17 previously-applied migrations, and applied new `024_star_v2_enhancements.sql` to add the missing pieces. Completed Phase D verification.
+
+#### Problem
+
+| Item | Track A (010_star_schema_v2) | Track B (013_star_schema_enhancement) |
+|------|------------------------------|---------------------------------------|
+| dim_payer | effective_start_date, no payer_code | payer_code, is_government, effective_start |
+| dim_allergy | allergy_id, allergy_name only | + allergy_code, code_system, category |
+| fact_patient_bundle_detail | days_since_last_action | days_overdue |
+| Materialized views | 4 views (dashboard, compliance, population, worklist) | 3 different views (condition, scorecard, risk_tier) |
+
+Running both tracks in lexicographic order would fail: `010_star` creates tables without `IF NOT EXISTS`, `013_star` gets silently skipped, then `014_etl` references Track B columns that don't exist.
+
+#### Resolution
+
+1. **Archived** Track A files (010_star_schema_v2, 011_seed_star_bundles, 013_etl_star_v2) to `_archive/`
+2. **Enhanced** 013_star_schema_enhancement.sql with Track A's unique pieces (ALTER dim_measure, ALTER fact_care_gap, fact_immunization/insurance/sdoh, 4 additional mat views, performance indexes)
+3. **Registered** 17 already-applied migrations in `_migrations` (010–023 were executed directly to the DB in previous sessions but never tracked)
+4. **Created** `024_star_v2_enhancements.sql` — applies only the delta: 7 new dim_measure columns, 4 new fact_care_gap columns + FKs, 3 new fact tables, 25+ performance indexes, 4 new materialized views
+5. **Updated** `refresh_star_views.sql` to include all 7 materialized views
+
+#### Phase D Verification Results
+
+| Check | Result |
+|-------|--------|
+| D1: DDL errors | None — all 25 migrations clean |
+| D2: dim_care_gap_bundle rows | 45 bundles ✓ |
+| D3: bridge_bundle_measure rows | 354 links ✓ |
+| D4: fact_patient_composite rows | 1,288 ✓ |
+| D5: 7 materialized views | All present with data ✓ |
+| D6: FK integrity | 0 orphaned bundle_keys, 0 orphaned patient_keys ✓ |
+| D7: Dashboard query (risk_tier filter) | 0.191ms (index-only scan) ✓ |
+| D7: Composite query (Critical risk) | 0.085ms (index scan) ✓ |
+| D8: Build verification | All 4 packages clean ✓ |
+
+#### Materialized View Row Counts
+
+| View | Rows |
+|------|------|
+| mv_patient_dashboard | 1,288 |
+| mv_bundle_compliance_by_provider | 27 |
+| mv_population_overview | 54 |
+| mv_care_gap_worklist | 0 (no open non-deduped gaps) |
+| mv_population_by_condition | 27 |
+| mv_provider_scorecard | 1 |
+| mv_patient_risk_tier | 4 |
+
+#### Files Changed
+
+| Action | File |
+|--------|------|
+| Archived | `packages/db/migrations/010_star_schema_v2.sql` → `_archive/` |
+| Archived | `packages/db/migrations/011_seed_star_bundles.sql` → `_archive/` |
+| Archived | `packages/db/migrations/013_etl_star_v2.sql` → `_archive/` |
+| Enhanced | `packages/db/migrations/013_star_schema_enhancement.sql` (consolidated) |
+| Created | `packages/db/migrations/024_star_v2_enhancements.sql` |
+| Updated | `packages/db/scripts/refresh_star_views.sql` (7 mat views) |
+
+---
+
 ## Bug Fix Log
 
 | Date | Issue | Resolution | Files Changed |
@@ -1339,6 +1404,8 @@ Fixed all 8+ errors in migration `014_etl_steps_16_27.sql` to fully populate the
 | 2026-02-26 | `useAiChat` sends hardcoded `provider: 'ollama'` and no history | Removed hardcoded provider, added `history` param | `useApi.ts` |
 | 2026-02-26 | `ApiResponse<unknown>` can't cast directly to `Record<string, unknown>` | Cast through `unknown` first: `res as unknown as Record<string, unknown>` | `AbbyTab.tsx` |
 | 2026-02-26 | PatientDetailPage tabs array type doesn't include `icon` field | Used `Tab & { id: TabId }` type from TabBar interface | `PatientDetailPage.tsx` |
+| 2026-02-26 | Duplicate star schema migrations (010/013) with incompatible column schemas | Archived Track A, consolidated into Track B, created 024 delta migration | `013_star_schema_enhancement.sql`, `024_star_v2_enhancements.sql` |
+| 2026-02-26 | `clinical_note.note_type` index fails — table already exists from 012 with `visit_type` | Registered 17 pre-applied migrations, created delta migration for remaining changes | `_migrations` table, `024_star_v2_enhancements.sql` |
 
 ---
 
