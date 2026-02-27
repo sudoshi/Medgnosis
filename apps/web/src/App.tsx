@@ -5,9 +5,11 @@ import { PatientsPage } from './pages/PatientsPage.js';
 import { PatientDetailPage } from './pages/PatientDetailPage.js';
 import { EncounterNotePage } from './pages/EncounterNotePage.js';
 import { MeasuresPage } from './pages/MeasuresPage.js';
+import { BundlesPage } from './pages/BundlesPage.js';
 import { CareListsPage } from './pages/CareListsPage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { AdminPage } from './pages/AdminPage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
@@ -40,9 +42,11 @@ export function App() {
             <Route path="/patients/:patientId" element={<PatientDetailPage />} />
             <Route path="/patients/:patientId/encounter-note" element={<EncounterNotePage />} />
             <Route path="/measures" element={<MeasuresPage />} />
+            <Route path="/bundles" element={<BundlesPage />} />
             <Route path="/care-lists" element={<CareListsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
         </Route>
 

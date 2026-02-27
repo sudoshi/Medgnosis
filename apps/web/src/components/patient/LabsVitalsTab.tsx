@@ -75,7 +75,7 @@ export function LabsVitalsTab({ patientId }: LabsVitalsTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <Beaker size={24} className="text-ghost mb-3" />
+          <Beaker size={24} className="text-2xl text-ghost mb-3" />
           <p className="empty-state-title">No lab results or vitals</p>
           <p className="empty-state-desc">Observations will appear here when available.</p>
         </div>

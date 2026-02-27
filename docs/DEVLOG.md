@@ -32,6 +32,13 @@
   - [Session 7 — Patient-Context Abby Chat](#session-7--patient-context-abby-chat-feb-26-2026)
   - [Session 8 — Demo Environment ETL Complete](#session-8--demo-environment-etl-complete-feb-26-2026)
   - [Session 9 — Star Schema v2 Consolidation + Phase D Verification](#session-9--star-schema-v2-consolidation--phase-d-verification-feb-26-2026)
+  - [Session 10 — Tier 2: Wire Real Data to Frontend](#session-10--tier-2-wire-real-data-to-frontend-feb-26-2026)
+  - [Session 11 — Tier 3: AI Morning Briefing + Auth + Settings](#session-11--tier-3-ai-morning-briefing--auth--settings-feb-26-2026)
+  - [Session 12 — Tier 4: Schedule Config + Care Gap Enhancements](#session-12--tier-4-schedule-config--care-gap-enhancements-feb-26-2026)
+  - [Session 13 — Tier 5: Dashboard Trends](#session-13--tier-5-dashboard-trends-feb-26-2026)
+  - [Session 14 — Performance: Missing EDW Indexes + Query Optimizations](#session-14--performance-missing-edw-indexes--query-optimizations-feb-26-2026)
+  - [Session 15 — Provider Scoping: JWT + All Query Endpoints](#session-15--provider-scoping-jwt--all-query-endpoints-feb-26-2026)
+  - [Session 16 — Mock Schedule: 18 Real Patients with Past-Appointment Graying](#session-16--mock-schedule-18-real-patients-with-past-appointment-graying-feb-26-2026)
 - [Architecture Reference](#architecture-reference)
 
 ---
@@ -1363,6 +1370,152 @@ Running both tracks in lexicographic order would fail: `010_star` creates tables
 
 ---
 
+### Session 10 — Tier 2: Wire Real Data to Frontend (Feb 26, 2026)
+
+#### Overview
+
+Wired Dashboard and Settings pages to live data. Dashboard now displays real risk stratification, care gap priority breakdown, encounter counts, and high-risk patient statistics from the star schema. Settings profile save persists to the database, and notification/data toggles are stored as user preferences via a new JSONB column.
+
+#### Dashboard API Enhancements
+
+Replaced 3 placeholder queries in `GET /dashboard` with real data:
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Risk Stratification | `Promise.resolve([])` | `fact_patient_composite` GROUP BY `risk_tier` |
+| Care Gap Priority | `{ high: 0, medium: 0, low: 0 }` | `phm_edw.care_gap` GROUP BY priority |
+| Encounter Count | `{ value: 0, trend: 0 }` | COUNT encounters in last 30 days |
+| High Risk Stats | `{ high_risk_count: 0, high_risk_percentage: 0 }` | Derived from risk distribution |
+
+#### Settings API + Persistence
+
+- **`PATCH /auth/me`**: Dynamic SET clause (only provided fields), parameterized queries, audit log
+- **`GET /auth/me/preferences`**: Returns `app_users.preferences` JSONB column
+- **`PATCH /auth/me/preferences`**: Shallow merge via `||` operator
+- **Migration 025**: `ALTER TABLE app_users ADD COLUMN preferences JSONB DEFAULT '{}'`
+- Frontend: profile save updates auth store; notification/data toggles debounced (400ms) persist
+
+#### Files Changed
+
+| Action | File |
+|--------|------|
+| Modified | `apps/api/src/routes/dashboard/index.ts` — 3 new queries, risk_score derived |
+| Modified | `apps/api/src/routes/auth/index.ts` — PATCH /me + GET/PATCH /me/preferences |
+| Modified | `apps/web/src/hooks/useApi.ts` — useUpdateProfile, useUserPreferences, useSavePreferences |
+| Modified | `apps/web/src/pages/SettingsPage.tsx` — wired profile save + preference persistence |
+| Created | `packages/db/migrations/025_user_preferences.sql` |
+
+---
+
+### Session 11 — Tier 3: AI Morning Briefing + Auth + Settings (Feb 26, 2026)
+
+#### Overview
+
+Three high-impact features: AI-generated morning briefing for clinicians, server-side token revocation on logout, and live database statistics in Settings.
+
+#### AI Morning Briefing
+
+- **Endpoint:** `POST /insights/morning-briefing` in `apps/api/src/routes/insights/index.ts`
+- Fetches top 5 high-risk patients from `phm_star.fact_patient_composite` (by `abigail_priority_score DESC`)
+- Parallel queries for today's schedule count + critical alert count
+- Builds clinician-personalized prompt with patient summaries
+- Calls `generateCompletion()` (512 tokens, temperature 0.4)
+- Returns structured response: `{ briefing, generated_at, high_risk_count, schedule_count, critical_alerts }`
+- Dashboard `abby_briefing.enabled` changed from `false` to `true`
+- Frontend: `useMorningBriefing()` hook (staleTime 30min, retry false), briefing replaces Abby widget greeting
+
+#### Auth Token Revocation Fix
+
+- **Bug:** AppShell logout only called `clearAuth()` (local state) — never told the server to revoke tokens
+- **Fix:** `handleLogout()` now calls `POST /auth/logout` before clearing local state
+- Settings SecuritySection "Sign out all devices" button wired to same endpoint with loading state
+- 2FA button disabled with "coming soon" note
+
+#### Settings Database Overview
+
+- **Endpoint:** `GET /auth/me/db-overview` returns live COUNT(*) from patient, encounter, procedure, care_gap
+- `DbOverviewPanel` component replaces hardcoded "~1M records" strings with real data
+- `useDbOverview()` hook with 5-minute staleTime
+
+#### Files Changed
+
+| Action | File |
+|--------|------|
+| Modified | `apps/api/src/routes/insights/index.ts` — POST /insights/morning-briefing |
+| Modified | `apps/api/src/routes/dashboard/index.ts` — abby_briefing.enabled = true |
+| Modified | `apps/api/src/routes/auth/index.ts` — GET /auth/me/db-overview |
+| Modified | `apps/web/src/hooks/useApi.ts` — useMorningBriefing, useDbOverview |
+| Modified | `apps/web/src/pages/DashboardPage.tsx` — morning briefing auto-fetch |
+| Modified | `apps/web/src/pages/SettingsPage.tsx` — SecuritySection wired, DbOverviewPanel |
+| Modified | `apps/web/src/components/AppShell.tsx` — logout calls POST /auth/logout |
+
+### Session 12 — Tier 4: Schedule Config + Care Gap Enhancements (Feb 26, 2026)
+
+#### Overview
+
+Provider schedule management in Settings + comprehensive care gap workflow enhancements (bug fixes, search, priority, filtering).
+
+#### Schedule Config (Settings)
+
+- **Endpoints:** `GET /auth/me/schedule` + `PATCH /auth/me/schedule` in `apps/api/src/routes/auth/index.ts`
+- Provider resolved via `app_users.org_id` → `provider.org_id` → `provider_id` lookup chain
+- GET returns weekly schedule (from `provider_schedule`) + clinic resources (from `clinic_resource`)
+- PATCH accepts array of slot updates, uses `sql.unsafe()` dynamic SET pattern (same as PATCH /auth/me)
+- **ScheduleSection rewrite:** 3 panels — Weekly Clinic Hours (editable time inputs per slot, schedule_type dropdowns with colored badges, Save button), Automated Tasks (ETL/reports dropdowns persisted via preferences), Clinic Resources (read-only list with type badges)
+- Hooks: `useProviderSchedule()` + `useSaveProviderSchedule()`
+
+#### Care Gap Enhancements
+
+- **Dashboard bug fix:** `priority` → `gap_priority` column name (query was silently failing via `.catch()`)
+- **Zod schema fix:** Added `'resolved'` to `careGapUpdateSchema` (frontend sent 'resolved' but schema rejected it)
+- **Migration 026:** Backfill `gap_priority` (15% high, 35% medium, 50% low) + `due_date` for open care gaps
+- **API search:** Server-side ILIKE search on patient name + measure name (was ignored despite frontend sending `search` param)
+- **Priority filter:** `AND cg.gap_priority = ${query.priority}` in both data + count queries
+- **Status mismatch fix:** `'resolved'` mapped to `'closed'` in DB, `resolved_date` set for both
+- **Notes persistence:** PATCH now writes `notes` → `comments` column via `COALESCE(${notes}, comments)`
+- **Response enrichment:** Added `gap_priority AS priority` + `due_date` to GET response
+- **Priority-first ordering:** `CASE gap_priority WHEN 'high' THEN 0 ... END, due_date ASC NULLS LAST`
+- **CareListsPage UI:** Priority column (crimson/amber/emerald badges), Due Date column, priority filter button group, updated table header + skeleton layout
+
+#### Files Changed
+
+| Action | File |
+|--------|------|
+| Modified | `apps/api/src/routes/dashboard/index.ts` — priority → gap_priority |
+| Modified | `packages/shared/src/schemas/index.ts` — added 'resolved' to enum |
+| Created | `packages/db/migrations/026_backfill_care_gap_priority.sql` |
+| Modified | `apps/api/src/routes/care-gaps/index.ts` — search, priority, notes, status fix |
+| Modified | `apps/api/src/routes/auth/index.ts` — GET + PATCH /auth/me/schedule |
+| Modified | `apps/web/src/hooks/useApi.ts` — useProviderSchedule, useSaveProviderSchedule |
+| Modified | `apps/web/src/pages/SettingsPage.tsx` — ScheduleSection rewrite |
+| Modified | `apps/web/src/pages/CareListsPage.tsx` — priority, due_date, filter |
+
+### Session 13 — Tier 5: Dashboard Trends (Feb 26, 2026)
+
+#### Overview
+
+Replace hardcoded `trend: 0` values on the dashboard with real month-over-month trend calculations.
+
+#### Dashboard Trends
+
+- **Trend query:** Added 10th parallel query to `GET /dashboard` with 6 subqueries comparing 30-day rolling windows:
+  - Patient registrations: `created_date` in last 30d vs previous 30d
+  - Encounters: `encounter_datetime` in last 30d vs previous 30d
+  - Care gap net change: `gaps_opened_30d` + `gaps_closed_30d` → approximate prior open count
+- **`calcTrend()` helper:** `((current - prior) / prior) * 100`, rounded, handles zero-division (returns 100 if prior=0 and current>0, else 0)
+- **Care gap approximation:** `prior_open ≈ current_open + closed_in_30d - opened_in_30d`, clamped to `Math.max(0)`
+- **Wired into response:** `total_patients.trend`, `care_gaps.trend`, `encounters.trend` now return computed percentages
+- **`risk_score.trend`** remains 0 — no historical risk snapshots available for comparison
+- **Zero frontend changes needed:** `TrendBadge` component already renders green ↑ / red ↓ arrows with percentages for non-zero values
+
+#### Files Changed
+
+| Action | File |
+|--------|------|
+| Modified | `apps/api/src/routes/dashboard/index.ts` — trend query + calcTrend helper + wired response |
+
+---
+
 ## Bug Fix Log
 
 | Date | Issue | Resolution | Files Changed |
@@ -1406,6 +1559,200 @@ Running both tracks in lexicographic order would fail: `010_star` creates tables
 | 2026-02-26 | PatientDetailPage tabs array type doesn't include `icon` field | Used `Tab & { id: TabId }` type from TabBar interface | `PatientDetailPage.tsx` |
 | 2026-02-26 | Duplicate star schema migrations (010/013) with incompatible column schemas | Archived Track A, consolidated into Track B, created 024 delta migration | `013_star_schema_enhancement.sql`, `024_star_v2_enhancements.sql` |
 | 2026-02-26 | `clinical_note.note_type` index fails — table already exists from 012 with `visit_type` | Registered 17 pre-applied migrations, created delta migration for remaining changes | `_migrations` table, `024_star_v2_enhancements.sql` |
+| 2026-02-26 | Frontend logout never calls server — tokens remain valid | Added `api.post('/auth/logout')` before `clearAuth()` | `AppShell.tsx` |
+| 2026-02-26 | `unknown[]` not assignable to `ParameterOrJSON<never>[]` in `sql.unsafe()` | Changed values array type to `string[]` | `auth/index.ts` |
+| 2026-02-26 | `Record<string, unknown>` not assignable to `JSONValue` in `sql.json()` | Used `JSON.stringify(body)` + `::jsonb` cast instead | `auth/index.ts` |
+| 2026-02-26 | React 19 `useRef()` requires initial argument (no zero-arg overload) | Added `undefined` as initial value | `SettingsPage.tsx` |
+| 2026-02-26 | Dashboard care gap priority query references non-existent `priority` column | Changed `priority` → `gap_priority` (actual column name from migration 006) | `dashboard/index.ts` |
+| 2026-02-26 | Frontend sends `status: 'resolved'` but Zod schema rejects it | Added `'resolved'` to `careGapUpdateSchema` enum | `schemas/index.ts` |
+| 2026-02-26 | Care gaps API ignores `search` query param sent by frontend | Added ILIKE search on patient name + measure name to both data and count queries | `care-gaps/index.ts` |
+| 2026-02-26 | `Partial<ScheduleSlot>` has `notes: string | null` — incompatible with mutation's `string | undefined` | Built explicit update object with null-to-undefined mapping | `SettingsPage.tsx` |
+
+---
+
+## Session 14 — Performance: Missing EDW Indexes + Query Optimizations (Feb 26, 2026)
+
+### Root Cause Analysis
+
+Profiled dashboard and patient detail pages with `EXPLAIN (ANALYZE, BUFFERS)`. Found zero `patient_id` indexes on every high-cardinality EDW table — causing full sequential scans on:
+
+| Table | Rows | Measured query time |
+|---|---|---|
+| `observation` | 1.01 billion | **77–81 seconds** |
+| `medication_order` | 72.6 million | several seconds |
+| `condition_diagnosis` | 42.4 million | **426 ms** |
+| `encounter` | 28.7 million | **3.6–4.7 seconds** |
+| `patient_allergy` | 896K | hundreds of ms |
+
+Dashboard also had a `::date` type cast on `encounter_datetime` that prevented index use even after indexing, and the care-gaps list ran its COUNT and data queries sequentially instead of in parallel.
+
+### Changes Made
+
+**Migration 027** (`packages/db/migrations/027_missing_edw_indexes.sql`):
+- `idx_encounter_patient_datetime` — composite `(patient_id, encounter_datetime DESC) WHERE active_ind='Y'`
+- `idx_encounter_datetime_active` — partial `(encounter_datetime DESC) WHERE active_ind='Y'` for dashboard ORDER BY / LIMIT
+- `idx_condition_diagnosis_patient` — `(patient_id) WHERE active_ind='Y'`
+- `idx_medication_order_patient` — `(patient_id) WHERE active_ind='Y'`
+- `idx_patient_allergy_patient` — `(patient_id) WHERE active_ind='Y'`
+- `idx_patient_insurance_patient` — `(patient_id) WHERE active_ind='Y'`
+- `idx_care_gap_patient_status` — `(patient_id, gap_status) WHERE active_ind='Y'`
+- `idx_observation_patient_datetime` — composite `(patient_id, observation_datetime DESC) WHERE active_ind='Y'`
+
+**All indexes built CONCURRENTLY** (live, no table locks). Script: `packages/db/scripts/027_observation_index_concurrent.sql` for re-running on live systems (1B row observation table takes 30–90 min).
+
+**API query rewrites:**
+- `dashboard/index.ts`: Fixed `encounter_datetime::date = CURRENT_DATE` → range predicate `>= CURRENT_DATE::timestamp AND < (CURRENT_DATE+1)::timestamp`
+- `care-gaps/index.ts`: Parallelized data + COUNT queries with `Promise.all()`
+- `patients/index.ts`: Parallelized patient list COUNT + data; folded patient existence check into the sub-resource parallel fan-out on detail endpoint
+
+**Frontend caching (`useApi.ts`):**
+- `useDashboard` — `staleTime: 5 min` (was refetching on every tab navigation)
+- `usePatient` — `staleTime: 2 min`
+- `useMeasures` / `useConditionBundles` — `staleTime: 10 min` (static reference data)
+- All patient clinical workspace sub-resources — `staleTime: 2 min`
+
+### Index Build Status (as of session end)
+
+All indexes launched with `CREATE INDEX CONCURRENTLY` — no table locks, no downtime. Status at session end (`indisvalid=false` = still building):
+
+| Index | Table | Written so far | Valid |
+|---|---|---|---|
+| `idx_observation_patient_datetime` | observation (1.01B rows) | **9.4 GB** | ⏳ building |
+| `idx_encounter_patient_datetime` | encounter (28.7M rows) | 861 MB | ⏳ building |
+| `idx_medication_order_patient` | medication_order (72.6M rows) | 505 MB | ⏳ building |
+| `idx_condition_diagnosis_patient` | condition_diagnosis (42.4M rows) | 295 MB | ⏳ building |
+| `idx_patient_allergy_patient` | patient_allergy (896K rows) | 10 MB | ⏳ building |
+| `idx_encounter_datetime_active` | encounter | — | ⏳ queued |
+| `idx_patient_insurance_patient` | patient_insurance_coverage | — | ⏳ queued |
+| `idx_care_gap_patient_status` | care_gap | — | ⏳ queued |
+
+Observation index estimated completion: 30–60 more minutes (9.4 GB written, ~20 GB total). All others expected within 5–15 minutes. Code and query rewrites are already deployed and will activate automatically as each index reaches `indisvalid=true`.
+
+Monitor with:
+```sql
+SELECT relname, indisvalid, pg_size_pretty(pg_relation_size(oid))
+FROM pg_class WHERE relname LIKE 'idx_%patient%' OR relname LIKE 'idx_encounter%';
+```
+
+### Expected Impact (after indexes complete)
+- Patient detail page: 77s (observations) + multiple seq scans → **<200ms total**
+- Dashboard recent encounters: 4.7s → **<20ms**
+- Dashboard today's schedule: 3.6s → **<20ms** (index + cast fix)
+- Care-gap list: COUNT + data now run in parallel, ~2× faster
+- Repeated navigations to same pages: served from React Query cache, **0 API calls**
+
+---
+
+## Session 15 — Provider Scoping: JWT + All Query Endpoints (Feb 26, 2026)
+
+### Problem
+
+Logged-in as `dr.udoshi@medgnosis.app` (provider_id = 2816, panel = 1,288 patients), every page was showing the full 1M-patient population. Dashboard stats, care gap counts, patient list, morning briefing — all unfiltered.
+
+### Root Cause
+
+- `app_users` has an `org_id` column but **no `provider_id`**
+- The JWT payload only carried `sub`, `email`, `role`, `org_id` — no `provider_id`
+- All route handlers ran queries against the full population with no conditional filter
+- Admin users (no linked provider) are the intended "see everything" role, but provider users must see only their panel
+
+### Fix: Four-File Change
+
+**1. `apps/api/src/plugins/auth.ts`** — Extended `JwtPayload` interface:
+```ts
+provider_id?: number; // phm_edw.provider.provider_id — null for admin/non-provider users
+```
+
+**2. `apps/api/src/routes/auth/index.ts`** — Provider lookup at login + refresh:
+```ts
+let providerId: number | undefined;
+if (user.org_id) {
+  const [prov] = await sql`
+    SELECT provider_id FROM phm_edw.provider
+    WHERE org_id = ${user.org_id} AND active_ind = 'Y' LIMIT 1
+  `.catch(() => []);
+  providerId = prov?.provider_id;
+}
+// Embed in JWT payload + login response
+```
+
+**3. `apps/api/src/routes/dashboard/index.ts`** — Full provider scoping:
+```ts
+const providerId = request.user.provider_id;
+const scoped = providerId !== undefined;
+// Every query conditionally adds provider filter:
+${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+// Star schema scoped via dim_provider → provider_key subquery
+// Today's schedule scoped to encounter.provider_id (treating provider)
+// All trend sub-queries carry the same conditional JOINs
+```
+
+**4. `apps/api/src/routes/patients/index.ts`** — Patient list scoped to PCP panel:
+```ts
+${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+```
+Both the data query and the parallel COUNT query receive the filter.
+
+**5. `apps/api/src/routes/care-gaps/index.ts`** — Care gap list scoped to provider's patients:
+```ts
+${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+```
+Applied to both data + COUNT in the `Promise.all()`. Also added `AND p.active_ind = 'Y'` guard.
+
+**6. `apps/api/src/routes/insights/index.ts`** — Morning briefing scoped:
+- High-risk patients: scoped via `fpc.provider_key` (star schema subquery)
+- Schedule count: scoped to `encounter.provider_id = ${providerId}`, also fixed `::date` cast → range predicate
+- Critical alert count: scoped via `pcp_provider_id` JOIN on patient
+
+### Scoping Pattern (used consistently across all routes)
+
+```ts
+const providerId = request.user.provider_id;   // undefined for admin
+const scoped = providerId !== undefined;
+// In queries:
+${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+// Star schema:
+${scoped ? sql`AND fpc.provider_key = (SELECT provider_key FROM phm_star.dim_provider WHERE provider_id = ${providerId} LIMIT 1)` : sql``}
+```
+
+Admin role: `provider_id` absent from JWT → `scoped = false` → full population view.
+Provider role: `provider_id` present → all queries filter to that panel automatically.
+
+### Activation
+
+Re-login required after this change — existing JWTs lack `provider_id`. After re-login, the 1,288-patient panel populates immediately across all pages.
+
+---
+
+## Session 16 — Mock Schedule: 18 Real Patients with Past-Appointment Graying (Feb 26, 2026)
+
+### Context
+
+Today's Schedule panel was showing 0 visits because no real `encounter` rows exist for today's date. Rather than seed synthetic encounters, a static mock was wired in temporarily so the clinician workspace looks populated during demos.
+
+### Implementation
+
+**`apps/web/src/pages/DashboardPage.tsx`**:
+
+- Added `USE_MOCK_SCHEDULE = true` flag — flip to `false` to restore live data
+- `todayAt(h, m)` helper builds ISO timestamps for today's date at a given hour/minute, so graying logic stays correct regardless of when the page is viewed
+- `MOCK_SCHEDULE` — 18 real patients queried from `phm_edw.patient WHERE pcp_provider_id = 2816`, covering a realistic adult clinic day:
+  - Morning block: 8:00–11:40 AM (12 appointments, 20-min slots, lunch break at noon)
+  - Afternoon block: 1:00–2:40 PM (6 appointments)
+  - Mix of visit types: Office Visit, Follow-up, Preventive, New Patient
+  - Clinically realistic RFVs: DM2 management, HTN, COPD, CHF, CKD, osteoporosis, cognitive screening, cancer screening, sports physicals, anxiety, depression, back pain, new patient
+  - Age range: 18–87, mix of M/F
+- Extended `todays_schedule` type with `gender?: string`
+- **Past-appointment graying**: each row checks `new Date(enc.date) < new Date()` at render time
+  - Past rows: `opacity-40` on entire row
+  - Past time label: `text-ghost` (was teal)
+  - Past rows show a small `CheckCircle2` icon below the time
+- Added age + sex display: `· 52y M` in the secondary line (was age-only)
+- Increased schedule scroll container from `max-h-[340px]` → `max-h-[480px]` to show ~9 rows before scrolling
+
+### To Activate Real Data
+
+Once today's encounter rows exist (via ETL or seed), set `USE_MOCK_SCHEDULE = false` at line 298 of `DashboardPage.tsx`. The live `clinician.todays_schedule` from the dashboard API will take over.
 
 ---
 

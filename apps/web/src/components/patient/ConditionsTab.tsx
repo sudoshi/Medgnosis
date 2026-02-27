@@ -72,7 +72,7 @@ export function ConditionsTab({ conditions }: ConditionsTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <Activity size={24} className="text-ghost mb-3" />
+          <Activity size={24} className="text-2xl text-ghost mb-3" />
           <p className="empty-state-title">No conditions recorded</p>
           <p className="empty-state-desc">Diagnoses and conditions will appear here.</p>
         </div>

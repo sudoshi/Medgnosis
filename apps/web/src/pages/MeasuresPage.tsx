@@ -451,7 +451,7 @@ export function MeasuresPage() {
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <div className="w-14 h-14 rounded-full bg-s1 flex items-center justify-center">
-              <BarChart3 size={24} strokeWidth={1.5} className="text-ghost" />
+              <BarChart3 size={24} strokeWidth={1.5} className="text-2xl text-ghost" />
             </div>
             <p className="text-sm font-medium text-dim">Select a measure</p>
             <p className="text-xs text-ghost">

@@ -94,8 +94,10 @@ const config: Config = {
 
       // ─── TYPOGRAPHY ────────────────────────────────────────────────────────
       fontFamily: {
-        ui:   ['Lexend', 'sans-serif'],
-        data: ['"Fira Code"', '"Fira Mono"', 'monospace'],
+        display: ['"Crimson Pro"', 'Georgia', 'serif'],
+        heading: ['"Source Serif 4"', 'Georgia', 'serif'],
+        ui:      ['"Source Sans 3"', '"Helvetica Neue"', 'sans-serif'],
+        data:    ['"IBM Plex Mono"', 'Consolas', 'monospace'],
       },
       fontSize: {
         // Data scale — for numbers, IDs, timestamps, metrics.

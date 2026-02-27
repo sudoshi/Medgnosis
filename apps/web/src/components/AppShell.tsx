@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Users,
   BarChart3,
+  Layers,
   ListChecks,
   Bell,
   Settings,
@@ -18,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   WifiOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { useUiStore } from '../stores/ui.js';
@@ -32,6 +34,7 @@ const mainNav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/patients',  icon: Users,           label: 'Patients',  end: false },
   { to: '/measures',  icon: BarChart3,        label: 'Measures',  end: true },
+  { to: '/bundles',   icon: Layers,           label: 'Bundles',   end: true },
   { to: '/care-lists',icon: ListChecks,       label: 'Care Lists',end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
@@ -155,7 +158,12 @@ export function AppShell() {
   });
   const unreadCount = (alertData as { meta?: { total?: number } } | undefined)?.meta?.total ?? 0;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Server-side revocation failed, but still clear local state
+    }
     clearAuth();
     navigate('/login');
   };
@@ -233,6 +241,39 @@ export function AppShell() {
 
         {/* ── Bottom section ──────────────────────────────────────── */}
         <div className="px-2 pt-3 pb-2 border-t border-edge/25 space-y-0.5 flex-shrink-0">
+          {/* Admin — visible only to admin role */}
+          {(user as { role?: string } | null)?.role === 'admin' && (
+            <NavLink
+              to="/admin"
+              end
+              title={!sidebarOpen ? 'Admin' : undefined}
+              className="block"
+            >
+              {({ isActive }) => (
+                <span
+                  className={[
+                    'relative flex items-center rounded-card px-2.5 py-2.5 w-full transition-colors duration-150',
+                    isActive
+                      ? 'bg-s2 text-teal'
+                      : 'text-dim hover:bg-s2 hover:text-bright',
+                  ].join(' ')}
+                  style={isActive ? { boxShadow: 'inset 3px 0 0 var(--primary)' } : undefined}
+                >
+                  <ShieldCheck size={20} className="flex-shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                  <span
+                    className={[
+                      'ml-3 text-sm font-medium whitespace-nowrap overflow-hidden',
+                      'transition-all duration-200 ease-out',
+                      sidebarOpen ? 'max-w-[160px] opacity-100' : 'max-w-0 opacity-0',
+                    ].join(' ')}
+                  >
+                    Admin
+                  </span>
+                </span>
+              )}
+            </NavLink>
+          )}
+
           {/* Settings */}
           <NavLink
             to="/settings"

@@ -48,7 +48,7 @@ export const patientCreateSchema = z.object({
 
 export const careGapUpdateSchema = z.object({
   status: z.enum([
-    'open', 'closed', 'in_progress',
+    'open', 'closed', 'resolved', 'in_progress',
     'met', 'not_met', 'overdue', 'due_soon', 'due', 'ongoing', 'na', 'at_risk',
   ]),
   notes: z.string().optional(),
@@ -103,6 +103,27 @@ export const scribeRequestSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Order placement schemas
+// ---------------------------------------------------------------------------
+
+export const placeOrderSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  care_gap_id: z.coerce.number().int().positive(),
+  order_set_item_id: z.coerce.number().int().positive(),
+  priority: z.enum(['stat', 'urgent', 'routine']).default('routine'),
+  instructions: z.string().max(1000).optional(),
+});
+
+export const placeOrderBatchSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  priority: z.enum(['stat', 'urgent', 'routine']).default('routine'),
+  orders: z.array(z.object({
+    care_gap_id: z.coerce.number().int().positive(),
+    order_set_item_id: z.coerce.number().int().positive(),
+  })).min(1).max(50),
+});
+
+// ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
 
@@ -116,3 +137,5 @@ export type MeasureFilterParams = z.infer<typeof measureFilterSchema>;
 export type ClinicalNoteCreateRequest = z.infer<typeof clinicalNoteCreateSchema>;
 export type ClinicalNoteUpdateRequest = z.infer<typeof clinicalNoteUpdateSchema>;
 export type ScribeRequest = z.infer<typeof scribeRequestSchema>;
+export type PlaceOrderRequest = z.infer<typeof placeOrderSchema>;
+export type PlaceOrderBatchRequest = z.infer<typeof placeOrderBatchSchema>;

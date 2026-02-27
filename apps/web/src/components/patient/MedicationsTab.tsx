@@ -67,7 +67,7 @@ export function MedicationsTab({ patientId }: MedicationsTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <Pill size={24} className="text-ghost mb-3" />
+          <Pill size={24} className="text-2xl text-ghost mb-3" />
           <p className="empty-state-title">No medications on record</p>
           <p className="empty-state-desc">Active prescriptions and medication orders will appear here.</p>
         </div>

@@ -67,7 +67,7 @@ export function AllergiesTab({ patientId }: AllergiesTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <ShieldAlert size={24} className="text-emerald mb-3" />
+          <ShieldAlert size={24} className="text-2xl text-emerald mb-3" />
           <p className="empty-state-title text-emerald">NKDA — No Known Drug Allergies</p>
           <p className="empty-state-desc">No allergies have been recorded for this patient.</p>
         </div>

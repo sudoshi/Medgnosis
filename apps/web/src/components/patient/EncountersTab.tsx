@@ -82,7 +82,7 @@ export function EncountersTab({ patientId }: EncountersTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <Calendar size={24} className="text-ghost mb-3" />
+          <Calendar size={24} className="text-2xl text-ghost mb-3" />
           <p className="empty-state-title">No encounters on record</p>
           <p className="empty-state-desc">Clinical encounters will appear here.</p>
         </div>

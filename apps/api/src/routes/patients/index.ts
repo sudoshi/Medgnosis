@@ -27,35 +27,42 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
       queryParams.push(`%${search}%`);
     }
 
-    // Count total
-    const [countResult] = await sql<{ total: number }[]>`
-      SELECT COUNT(*)::int AS total
-      FROM phm_edw.patient p
-      WHERE p.active_ind = 'Y'
-        ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
-    `;
+    // Provider scoping: restrict to the logged-in provider's PCP panel.
+    // Admin users (no provider_id) see all patients.
+    const providerId = (request as typeof request & { user: { provider_id?: number } }).user.provider_id;
+    const scoped = providerId !== undefined;
+
+    // Run count and page fetch in parallel
+    const [[ countResult ], patients] = await Promise.all([
+      sql<{ total: number }[]>`
+        SELECT COUNT(*)::int AS total
+        FROM phm_edw.patient p
+        WHERE p.active_ind = 'Y'
+          ${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+          ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+      `,
+      sql`
+        SELECT
+          p.patient_id AS id,
+          p.first_name,
+          p.last_name,
+          p.mrn,
+          p.date_of_birth,
+          p.gender,
+          p.active_ind
+        FROM phm_edw.patient p
+        WHERE p.active_ind = 'Y'
+          ${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+          ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+        ORDER BY
+          ${sort_by === 'name' ? sql`p.last_name` : sql`p.patient_id`}
+          ${sort_order === 'desc' ? sql`DESC` : sql`ASC`}
+        LIMIT ${per_page}
+        OFFSET ${offset}
+      `,
+    ]);
 
     const total = countResult?.total ?? 0;
-
-    // Fetch page
-    const patients = await sql`
-      SELECT
-        p.patient_id AS id,
-        p.first_name,
-        p.last_name,
-        p.mrn,
-        p.date_of_birth,
-        p.gender,
-        p.active_ind
-      FROM phm_edw.patient p
-      WHERE p.active_ind = 'Y'
-        ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
-      ORDER BY
-        ${sort_by === 'name' ? sql`p.last_name` : sql`p.patient_id`}
-        ${sort_order === 'desc' ? sql`DESC` : sql`ASC`}
-      LIMIT ${per_page}
-      OFFSET ${offset}
-    `;
 
     return reply.send({
       success: true,
@@ -73,34 +80,27 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const { id } = request.params;
 
-    const [patient] = await sql`
-      SELECT
-        p.patient_id AS id,
-        p.first_name,
-        p.last_name,
-        p.mrn,
-        p.date_of_birth,
-        p.gender,
-        p.race,
-        p.ethnicity,
-        p.marital_status,
-        p.primary_language,
-        p.primary_phone,
-        p.email,
-        p.active_ind
-      FROM phm_edw.patient p
-      WHERE p.patient_id = ${id}::int AND p.active_ind = 'Y'
-    `;
-
-    if (!patient) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Patient not found' },
-      });
-    }
-
-    // Fetch all related data in parallel
-    const [conditions, encounters, observations, careGaps, pcpInfo, insurance, address, allergySummary] = await Promise.all([
+    // Fire patient lookup and all sub-resources in parallel — PK lookup is fast,
+    // and we avoid a serial round-trip before the parallel fan-out.
+    const [patientResult, conditions, encounters, observations, careGaps, pcpInfo, insurance, address, allergySummary] = await Promise.all([
+      sql`
+        SELECT
+          p.patient_id AS id,
+          p.first_name,
+          p.last_name,
+          p.mrn,
+          p.date_of_birth,
+          p.gender,
+          p.race,
+          p.ethnicity,
+          p.marital_status,
+          p.primary_language,
+          p.primary_phone,
+          p.email,
+          p.active_ind
+        FROM phm_edw.patient p
+        WHERE p.patient_id = ${id}::int AND p.active_ind = 'Y'
+      `,
       sql`
         SELECT cd.condition_diagnosis_id AS id, c.condition_code AS code,
                c.condition_name AS name, cd.diagnosis_status AS status,
@@ -178,6 +178,14 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         ORDER BY pa.severity DESC NULLS LAST
       `.catch(() => []),
     ]);
+
+    const patient = patientResult[0];
+    if (!patient) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Patient not found' },
+      });
+    }
 
     const pcp = pcpInfo[0] || null;
     const ins = insurance[0] || null;

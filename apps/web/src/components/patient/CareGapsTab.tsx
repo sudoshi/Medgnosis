@@ -281,7 +281,7 @@ export function CareGapsTab({ patientId }: CareGapsTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <AlertCircle size={24} className="text-crimson mb-3" />
+          <AlertCircle size={24} className="text-2xl text-crimson mb-3" />
           <p className="empty-state-title">Failed to load care bundles</p>
           <p className="empty-state-desc">
             {error instanceof Error ? error.message : 'An unexpected error occurred.'}
@@ -296,7 +296,7 @@ export function CareGapsTab({ patientId }: CareGapsTabProps) {
     return (
       <div className="surface">
         <div className="empty-state py-12">
-          <CheckCircle2 size={24} className="text-emerald mb-3" />
+          <CheckCircle2 size={24} className="text-2xl text-emerald mb-3" />
           <p className="empty-state-title text-emerald">No condition bundles apply</p>
           <p className="empty-state-desc">
             This patient has no active chronic conditions matching defined care bundles.

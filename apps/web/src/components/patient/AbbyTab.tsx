@@ -190,7 +190,7 @@ export function AbbyTab({ patientId }: AbbyTabProps) {
             <Sparkles
               size={24}
               strokeWidth={1.5}
-              className="text-violet animate-pulse"
+              className="text-2xl text-violet animate-pulse"
             />
           </div>
           <div className="text-center">

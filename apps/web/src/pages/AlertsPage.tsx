@@ -338,7 +338,7 @@ export function AlertsPage() {
         {!isLoading && alerts.length === 0 && (
           <div className="empty-state py-20">
             <div className="flex items-center justify-center w-14 h-14 rounded-full bg-s1 mx-auto mb-4">
-              <Bell size={24} strokeWidth={1.5} className="text-ghost" aria-hidden="true" />
+              <Bell size={24} strokeWidth={1.5} className="text-2xl text-ghost" aria-hidden="true" />
             </div>
             <p className="empty-state-title">No alerts</p>
             <p className="empty-state-desc">

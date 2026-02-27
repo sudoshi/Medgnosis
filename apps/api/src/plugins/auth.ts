@@ -24,6 +24,7 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   org_id: string;
+  provider_id?: number; // phm_edw.provider.provider_id — null for admin/non-provider users
   mfa_pending?: boolean;
 }
 

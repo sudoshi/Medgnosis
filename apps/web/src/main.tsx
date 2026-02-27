@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { App } from './App.js';
 import './styles/globals.css';
+import { useThemeStore } from './stores/theme.js';
+
+// Apply saved palette before first render — eliminates flash of default colors
+useThemeStore.getState().initFromStorage();
 
 const queryClient = new QueryClient({
   defaultOptions: {

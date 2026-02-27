@@ -12,6 +12,7 @@ export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardAnalytics>('/dashboard'),
+    staleTime: 5 * 60 * 1000, // 5 min — avoids re-fetching on every tab navigation
   });
 }
 
@@ -42,6 +43,7 @@ export function usePatient(id: string | undefined) {
     queryKey: ['patient', id],
     queryFn: () => api.get(`/patients/${id}`),
     enabled: !!id,
+    staleTime: 2 * 60 * 1000, // 2 min — patient demographics rarely change mid-session
   });
 }
 
@@ -55,6 +57,7 @@ export function useMeasures(params: { domain?: string; search?: string } = {}) {
   return useQuery({
     queryKey: ['measures', params],
     queryFn: () => api.get(`/measures?${qs}`),
+    staleTime: 10 * 60 * 1000, // 10 min — measure definitions are nearly static
   });
 }
 
@@ -128,6 +131,7 @@ export function usePatientMedications(patientId: string | undefined) {
     queryKey: ['patient', patientId, 'medications'],
     queryFn: () => api.get(`/patients/${patientId}/medications`),
     enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -136,6 +140,7 @@ export function usePatientAllergies(patientId: string | undefined) {
     queryKey: ['patient', patientId, 'allergies'],
     queryFn: () => api.get(`/patients/${patientId}/allergies`),
     enabled: !!patientId,
+    staleTime: 5 * 60 * 1000, // allergies rarely change within a session
   });
 }
 
@@ -152,6 +157,7 @@ export function usePatientObservations(
     queryKey: ['patient', patientId, 'observations', params],
     queryFn: () => api.get(`/patients/${patientId}/observations?${qs}`),
     enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -160,6 +166,7 @@ export function useObservationTrending(patientId: string | undefined, code: stri
     queryKey: ['patient', patientId, 'observations', 'trending', code],
     queryFn: () => api.get(`/patients/${patientId}/observations/trending?code=${encodeURIComponent(code!)}`),
     enabled: !!patientId && !!code,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -175,6 +182,7 @@ export function usePatientEncounters(
     queryKey: ['patient', patientId, 'encounters', params],
     queryFn: () => api.get<Record<string, unknown>[]>(`/patients/${patientId}/encounters?${qs}`),
     enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -186,6 +194,72 @@ export function usePatientFlowsheet(patientId: string | undefined, category?: st
     queryKey: ['patient', patientId, 'flowsheet', category],
     queryFn: () => api.get(`/patients/${patientId}/flowsheet?${qs}`),
     enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+// ---- Order Worklist + Placement (Tier 6: CDS Hooks) ----
+
+export function useOrderWorklist(params: {
+  search?: string;
+  bundle?: string;
+  page?: number;
+  per_page?: number;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.bundle) qs.set('bundle', params.bundle);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.per_page) qs.set('per_page', String(params.per_page));
+
+  return useQuery({
+    queryKey: ['order-worklist', params],
+    queryFn: () => api.get(`/orders/worklist?${qs}`),
+  });
+}
+
+export function useOrderRecommendations(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['order-recommendations', patientId],
+    queryFn: () => api.get(`/orders/recommendations/${patientId}`),
+    enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function usePlaceOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      patient_id: number;
+      care_gap_id: number;
+      order_set_item_id: number;
+      priority?: 'stat' | 'urgent' | 'routine';
+      instructions?: string;
+    }) => api.post('/orders/place', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-worklist'] });
+      queryClient.invalidateQueries({ queryKey: ['order-recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['care-gaps'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function usePlaceOrderBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      patient_id: number;
+      priority?: 'stat' | 'urgent' | 'routine';
+      orders: { care_gap_id: number; order_set_item_id: number }[];
+    }) => api.post('/orders/place-batch', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-worklist'] });
+      queryClient.invalidateQueries({ queryKey: ['order-recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['care-gaps'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 
@@ -196,6 +270,7 @@ export function usePatientCareBundle(patientId: string | undefined) {
     queryKey: ['patient', patientId, 'care-bundle'],
     queryFn: () => api.get(`/patients/${patientId}/care-bundle`),
     enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -203,6 +278,7 @@ export function useConditionBundles() {
   return useQuery({
     queryKey: ['bundles'],
     queryFn: () => api.get('/bundles'),
+    staleTime: 10 * 60 * 1000, // 10 min — bundle definitions are static reference data
   });
 }
 
@@ -210,6 +286,30 @@ export function useConditionBundle(bundleCode: string | undefined) {
   return useQuery({
     queryKey: ['bundles', bundleCode],
     queryFn: () => api.get(`/bundles/${bundleCode}`),
+    enabled: !!bundleCode,
+  });
+}
+
+// ---- Bundle Population (Tier 7: Bundles Page) ----
+
+export function useBundlePopulation(category?: string) {
+  const qs = new URLSearchParams();
+  if (category) qs.set('category', category);
+  return useQuery({
+    queryKey: ['bundle-population', category],
+    queryFn: () => api.get(`/bundles/population?${qs}`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useBundlePatients(bundleCode: string | undefined, params: { page?: number; per_page?: number; risk_tier?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.per_page) qs.set('per_page', String(params.per_page));
+  if (params.risk_tier) qs.set('risk_tier', params.risk_tier);
+  return useQuery({
+    queryKey: ['bundle-patients', bundleCode, params],
+    queryFn: () => api.get(`/bundles/${bundleCode}/patients?${qs}`),
     enabled: !!bundleCode,
   });
 }
@@ -264,6 +364,37 @@ export function useAiScribe() {
   });
 }
 
+// ---- Settings / Profile ----
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { first_name?: string; last_name?: string; email?: string }) =>
+      api.patch('/auth/me', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth-me'] });
+    },
+  });
+}
+
+export function useUserPreferences() {
+  return useQuery({
+    queryKey: ['user-preferences'],
+    queryFn: () => api.get<Record<string, unknown>>('/auth/me/preferences'),
+  });
+}
+
+export function useSavePreferences() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: Record<string, unknown>) =>
+      api.patch('/auth/me/preferences', prefs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-preferences'] });
+    },
+  });
+}
+
 // ---- AI Insights ----
 
 export function useAiChat() {
@@ -282,5 +413,51 @@ export function useAiChat() {
         patient_id,
         history,
       }),
+  });
+}
+
+export function useMorningBriefing() {
+  return useQuery({
+    queryKey: ['morning-briefing'],
+    queryFn: () => api.post('/insights/morning-briefing'),
+    staleTime: 30 * 60 * 1000, // 30 min — don't re-fetch on tab switch
+    retry: false, // Don't spam LLM on failure
+  });
+}
+
+// ---- Database Overview ----
+
+export function useDbOverview() {
+  return useQuery({
+    queryKey: ['db-overview'],
+    queryFn: () => api.get('/auth/me/db-overview'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ---- Provider Schedule ----
+
+export function useProviderSchedule() {
+  return useQuery({
+    queryKey: ['provider-schedule'],
+    queryFn: () => api.get('/auth/me/schedule'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useSaveProviderSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (updates: Array<{
+      id: number;
+      start_time?: string;
+      end_time?: string;
+      slot_duration_min?: number;
+      schedule_type?: string;
+      notes?: string;
+    }>) => api.patch('/auth/me/schedule', updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['provider-schedule'] });
+    },
   });
 }

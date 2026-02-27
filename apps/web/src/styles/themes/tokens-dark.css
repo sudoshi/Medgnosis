@@ -1,0 +1,64 @@
+/* =============================================================================
+   Medgnosis — Default dark palette: Clinical Teal (teal / amber / navy)
+   These variables are the CSS layer that palettes.ts overrides at runtime.
+   Semantic colors (critical/warning/success/info/violet) are NEVER changed
+   by palette switching — they carry clinical meaning.
+   ============================================================================= */
+
+:root {
+  /* ── Surfaces (depth layers) ─────────────────────────────────────────────── */
+  --surface-darkest: #030810;
+  --surface-base:    #060A14;   /* = void */
+  --surface-raised:  #0C1320;   /* = s0 */
+  --surface-overlay: #111B2E;   /* = s1 */
+  --surface-elevated:#172239;   /* = s2 */
+
+  /* ── Primary palette (teal) — overridden by applyPalette() ─────────────── */
+  --primary:        #0DD9D9;
+  --primary-light:  #3FE5E5;
+  --primary-dark:   #0BB5B5;
+  --primary-bg:     rgba(13, 217, 217, 0.08);
+  --primary-border: rgba(13, 217, 217, 0.25);
+  --primary-glow:   rgba(13, 217, 217, 0.20);
+
+  /* ── Accent palette (amber) — overridden by applyPalette() ─────────────── */
+  --accent:         #F5A623;
+  --accent-light:   #F9C168;
+  --accent-dark:    #D4891E;
+  --accent-bg:      rgba(245, 166, 35, 0.10);
+  --accent-glow:    rgba(245, 166, 35, 0.18);
+
+  /* ── Text hierarchy ──────────────────────────────────────────────────────── */
+  --text-primary:   #EDF2FF;
+  --text-secondary: #5E7FA3;
+  --text-muted:     #3A5070;
+  --text-ghost:     #2D4060;
+
+  /* ── Borders ─────────────────────────────────────────────────────────────── */
+  --border-default: rgba(30, 68, 120, 0.45);
+  --border-subtle:  rgba(30, 68, 120, 0.25);
+  --border-hover:   rgba(13, 217, 217, 0.30);  /* overridden by palette */
+  --border-focus:   rgba(13, 217, 217, 0.60);  /* overridden by palette */
+
+  /* ── Panel gradients (subtle depth illusion) ─────────────────────────────── */
+  --gradient-panel:        linear-gradient(135deg, rgba(255,255,255,0.022) 0%, rgba(255,255,255,0.004) 100%);
+  --gradient-panel-raised: linear-gradient(135deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.008) 100%);
+  --gradient-panel-inset:  linear-gradient(135deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.04) 100%);
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+  --sidebar-bg:       #040912;
+  --sidebar-bg-light: #060A14;
+
+  /* ── Semantic colors — NEVER changed by palette switching ───────────────── */
+  --critical:        #E8394A;
+  --critical-bg:     rgba(232, 57,  74,  0.12);
+  --critical-border: rgba(232, 57,  74,  0.28);
+  --warning:         #F5A623;
+  --warning-bg:      rgba(245, 166, 35,  0.12);
+  --success:         #10C981;
+  --success-bg:      rgba(16,  201, 129, 0.12);
+  --info:            #4B9EDB;
+  --info-bg:         rgba(75,  158, 219, 0.12);
+  --violet:          #8B5CF6;
+  --violet-bg:       rgba(139, 92,  246, 0.12);
+}

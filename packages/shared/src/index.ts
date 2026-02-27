@@ -37,6 +37,8 @@ export {
   clinicalNoteCreateSchema,
   clinicalNoteUpdateSchema,
   scribeRequestSchema,
+  placeOrderSchema,
+  placeOrderBatchSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -49,4 +51,6 @@ export type {
   ClinicalNoteCreateRequest,
   ClinicalNoteUpdateRequest,
   ScribeRequest,
+  PlaceOrderRequest,
+  PlaceOrderBatchRequest,
 } from './schemas/index.js';

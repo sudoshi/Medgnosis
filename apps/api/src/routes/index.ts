@@ -17,10 +17,15 @@ import fhirRoutes from './fhir/index.js';
 import adminRoutes from './admin/index.js';
 import bundleRoutes from './bundles/index.js';
 import clinicalNoteRoutes from './clinical-notes/index.js';
+import orderRoutes from './orders/index.js';
+import cdsHooksRoutes from './cds-hooks/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
   await fastify.register(healthRoutes);
+
+  // CDS Hooks — mounted at root (no API prefix, no auth per HL7 spec)
+  await fastify.register(cdsHooksRoutes, { prefix: '/cds-services' });
 
   // Versioned API routes
   await fastify.register(
@@ -37,6 +42,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(adminRoutes, { prefix: '/admin' });
       await api.register(bundleRoutes, { prefix: '/bundles' });
       await api.register(clinicalNoteRoutes, { prefix: '/clinical-notes' });
+      await api.register(orderRoutes, { prefix: '/orders' });
     },
     { prefix: API_PREFIX },
   );

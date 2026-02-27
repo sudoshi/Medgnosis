@@ -3,6 +3,10 @@
    Design System: "Clinical Obsidian" — v2.0
    ============================================================================= */
 
+/* Design token imports — must come before @tailwind directives */
+@import './themes/tokens-base.css';
+@import './themes/tokens-dark.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -56,36 +60,50 @@
     font-size: clamp(17px, 1.1vw + 1.2px, 21px);
   }
 
+  /* Lucide icons: inherit size from font context so they scale with the fluid
+     root font-size. The size={} prop sets presentation attributes which CSS
+     overrides. Use text-xl / text-2xl on the icon element for intentionally
+     large icons (e.g. empty states). */
+  svg.lucide {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+
   html,
   body {
     @apply bg-void text-bright font-ui;
+    font-family: var(--font-body);
     font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Ambient top-center glow — adds depth to the otherwise flat void background */
+  /* Ambient top-center glow — adapts to current primary palette color */
   body {
     background-image: radial-gradient(
       ellipse 80% 45% at 50% -4%,
-      rgba(13, 217, 217, 0.028) 0%,
+      var(--primary-glow) 0%,
       transparent 100%
     );
   }
 
-  /* Headings use medium weight by default */
+  /* Headings use Source Serif 4 for display weight */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-ui font-semibold text-bright;
+    @apply font-semibold text-bright;
+    font-family: var(--font-heading);
   }
 
-  /* All numeric/code elements use data font */
+  /* All numeric/code elements use IBM Plex Mono */
   code, kbd, samp, pre {
+    font-family: var(--font-mono);
     @apply font-data;
   }
 
-  /* Focus ring — accessible, teal */
+  /* Focus ring — palette-aware */
   :focus-visible {
-    @apply outline-none ring-2 ring-teal ring-offset-2 ring-offset-void;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
   }
 
   /* Selection color */
@@ -103,18 +121,29 @@
      ══════════════════════════════════════════════════════════════════════════ */
 
   .surface {
-    @apply bg-s0 rounded-panel border border-edge/35;
-    /* Micro-gradient overlay: simulates light catching the top-left edge */
-    background-image: linear-gradient(
-      150deg,
-      rgba(255, 255, 255, 0.022) 0%,
-      transparent 55%
-    );
+    @apply rounded-panel;
+    background-color: var(--surface-raised);
+    background-image: var(--gradient-panel);
+    border: 1px solid var(--border-default);
     box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
                 inset 0 1px 0 rgba(255,255,255,0.05);
     padding: var(--padding-panel);
+    position: relative;
+    overflow: hidden;
     transition: box-shadow var(--duration-std) var(--ease-std),
                 border-color var(--duration-std) var(--ease-std);
+  }
+
+  /* Top-edge shimmer — simulates light catching the panel rim */
+  .surface::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%, rgba(255,255,255,0.12) 30%,
+      rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.12) 70%,
+      transparent 100%);
+    pointer-events: none;
   }
 
   .surface-raised {
@@ -144,7 +173,8 @@
                 transform var(--duration-fast) var(--ease-out);
   }
   .surface-interactive:hover {
-    @apply border-edge/60;
+    border-color: var(--border-hover);
+    background-image: var(--gradient-panel-raised);
     transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 12px 40px rgba(0,0,0,0.5),
                 inset 0 1px 0 rgba(255,255,255,0.07);
@@ -235,7 +265,7 @@
 
   .badge-crimson { @apply badge bg-crimson/10 text-crimson border border-crimson/25; box-shadow: inset 0 1px 8px rgba(232, 57,  74,  0.12); }
   .badge-amber   { @apply badge bg-amber/10   text-amber   border border-amber/25;   box-shadow: inset 0 1px 8px rgba(245, 166, 35,  0.12); }
-  .badge-teal    { @apply badge bg-teal/10    text-teal    border border-teal/25;     box-shadow: inset 0 1px 8px rgba(13,  217, 217, 0.14); }
+  .badge-teal    { @apply badge; background: var(--primary-bg); color: var(--primary); border: 1px solid var(--primary-border); box-shadow: inset 0 1px 8px var(--primary-glow); }
   .badge-emerald { @apply badge bg-emerald/10 text-emerald border border-emerald/25; box-shadow: inset 0 1px 8px rgba(16,  201, 129, 0.12); }
   .badge-violet  { @apply badge bg-violet/10  text-violet  border border-violet/25;  box-shadow: inset 0 1px 8px rgba(139, 92,  246, 0.12); }
   .badge-dim     { @apply badge bg-s2         text-dim     border border-edge/35; }
@@ -257,17 +287,19 @@
     transition-timing-function: var(--ease-std);
   }
 
-  /* Primary — teal filled */
+  /* Primary — palette-primary filled */
   .btn-primary {
-    @apply btn bg-teal text-void;
+    @apply btn;
+    background-color: var(--primary);
+    color: var(--surface-base);
     transition: background-color var(--duration-fast) var(--ease-std),
                 box-shadow       var(--duration-fast) var(--ease-std),
                 transform        var(--duration-fast) var(--ease-out);
   }
   .btn-primary:hover {
-    @apply bg-teal-dark;
+    background-color: var(--primary-dark);
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(13, 217, 217, 0.4), 0 2px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 6px 20px var(--primary-glow), 0 2px 6px rgba(0,0,0,0.3);
   }
   .btn-primary:active {
     transform: translateY(0) scale(0.97);
@@ -334,9 +366,10 @@
     transition-duration: var(--duration-fast);
   }
   .input-field:focus {
-    @apply outline-none border-teal/70;
-    box-shadow: 0 0 0 3px rgba(13, 217, 217, 0.16),
-                0 0 12px rgba(13, 217, 217, 0.08);
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--primary-bg),
+                0 0 12px var(--primary-glow);
   }
 
   .select-field {
@@ -363,7 +396,7 @@
   }
 
   /* Gradient fills give bars a sense of luminosity and depth */
-  .progress-teal    { @apply progress-bar; background: linear-gradient(90deg, #0BB5B5, #0DD9D9 60%, #6EF0F0); }
+  .progress-teal    { @apply progress-bar; background: linear-gradient(90deg, var(--primary-dark), var(--primary) 60%, var(--primary-light)); }
   .progress-amber   { @apply progress-bar; background: linear-gradient(90deg, #D4891E, #F5A623 60%, #F9C168); }
   .progress-crimson { @apply progress-bar; background: linear-gradient(90deg, #C42A3A, #E8394A 60%, #F07878); }
   .progress-emerald { @apply progress-bar; background: linear-gradient(90deg, #0DA86A, #10C981 60%, #52DBA5); }
@@ -548,9 +581,9 @@
     @apply bg-s1;
   }
 
-  /* Row risk accent — apply teal left border on hover */
+  /* Row risk accent — palette-primary left border on hover */
   .data-table tbody tr:hover td:first-child {
-    box-shadow: inset 3px 0 0 #0DD9D9;
+    box-shadow: inset 3px 0 0 var(--primary);
   }
 
   .data-table td {
@@ -573,10 +606,10 @@
   }
 
   .nav-item-active {
-    /* Directional gradient: teal glow bleeds from the left accent inward */
-    background: linear-gradient(90deg, rgba(13,217,217,0.14) 0%, rgba(13,217,217,0.03) 70%, transparent 100%);
-    @apply text-teal;
-    box-shadow: inset 3px 0 0 #0DD9D9;
+    /* Directional gradient: primary glow bleeds from the left accent inward */
+    background: linear-gradient(90deg, var(--primary-bg) 0%, transparent 100%);
+    color: var(--primary);
+    box-shadow: inset 3px 0 0 var(--primary);
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
