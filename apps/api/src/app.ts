@@ -8,6 +8,8 @@ import type { FastifyRequest } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUi from '@fastify/swagger-ui';
 import { config } from './config.js';
 import authPlugin from './plugins/auth.js';
 import auditPlugin from './plugins/audit.js';
@@ -85,6 +87,37 @@ export async function buildApp() {
         message: `Too many requests. Retry after ${String(context.after)}.`,
       },
     }),
+  });
+
+  // ------------------------------------------------------------------
+  // OpenAPI / Swagger documentation
+  // ------------------------------------------------------------------
+  await fastify.register(fastifySwagger, {
+    openapi: {
+      info: {
+        title: 'Medgnosis API',
+        description: 'Population Health Management API',
+        version: '1.0.0',
+      },
+      servers: [{ url: '/' }],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+    },
+  });
+
+  await fastify.register(fastifySwaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+    },
   });
 
   // ------------------------------------------------------------------

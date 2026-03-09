@@ -14,15 +14,17 @@ import { AdminPage } from './pages/AdminPage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
-import { GlobalSearch } from './components/GlobalSearch.js';
+import { CommandPalette } from './components/CommandPalette.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { useAlertSocket } from './hooks/useAlertSocket.js';
+import { useUiStore } from './stores/ui.js';
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   useTheme();
-  useKeyboardShortcuts();
+  const toggleSearch = useUiStore((s) => s.toggleSearch);
+  useKeyboardShortcuts({ onSearch: toggleSearch });
   useAlertSocket();
   return <>{children}</>;
 }
@@ -30,7 +32,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <AppProviders>
-      <GlobalSearch />
+      <CommandPalette />
       <ErrorBoundary>
       <Routes>
         {/* Public */}

@@ -1,36 +1,43 @@
 // =============================================================================
-// Medgnosis Web — Keyboard shortcuts hook
+// Medgnosis Web — Global keyboard shortcuts hook
 // =============================================================================
 
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUiStore } from '../stores/ui.js';
 
-export function useKeyboardShortcuts() {
+interface ShortcutHandlers {
+  onSearch?: () => void;
+  onNewNote?: () => void;
+}
+
+export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}) {
   const navigate = useNavigate();
-  const { toggleSearch } = useUiStore();
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Ignore when typing in inputs
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't trigger in input fields (except Escape)
       const target = e.target as HTMLElement;
       if (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
-        // Still allow Escape
-        if (e.key !== 'Escape') return;
-      }
-
-      // Ctrl/Cmd + K — Global search
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        toggleSearch();
+        // Still allow Cmd+K / Ctrl+K even in inputs
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          handlers.onSearch?.();
+        }
         return;
       }
 
-      // Navigate with keyboard
+      // Cmd+K or Ctrl+K → Search / Command Palette
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        handlers.onSearch?.();
+        return;
+      }
+
+      // Alt+number shortcuts for navigation (preserved from original)
       if (e.altKey) {
         switch (e.key) {
           case '1':
@@ -54,10 +61,40 @@ export function useKeyboardShortcuts() {
             navigate('/alerts');
             break;
         }
+        return;
       }
-    };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [navigate, toggleSearch]);
+      // Single key shortcuts (no modifier)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      switch (e.key) {
+        case '/':
+          e.preventDefault();
+          handlers.onSearch?.();
+          break;
+        case 'n':
+        case 'N':
+          handlers.onNewNote?.();
+          break;
+        case 'a':
+        case 'A':
+          navigate('/alerts');
+          break;
+        case 'p':
+        case 'P':
+          navigate('/patients');
+          break;
+        case 'd':
+        case 'D':
+          navigate('/dashboard');
+          break;
+        case '?':
+          // Reserved for shortcuts help overlay
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate, handlers]);
 }
