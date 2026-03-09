@@ -12,6 +12,7 @@ export interface User {
   role: UserRole;
   org_id: string;
   mfa_enabled: boolean;
+  must_change_password?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ export interface JwtPayload {
   role: UserRole;
   org_id: string;
   mfa_pending?: boolean;
+  must_change_password?: boolean;
 }
 
 export interface AuthTokens {

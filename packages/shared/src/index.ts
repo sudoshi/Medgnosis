@@ -28,6 +28,8 @@ export type { AlertRuleKey } from './constants/index.js';
 // Zod schemas
 export {
   loginRequestSchema,
+  registerRequestSchema,
+  changePasswordSchema,
   mfaVerifySchema,
   patientSearchSchema,
   patientCreateSchema,
@@ -42,6 +44,8 @@ export {
 } from './schemas/index.js';
 export type {
   LoginRequest,
+  RegisterRequest,
+  ChangePasswordRequest,
   MfaVerifyRequest,
   PatientSearchParams,
   PatientCreateRequest,

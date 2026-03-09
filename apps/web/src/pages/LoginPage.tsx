@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { api } from '../services/api.js';
@@ -484,6 +484,22 @@ export function LoginPage() {
           background: rgba(13,217,217,0.04);
         }
 
+        /* Register link */
+        .lpg-register {
+          margin-top: 18px;
+          text-align: center;
+          font-size: 0.844em;
+          color: #4E5D6C;
+          animation: field-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.48s both;
+        }
+        .lpg-register-link {
+          color: #0DD9D9;
+          text-decoration: none;
+          font-weight: 600;
+          transition: color 0.18s;
+        }
+        .lpg-register-link:hover { color: #3AE8E8; }
+
         /* Footer */
         .lpg-footer {
           margin-top: 28px;
@@ -785,6 +801,12 @@ export function LoginPage() {
             <button type="button" className="lpg-demo-btn" onClick={fillDemo}>
               Dr. Udoshi — Demo Account
             </button>
+          </div>
+
+          {/* Create account link */}
+          <div className="lpg-register">
+            Don't have an account?{' '}
+            <Link to="/register" className="lpg-register-link">Create account</Link>
           </div>
 
           {/* Footer */}

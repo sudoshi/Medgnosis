@@ -1,13 +1,15 @@
 // =============================================================================
 // Medgnosis Web — Auth guard component
 // Redirects to /login if not authenticated
+// Shows ChangePasswordModal if must_change_password is true
 // =============================================================================
 
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.js';
+import { ChangePasswordModal } from './ChangePasswordModal.js';
 
 export function AuthGuard() {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -21,5 +23,10 @@ export function AuthGuard() {
     return <Navigate to="/login" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      {user?.must_change_password && <ChangePasswordModal />}
+      <Outlet />
+    </>
+  );
 }

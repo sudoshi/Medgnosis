@@ -4,10 +4,11 @@
 
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
-import { loginRequestSchema } from '@medgnosis/shared';
+import { loginRequestSchema, registerRequestSchema, changePasswordSchema } from '@medgnosis/shared';
 import type { UserRole } from '@medgnosis/shared';
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
+import { config } from '../../config.js';
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /auth/login
@@ -37,8 +38,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       org_id: number | null;
       mfa_enabled: boolean;
       is_active: boolean;
+      must_change_password: boolean;
     }[]>`
-      SELECT id, email, password_hash, first_name, last_name, role, org_id, mfa_enabled, is_active
+      SELECT id, email, password_hash, first_name, last_name, role, org_id, mfa_enabled, is_active, must_change_password
       FROM app_users
       WHERE email = ${email}
     `;
@@ -81,6 +83,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       role: user.role as UserRole,
       org_id: String(user.org_id ?? ''),
       ...(providerId !== undefined ? { provider_id: providerId } : {}),
+      ...(user.must_change_password ? { must_change_password: true } : {}),
     };
 
     const accessToken = fastify.jwt.sign(payload);
@@ -109,6 +112,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
           org_id: String(user.org_id ?? ''),
           provider_id: providerId ?? null,
           mfa_enabled: user.mfa_enabled,
+          must_change_password: user.must_change_password,
         },
         tokens: {
           access_token: accessToken,
@@ -251,6 +255,134 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       },
     });
   });
+
+  // POST /auth/register
+  fastify.post(
+    '/register',
+    {
+      config: {
+        rateLimit: { max: 20, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = registerRequestSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const { email, firstName, lastName } = parseResult.data;
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Check if user already exists — return same message to prevent enumeration
+      const [existing] = await sql<{ id: string }[]>`
+        SELECT id FROM app_users WHERE email = ${normalizedEmail}
+      `;
+
+      if (existing) {
+        // Return success to prevent email enumeration
+        return reply.send({
+          success: true,
+          data: { message: 'If this email is not already registered, a temporary password has been sent to your inbox.' },
+        });
+      }
+
+      // Generate readable 12-char temp password (exclude I, l, O, 0)
+      const tempPassword = generateTempPassword(12);
+      const passwordHash = await hashPassword(tempPassword);
+
+      // Insert new user with 'analyst' as default role (matches CHECK constraint)
+      await sql`
+        INSERT INTO app_users (email, password_hash, first_name, last_name, role, must_change_password, is_active)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName.trim()}, ${lastName.trim()}, 'analyst', TRUE, TRUE)
+      `;
+
+      // Send temp password via Resend API
+      try {
+        await sendWelcomeEmail(normalizedEmail, firstName.trim(), tempPassword);
+      } catch (err) {
+        fastify.log.error({ err, email: normalizedEmail }, 'Failed to send welcome email via Resend');
+      }
+
+      return reply.send({
+        success: true,
+        data: { message: 'If this email is not already registered, a temporary password has been sent to your inbox.' },
+      });
+    },
+  );
+
+  // POST /auth/change-password
+  fastify.post(
+    '/change-password',
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const parseResult = changePasswordSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const { currentPassword, newPassword } = parseResult.data;
+
+      // Look up user's current password hash
+      const [user] = await sql<{ password_hash: string }[]>`
+        SELECT password_hash FROM app_users
+        WHERE id = ${request.user.sub}::UUID AND is_active = TRUE
+      `;
+
+      if (!user) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+        });
+      }
+
+      // Verify current password
+      const currentValid = await verifyPassword(currentPassword, user.password_hash);
+      if (!currentValid) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'INVALID_PASSWORD', message: 'Current password is incorrect' },
+        });
+      }
+
+      // Ensure new password is different from current
+      const samePassword = await verifyPassword(newPassword, user.password_hash);
+      if (samePassword) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'SAME_PASSWORD', message: 'New password must be different from current password' },
+        });
+      }
+
+      // Hash and update
+      const newHash = await hashPassword(newPassword);
+      await sql`
+        UPDATE app_users
+        SET password_hash = ${newHash}, must_change_password = FALSE, updated_at = NOW()
+        WHERE id = ${request.user.sub}::UUID
+      `;
+
+      await request.auditLog('password_change', 'auth', request.user.sub);
+
+      return reply.send({
+        success: true,
+        data: { message: 'Password changed successfully' },
+      });
+    },
+  );
 
   // GET /auth/me
   fastify.get(
@@ -579,4 +711,78 @@ export async function hashPassword(password: string): Promise<string> {
 
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
+}
+
+// ---------------------------------------------------------------------------
+// Temp password generation (readable, excludes I/l/O/0)
+// ---------------------------------------------------------------------------
+
+function generateTempPassword(length: number): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789!@#$%&*';
+  const bytes = crypto.randomBytes(length);
+  return Array.from(bytes)
+    .map((b) => chars[b % chars.length])
+    .join('');
+}
+
+// ---------------------------------------------------------------------------
+// Send welcome email via Resend API
+// ---------------------------------------------------------------------------
+
+async function sendWelcomeEmail(
+  toEmail: string,
+  firstName: string,
+  tempPassword: string,
+): Promise<void> {
+  const apiKey = config.resendApiKey;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY not configured');
+  }
+
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #0A1628; color: #E4EBF2; padding: 40px 32px; border-radius: 12px;">
+      <h1 style="font-size: 28px; font-weight: 700; color: #0DD9D9; margin: 0 0 8px;">Medgnosis</h1>
+      <p style="font-size: 14px; color: #4E5D6C; margin: 0 0 28px;">Population Health Intelligence</p>
+
+      <p style="font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${firstName},
+      </p>
+      <p style="font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
+        Your Medgnosis account has been created. Use the temporary password below to sign in:
+      </p>
+
+      <div style="background: rgba(13, 217, 217, 0.06); border: 1px solid rgba(13, 217, 217, 0.2); border-radius: 8px; padding: 16px 20px; margin: 0 0 24px; text-align: center;">
+        <p style="font-size: 12px; color: #4E5D6C; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px;">Temporary Password</p>
+        <p style="font-family: 'Fira Code', monospace; font-size: 20px; font-weight: 700; color: #0DD9D9; margin: 0; letter-spacing: 1.5px;">${tempPassword}</p>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #4E5D6C; margin: 0 0 28px;">
+        You will be asked to change this password on your first login.
+      </p>
+
+      <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
+      <p style="font-size: 12px; color: #2E3D4A; margin: 0; text-align: center;">
+        HIPAA Compliant &middot; SOC 2 Type II
+      </p>
+    </div>
+  `;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `Medgnosis <${config.emailFrom}>`,
+      to: [toEmail],
+      subject: 'Your Medgnosis access credentials',
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Resend API error (${response.status}): ${errBody}`);
+  }
 }

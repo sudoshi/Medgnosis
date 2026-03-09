@@ -14,6 +14,18 @@ export const loginRequestSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
+export const registerRequestSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  firstName: z.string().min(1, 'First name is required').max(100),
+  lastName: z.string().min(1, 'Last name is required').max(100),
+  phone: z.string().max(20).optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+});
+
 export const mfaVerifySchema = z.object({
   code: z.string().length(6, 'MFA code must be 6 digits'),
   factor_id: z.string().uuid(),
@@ -128,6 +140,8 @@ export const placeOrderBatchSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
+export type RegisterRequest = z.infer<typeof registerRequestSchema>;
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
 export type MfaVerifyRequest = z.infer<typeof mfaVerifySchema>;
 export type PatientSearchParams = z.infer<typeof patientSearchSchema>;
 export type PatientCreateRequest = z.infer<typeof patientCreateSchema>;
