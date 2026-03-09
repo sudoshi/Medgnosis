@@ -15,6 +15,7 @@ import { NotFoundPage } from './pages/NotFoundPage.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
 import { GlobalSearch } from './components/GlobalSearch.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { useAlertSocket } from './hooks/useAlertSocket.js';
@@ -30,6 +31,7 @@ export function App() {
   return (
     <AppProviders>
       <GlobalSearch />
+      <ErrorBoundary>
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
@@ -54,6 +56,7 @@ export function App() {
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </ErrorBoundary>
     </AppProviders>
   );
 }
