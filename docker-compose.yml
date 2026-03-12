@@ -19,7 +19,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/nginx-health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/nginx-health"]
       interval: 5s
       timeout: 3s
       retries: 5
