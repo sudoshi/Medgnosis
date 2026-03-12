@@ -26,6 +26,7 @@
     "@fastify/websocket": "^11.2.0",
     "@medgnosis/db": "*",
     "@medgnosis/shared": "*",
+    "@medgnosis/solr": "*",
     "@sentry/node": "^8.45.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.7.10",

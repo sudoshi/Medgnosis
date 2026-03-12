@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Medgnosis — Search Core Schema
+  Indexes patients and care gaps for global search.
+-->
+<schema name="search" version="1.6">
+
+  <!-- ================================================================== -->
+  <!-- Field Types                                                         -->
+  <!-- ================================================================== -->
+  <fieldType name="string"       class="solr.StrField"          sortMissingLast="true" />
+  <fieldType name="plong"        class="solr.LongPointField"    docValues="true" />
+  <fieldType name="pint"         class="solr.IntPointField"     docValues="true" />
+  <fieldType name="pdate"        class="solr.DatePointField"    docValues="true" />
+  <fieldType name="text_general" class="solr.TextField"         positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory" />
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.LowerCaseFilterFactory" />
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory" />
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.SynonymGraphFilterFactory" synonyms="synonyms.txt" ignoreCase="true" expand="true" />
+      <filter class="solr.LowerCaseFilterFactory" />
+    </analyzer>
+  </fieldType>
+
+  <!-- ================================================================== -->
+  <!-- Shared Fields                                                       -->
+  <!-- ================================================================== -->
+  <uniqueKey>id</uniqueKey>
+
+  <field name="id"          type="string"       indexed="true" stored="true" required="true" />
+  <field name="doc_type"    type="string"       indexed="true" stored="true" />
+  <field name="updated_at"  type="pdate"        indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Patient Fields                                                      -->
+  <!-- ================================================================== -->
+  <field name="patient_id"    type="plong"        indexed="true" stored="true" />
+  <field name="mrn"           type="string"       indexed="true" stored="true" />
+  <field name="first_name"    type="text_general" indexed="true" stored="true" />
+  <field name="last_name"     type="text_general" indexed="true" stored="true" />
+  <field name="full_name"     type="text_general" indexed="true" stored="true" />
+  <field name="date_of_birth" type="pdate"        indexed="true" stored="true" />
+  <field name="gender"        type="string"       indexed="true" stored="true" />
+  <field name="primary_phone" type="string"       indexed="false" stored="true" />
+  <field name="email"         type="string"       indexed="false" stored="true" />
+  <field name="active_ind"    type="string"       indexed="true" stored="true" />
+  <field name="risk_tier"     type="string"       indexed="true" stored="true" />
+  <field name="risk_score"    type="pint"         indexed="true" stored="true" />
+  <field name="provider_id"   type="plong"        indexed="true" stored="true" />
+  <field name="org_id"        type="plong"        indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Care Gap Fields                                                     -->
+  <!-- ================================================================== -->
+  <field name="care_gap_id"     type="plong"        indexed="true" stored="true" />
+  <field name="gap_status"      type="string"       indexed="true" stored="true" />
+  <field name="gap_priority"    type="string"       indexed="true" stored="true" />
+  <field name="measure_id"      type="plong"        indexed="true" stored="true" />
+  <field name="measure_name"    type="text_general" indexed="true" stored="true" />
+  <field name="measure_code"    type="string"       indexed="true" stored="true" />
+  <field name="identified_date" type="pdate"        indexed="true" stored="true" />
+  <field name="resolved_date"   type="pdate"        indexed="true" stored="true" />
+  <field name="due_date"        type="pdate"        indexed="true" stored="true" />
+  <field name="patient_name"    type="text_general" indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Catch-all field for default search                                  -->
+  <!-- ================================================================== -->
+  <field name="_text_" type="text_general" indexed="true" stored="false" multiValued="true" />
+
+  <copyField source="full_name"     dest="_text_" />
+  <copyField source="mrn"           dest="_text_" />
+  <copyField source="measure_name"  dest="_text_" />
+  <copyField source="measure_code"  dest="_text_" />
+  <copyField source="patient_name"  dest="_text_" />
+
+</schema>

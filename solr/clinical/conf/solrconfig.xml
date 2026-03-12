@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Medgnosis — Solr Core Configuration
+  Shared config for search and clinical cores.
+-->
+<config>
+  <luceneMatchVersion>9.7</luceneMatchVersion>
+
+  <!-- ================================================================== -->
+  <!-- Auto-Commit Settings                                                -->
+  <!-- ================================================================== -->
+  <updateHandler class="solr.DirectUpdateHandler2">
+    <autoCommit>
+      <maxTime>${solr.autoCommit.maxTime:60000}</maxTime>
+      <openSearcher>false</openSearcher>
+    </autoCommit>
+    <autoSoftCommit>
+      <maxTime>${solr.autoSoftCommit.maxTime:5000}</maxTime>
+    </autoSoftCommit>
+  </updateHandler>
+
+  <!-- ================================================================== -->
+  <!-- Caches                                                              -->
+  <!-- ================================================================== -->
+  <query>
+    <filterCache class="solr.CaffeineCache"
+                 size="4096"
+                 initialSize="512"
+                 autowarmCount="128" />
+    <queryResultCache class="solr.CaffeineCache"
+                      size="2048"
+                      initialSize="256"
+                      autowarmCount="128" />
+    <documentCache class="solr.CaffeineCache"
+                   size="4096"
+                   initialSize="512" />
+  </query>
+
+  <!-- ================================================================== -->
+  <!-- Request Handlers                                                    -->
+  <!-- ================================================================== -->
+  <requestHandler name="/select" class="solr.SearchHandler">
+    <lst name="defaults">
+      <str name="wt">json</str>
+      <str name="df">_text_</str>
+    </lst>
+  </requestHandler>
+
+  <requestHandler name="/update" class="solr.UpdateRequestHandler" />
+
+  <requestHandler name="/admin/ping" class="solr.PingRequestHandler">
+    <lst name="invariants">
+      <str name="q">*:*</str>
+    </lst>
+    <str name="healthcheckFile">server-enabled.txt</str>
+  </requestHandler>
+
+</config>

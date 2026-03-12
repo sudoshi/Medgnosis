@@ -3,15 +3,13 @@
 // Greeting -> Stats strip -> Workspace (Schedule+Alerts) -> Pop Health -> Activity
 // =============================================================================
 
-import { useQuery } from '@tanstack/react-query';
-import { useMorningBriefing } from '../hooks/useApi.js';
+import { useDashboard, useMorningBriefing } from '../hooks/useApi.js';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
-import { api } from '../services/api.js';
 import { useAuthStore } from '../stores/auth.js';
 import { getGreeting } from '../utils/time.js';
-import type { DashboardResponse } from './dashboard/types.js';
 import { SectionDivider, USE_MOCK_SCHEDULE, MOCK_SCHEDULE } from './dashboard/helpers.js';
+import type { DashboardResponse } from './dashboard/types.js';
 import { StatsStrip } from './dashboard/StatsStrip.js';
 import { WorkspaceSection } from './dashboard/WorkspaceSection.js';
 import { PopulationHealthSection } from './dashboard/PopulationHealthSection.js';
@@ -22,16 +20,14 @@ import { RecentActivitySection } from './dashboard/RecentActivitySection.js';
 export function DashboardPage() {
   const { user } = useAuthStore();
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn:  () => api.get<DashboardResponse>('/dashboard'),
-  });
+  const { data, isLoading, error } = useDashboard();
 
-  const { data: briefingData } = useMorningBriefing();
+  const { data: briefingData } = useMorningBriefing(!isLoading && !error);
 
-  const stats     = data?.data?.stats;
-  const analytics = data?.data?.analytics;
-  const clinician = data?.data?.clinician;
+  const dashboard = data?.data as DashboardResponse | undefined;
+  const stats     = dashboard?.stats;
+  const analytics = dashboard?.analytics;
+  const clinician = dashboard?.clinician;
 
   const greeting     = getGreeting();
   const displayName  = user ? `Dr. ${user.last_name}` : '';

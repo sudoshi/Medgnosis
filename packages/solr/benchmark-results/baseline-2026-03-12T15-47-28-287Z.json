@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-03-12T15:47:28.288Z",
+  "mode": "baseline",
+  "results": [
+    {
+      "endpoint": "Global search",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 343.1,
+      "p95Ms": 358.65,
+      "p99Ms": 395.47,
+      "meanMs": 346.17,
+      "minMs": 334.59,
+      "maxMs": 404.67
+    },
+    {
+      "endpoint": "Patient list search",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 5.4,
+      "p95Ms": 7.84,
+      "p99Ms": 8.14,
+      "meanMs": 5.65,
+      "minMs": 4.6,
+      "maxMs": 8.22
+    },
+    {
+      "endpoint": "Care gaps search",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 134.42,
+      "p95Ms": 175.63,
+      "p99Ms": 182.58,
+      "meanMs": 138.86,
+      "minMs": 117.71,
+      "maxMs": 184.32
+    },
+    {
+      "endpoint": "Dashboard",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 4984.64,
+      "p95Ms": 5709.9,
+      "p99Ms": 5947.21,
+      "meanMs": 5106.2,
+      "minMs": 4732.11,
+      "maxMs": 6006.53
+    },
+    {
+      "endpoint": "Patient conditions",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 599.12,
+      "p95Ms": 695.11,
+      "p99Ms": 898.88,
+      "meanMs": 621.99,
+      "minMs": 580.16,
+      "maxMs": 949.83
+    },
+    {
+      "endpoint": "Patient encounters",
+      "method": "GET",
+      "source": "pg",
+      "samples": 20,
+      "p50Ms": 672.94,
+      "p95Ms": 717.69,
+      "p99Ms": 743.61,
+      "meanMs": 674.11,
+      "minMs": 635.66,
+      "maxMs": 750.09
+    }
+  ]
+}

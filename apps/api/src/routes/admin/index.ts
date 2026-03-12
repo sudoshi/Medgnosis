@@ -16,6 +16,8 @@ import {
   generateDeidentifiedCohort,
 } from '../../services/omopExport.js';
 import { sql } from '@medgnosis/db';
+import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
+import { config } from '../../config.js';
 
 export default async function adminRoutes(app: FastifyInstance) {
   // Require admin role for all admin routes
@@ -403,5 +405,38 @@ export default async function adminRoutes(app: FastifyInstance) {
         active_measures:   Number(measures[0].count),
       },
     };
+  });
+
+  // ---- Solr Status ----
+
+  app.get('/solr-status', async (_request, reply) => {
+    const solr = getSolrClient();
+    if (!solr) {
+      return reply.send({
+        success: true,
+        data: {
+          available: false,
+          enabled: config.solrEnabled,
+          message: 'Solr is not available',
+        },
+      });
+    }
+
+    const [searchStatus, clinicalStatus, searchPing, clinicalPing] =
+      await Promise.all([
+        solr.coreStatus('search').catch(() => null),
+        solr.coreStatus('clinical').catch(() => null),
+        solr.ping('search'),
+        solr.ping('clinical'),
+      ]);
+
+    return reply.send({
+      success: true,
+      data: {
+        available: isSolrAvailable(),
+        searchCore: { healthy: searchPing, status: searchStatus },
+        clinicalCore: { healthy: clinicalPing, status: clinicalStatus },
+      },
+    });
   });
 }

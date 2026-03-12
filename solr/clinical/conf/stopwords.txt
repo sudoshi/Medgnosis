@@ -1,0 +1,2 @@
+# Stopwords placeholder for clinical core
+# Keep empty or minimal — clinical terms should remain searchable

@@ -7,6 +7,8 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { patientSearchSchema, patientCreateSchema } from '@medgnosis/shared';
+import { getSolrClient } from '../../plugins/solr.js';
+import { buildSearchCoreQuery } from '@medgnosis/solr';
 
 export default async function patientRoutes(fastify: FastifyInstance): Promise<void> {
   // All patient routes require authentication
@@ -14,75 +16,133 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
 
   // GET /patients — List patients with search and pagination
   fastify.get('/', async (request, reply) => {
+    const startedAt = process.hrtime.bigint();
     const params = patientSearchSchema.parse(request.query);
     const { search, page, per_page, sort_by, sort_order, risk_level: _risk_level } = params;
     const offset = (page - 1) * per_page;
-
-    // Build dynamic query
-    let whereClause = `WHERE p.active_ind = 'Y'`;
-    const queryParams: unknown[] = [];
-
-    if (search) {
-      whereClause += ` AND (p.first_name || ' ' || p.last_name) ILIKE $${queryParams.length + 1}`;
-      queryParams.push(`%${search}%`);
-    }
 
     // Provider scoping: restrict to the logged-in provider's PCP panel.
     // Admin users (no provider_id) see all patients.
     const providerId = (request as typeof request & { user: { provider_id?: number } }).user.provider_id;
     const scoped = providerId !== undefined;
 
-    // Run count and page fetch in parallel
-    const [[ countResult ], patients] = await Promise.all([
-      sql<{ total: number }[]>`
-        SELECT COUNT(*)::int AS total
-        FROM phm_edw.patient p
-        WHERE p.active_ind = 'Y'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
-          ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
-      `,
-      sql`
-        SELECT
-          p.patient_id AS id,
-          p.first_name,
-          p.last_name,
-          p.mrn,
-          p.date_of_birth,
-          p.gender,
-          p.active_ind
-        FROM phm_edw.patient p
-        WHERE p.active_ind = 'Y'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
-          ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
-        ORDER BY
-          ${sort_by === 'name' ? sql`p.last_name` : sql`p.patient_id`}
-          ${sort_order === 'desc' ? sql`DESC` : sql`ASC`}
-        LIMIT ${per_page}
-        OFFSET ${offset}
-      `,
-    ]);
+    let patients: Record<string, unknown>[];
+    let total: number;
+    let source: 'solr' | 'pg' = 'pg';
 
-    const total = countResult?.total ?? 0;
+    const solr = getSolrClient();
 
+    // Use Solr for search queries (the main performance win)
+    if (solr && search) {
+      try {
+        const solrQuery = buildSearchCoreQuery({
+          searchTerm: search,
+          docType: 'patient',
+          providerId,
+          sortBy: sort_by,
+          sortOrder: sort_order,
+          limit: per_page,
+          offset,
+        });
+
+        const result = await solr.query<{
+          patient_id: number;
+          first_name: string;
+          last_name: string;
+          mrn: string;
+          date_of_birth: string;
+          gender: string;
+        }>('search', solrQuery);
+
+        patients = result.response.docs.map((d) => ({
+          id: d.patient_id,
+          first_name: d.first_name,
+          last_name: d.last_name,
+          mrn: d.mrn,
+          date_of_birth: d.date_of_birth,
+          gender: d.gender,
+          active_ind: 'Y',
+        }));
+        total = result.response.numFound;
+        source = 'solr';
+      } catch (err) {
+        request.log.warn({ err }, '[patients] Solr search failed — falling back to PG');
+        ({ patients, total } = await pgPatientList(search, scoped, providerId, sort_by, sort_order, per_page, offset));
+      }
+    } else {
+      ({ patients, total } = await pgPatientList(search, scoped, providerId, sort_by, sort_order, per_page, offset));
+    }
+
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    request.log.info(
+      {
+        route: '/patients',
+        source,
+        provider_id: providerId ?? null,
+        search: search ?? null,
+        page,
+        per_page,
+        result_count: patients.length,
+        duration_ms: Math.round(durationMs * 100) / 100,
+      },
+      'Route timing',
+    );
+    reply.header('X-Query-Source', source);
     return reply.send({
       success: true,
       data: patients,
-      meta: {
-        page,
-        per_page,
-        total,
-        total_pages: Math.ceil(total / per_page),
-      },
+      meta: { page, per_page, total, total_pages: Math.ceil(total / per_page) },
     });
   });
 
-  // GET /patients/:id — Enhanced patient detail with PCP, insurance, address, allergies
+  // GET /patients/:id/conditions — Problem list with status/type metadata
+  fastify.get<{ Params: { id: string }; Querystring: { limit?: string; offset?: string } }>(
+    '/:id/conditions',
+    async (request, reply) => {
+      const { id } = request.params;
+      const limit = Math.min(parseInt(request.query.limit || '100', 10), 500);
+      const offset = parseInt(request.query.offset || '0', 10);
+
+      const [countResult] = await sql<{ total: number }[]>`
+        SELECT COUNT(*)::int AS total
+        FROM phm_edw.condition_diagnosis cd
+        WHERE cd.patient_id = ${id}::int AND cd.active_ind = 'Y'
+      `;
+
+      const conditions = await sql`
+        SELECT
+          cd.condition_diagnosis_id AS id,
+          c.condition_code AS code,
+          c.condition_name AS name,
+          cd.diagnosis_status AS status,
+          cd.diagnosis_type AS type,
+          cd.onset_date,
+          cd.resolution_date,
+          cd.primary_indicator,
+          cd.active_ind
+        FROM phm_edw.condition_diagnosis cd
+        JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+        WHERE cd.patient_id = ${id}::int AND cd.active_ind = 'Y'
+        ORDER BY cd.onset_date DESC NULLS LAST
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+
+      return reply.send({
+        success: true,
+        data: conditions,
+        meta: {
+          limit,
+          offset,
+          total: countResult?.total ?? 0,
+        },
+      });
+    },
+  );
+
+  // GET /patients/:id — Lightweight patient header payload for initial page load
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const { id } = request.params;
-
-    // Fire patient lookup and all sub-resources in parallel — PK lookup is fast,
-    // and we avoid a serial round-trip before the parallel fan-out.
-    const [patientResult, conditions, encounters, observations, careGaps, pcpInfo, insurance, address, allergySummary] = await Promise.all([
+    const [patientResult, pcpInfo, insurance, address, allergySummary, countsResult] = await Promise.all([
       sql`
         SELECT
           p.patient_id AS id,
@@ -100,51 +160,6 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
           p.active_ind
         FROM phm_edw.patient p
         WHERE p.patient_id = ${id}::int AND p.active_ind = 'Y'
-      `,
-      sql`
-        SELECT cd.condition_diagnosis_id AS id, c.condition_code AS code,
-               c.condition_name AS name, cd.diagnosis_status AS status,
-               cd.diagnosis_type AS type, cd.onset_date, cd.resolution_date,
-               cd.primary_indicator, cd.active_ind
-        FROM phm_edw.condition_diagnosis cd
-        JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
-        WHERE cd.patient_id = ${id}::int AND cd.active_ind = 'Y'
-        ORDER BY cd.onset_date DESC
-      `,
-      sql`
-        SELECT e.encounter_id AS id, e.encounter_datetime AS date,
-               e.encounter_type AS type, e.encounter_reason AS reason,
-               e.status, e.disposition,
-               prov.display_name AS provider_name,
-               prov.specialty AS provider_specialty,
-               org.organization_name AS facility
-        FROM phm_edw.encounter e
-        LEFT JOIN phm_edw.provider prov ON prov.provider_id = e.provider_id
-        LEFT JOIN phm_edw.organization org ON org.org_id = e.org_id
-        WHERE e.patient_id = ${id}::int AND e.active_ind = 'Y'
-        ORDER BY e.encounter_datetime DESC
-        LIMIT 20
-      `,
-      sql`
-        SELECT o.observation_id AS id, o.observation_code AS code,
-               o.observation_desc AS description,
-               COALESCE(o.value_numeric::text, o.value_text) AS value,
-               o.value_numeric, o.units AS unit,
-               o.reference_range, o.abnormal_flag,
-               o.observation_datetime AS date, o.active_ind
-        FROM phm_edw.observation o
-        WHERE o.patient_id = ${id}::int AND o.active_ind = 'Y'
-        ORDER BY o.observation_datetime DESC
-        LIMIT 50
-      `,
-      sql`
-        SELECT cg.care_gap_id AS id, md.measure_name AS measure,
-               cg.gap_status AS status, cg.identified_date,
-               cg.resolved_date, cg.active_ind
-        FROM phm_edw.care_gap cg
-        LEFT JOIN phm_edw.measure_definition md ON md.measure_id = cg.measure_id
-        WHERE cg.patient_id = ${id}::int AND cg.active_ind = 'Y'
-        ORDER BY cg.identified_date ASC
       `,
       // PCP info
       sql`
@@ -177,6 +192,31 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         WHERE pa.patient_id = ${id}::int AND pa.active_ind = 'Y'
         ORDER BY pa.severity DESC NULLS LAST
       `.catch(() => []),
+      sql<{
+        conditions_count: number;
+        encounters_count: number;
+        allergies_count: number;
+        open_care_gaps_count: number;
+      }[]>`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM phm_edw.condition_diagnosis cd
+            WHERE cd.patient_id = ${id}::int
+              AND cd.active_ind = 'Y') AS conditions_count,
+          (SELECT COUNT(*)::int
+             FROM phm_edw.encounter e
+            WHERE e.patient_id = ${id}::int
+              AND e.active_ind = 'Y') AS encounters_count,
+          (SELECT COUNT(*)::int
+             FROM phm_edw.patient_allergy pa
+            WHERE pa.patient_id = ${id}::int
+              AND pa.active_ind = 'Y') AS allergies_count,
+          (SELECT COUNT(*)::int
+             FROM phm_edw.care_gap cg
+            WHERE cg.patient_id = ${id}::int
+              AND cg.active_ind = 'Y'
+              AND cg.gap_status IN ('open', 'identified')) AS open_care_gaps_count
+      `.catch(() => [{ conditions_count: 0, encounters_count: 0, allergies_count: 0, open_care_gaps_count: 0 }]),
     ]);
 
     const patient = patientResult[0];
@@ -201,10 +241,12 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         insurance: ins ? { payer: ins.payer_name, policy: ins.policy_number } : null,
         address: addr ? { line1: addr.address_line1, city: addr.city, state: addr.state, zip: addr.zip } : null,
         allergies: allergySummary,
-        conditions,
-        encounters,
-        observations,
-        care_gaps: careGaps,
+        summary: countsResult[0] ?? {
+          conditions_count: 0,
+          encounters_count: 0,
+          allergies_count: 0,
+          open_care_gaps_count: 0,
+        },
       },
     });
   });
@@ -413,6 +455,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
 
   // GET /patients/:id/care-bundle — Bundle-grouped care gaps with deduplication
   fastify.get<{ Params: { id: string } }>('/:id/care-bundle', async (request, reply) => {
+    const startedAt = process.hrtime.bigint();
     const { id } = request.params;
 
     // 1. Verify patient exists
@@ -493,6 +536,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
 
     const bundleIds = matchedBundles.map((b) => b.bundle_id);
     const bundleCodes = matchedBundles.map((b) => b.bundle_code);
+    const bundleIdByCode = new Map(matchedBundles.map((b) => [b.bundle_code, b.bundle_id]));
 
     // 4. Fetch all measures for matched bundles
     const bundleMeasures = await sql<{
@@ -548,6 +592,15 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     // Build set of deduplicated measure codes
     const dedupSet = new Map<string, string>(); // measure_code → dedup_source
     const overlapDeductions: { domain: string; canonical: string; satisfied_for: string[] }[] = [];
+    const bundleMeasuresById = new Map<number, Array<(typeof bundleMeasures)[number]>>();
+    for (const bm of bundleMeasures) {
+      const existing = bundleMeasuresById.get(bm.bundle_id);
+      if (existing) {
+        existing.push(bm);
+      } else {
+        bundleMeasuresById.set(bm.bundle_id, [bm]);
+      }
+    }
 
     for (const rule of overlapRules) {
       const applicableCodes = rule.applicable_bundles.split(',').map((s) => s.trim());
@@ -561,17 +614,20 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
       const canonicalCode = rule.canonical_measure_code;
       const satisfiedFor: string[] = [];
 
-      for (const bm of bundleMeasures) {
-        const bundle = matchedBundles.find((b) => b.bundle_id === bm.bundle_id);
-        if (!bundle || !patientApplicable.includes(bundle.bundle_code)) continue;
+      for (const bundleCode of patientApplicable) {
+        const bundleId = bundleIdByCode.get(bundleCode);
+        if (!bundleId) continue;
+        const measuresForBundle = bundleMeasuresById.get(bundleId) ?? [];
+        for (const bm of measuresForBundle) {
 
-        // If this measure is in the shared domain but is NOT the canonical, dedup it
-        if (
-          bm.measure_code !== canonicalCode &&
-          bm.measure_name.toLowerCase().includes(rule.shared_domain.toLowerCase().split(' ')[0].toLowerCase())
-        ) {
-          dedupSet.set(bm.measure_code, canonicalCode);
-          satisfiedFor.push(bm.measure_code);
+          // If this measure is in the shared domain but is NOT the canonical, dedup it
+          if (
+            bm.measure_code !== canonicalCode &&
+            bm.measure_name.toLowerCase().includes(rule.shared_domain.toLowerCase().split(' ')[0].toLowerCase())
+          ) {
+            dedupSet.set(bm.measure_code, canonicalCode);
+            satisfiedFor.push(bm.measure_code);
+          }
         }
       }
 
@@ -590,8 +646,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     let totalMet = 0;
 
     const bundles = matchedBundles.map((bundle) => {
-      const measures = bundleMeasures
-        .filter((bm) => bm.bundle_id === bundle.bundle_id)
+      const measures = (bundleMeasuresById.get(bundle.bundle_id) ?? [])
         .map((bm) => {
           const gap = gapByMeasure.get(bm.measure_id);
           const isDeduplicated = dedupSet.has(bm.measure_code);
@@ -636,7 +691,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     const activeMeasures = totalMeasures - totalDeduped;
     const overallCompliance = activeMeasures > 0 ? Math.round((totalMet / activeMeasures) * 100) : 0;
 
-    return reply.send({
+    const response = {
       success: true,
       data: {
         patient_id: patient.patient_id,
@@ -646,7 +701,20 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         bundles,
         overlap_deductions: overlapDeductions,
       },
-    });
+    };
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    request.log.info(
+      {
+        route: '/patients/:id/care-bundle',
+        patient_id: patient.patient_id,
+        bundles_count: bundles.length,
+        measures_count: totalMeasures,
+        deduplicated_measures: totalDeduped,
+        duration_ms: Math.round(durationMs * 100) / 100,
+      },
+      'Route timing',
+    );
+    return reply.send(response);
   });
 
   // GET /patients/:id/notes — Clinical notes for a patient
@@ -707,4 +775,46 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
       data: patient,
     });
   });
+}
+
+// --- PG fallback for patient list ---
+async function pgPatientList(
+  search: string | undefined,
+  scoped: boolean,
+  providerId: number | undefined,
+  sort_by: string,
+  sort_order: string,
+  per_page: number,
+  offset: number,
+): Promise<{ patients: Record<string, unknown>[]; total: number }> {
+  const [[countResult], patients] = await Promise.all([
+    sql<{ total: number }[]>`
+      SELECT COUNT(*)::int AS total
+      FROM phm_edw.patient p
+      WHERE p.active_ind = 'Y'
+        ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
+        ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+    `,
+    sql`
+      SELECT
+        p.patient_id AS id,
+        p.first_name,
+        p.last_name,
+        p.mrn,
+        p.date_of_birth,
+        p.gender,
+        p.active_ind
+      FROM phm_edw.patient p
+      WHERE p.active_ind = 'Y'
+        ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
+        ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+      ORDER BY
+        ${sort_by === 'name' ? sql`p.last_name` : sql`p.patient_id`}
+        ${sort_order === 'desc' ? sql`DESC` : sql`ASC`}
+      LIMIT ${per_page}
+      OFFSET ${offset}
+    `,
+  ]);
+
+  return { patients, total: countResult?.total ?? 0 };
 }

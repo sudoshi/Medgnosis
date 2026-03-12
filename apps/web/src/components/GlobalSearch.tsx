@@ -19,7 +19,8 @@ interface SearchResult {
   last_name: string;
   mrn: string;
   date_of_birth: string;
-  similarity: number;
+  similarity?: number;
+  relevance?: number;
 }
 
 // ─── Recent searches — persisted to sessionStorage ────────────────────────────
@@ -162,10 +163,14 @@ export function GlobalSearch() {
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await api.get<{ results: SearchResult[] }>(
+        const res = await api.get<{ patients?: Array<SearchResult & { id?: number }> }>(
           `/search?q=${encodeURIComponent(query)}`,
         );
-        setResults(res.data?.results ?? []);
+        const mapped = (res.data?.patients ?? []).map((p) => ({
+          ...p,
+          patient_id: p.patient_id ?? p.id ?? 0,
+        })).filter((p) => p.patient_id > 0);
+        setResults(mapped);
       } catch {
         setResults([]);
       } finally {

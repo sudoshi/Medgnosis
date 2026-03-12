@@ -8,7 +8,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../services/api.js';
-import { usePatientMedications } from '../hooks/useApi.js';
 import { PatientBanner } from '../components/patient/PatientBanner.js';
 import { TabBar, type Tab } from '../components/patient/TabBar.js';
 import { OverviewTab } from '../components/patient/OverviewTab.js';
@@ -21,7 +20,7 @@ import { CareGapsTab } from '../components/patient/CareGapsTab.js';
 import { AbbyTab } from '../components/patient/AbbyTab.js';
 import { Sparkles } from 'lucide-react';
 
-// ─── Types matching enhanced /patients/:id response ──────────────────────────
+// ─── Types matching lightweight /patients/:id response ───────────────────────
 
 interface PatientDetail {
   id: number;
@@ -47,33 +46,12 @@ interface PatientDetail {
     name: string;
     severity: string | null;
   }>;
-  conditions: Array<{
-    id: number;
-    code: string;
-    name: string;
-    status: string;
-    onset_date: string;
-  }>;
-  encounters: Array<{
-    id: number;
-    date: string;
-    type: string;
-    reason: string | null;
-  }>;
-  observations: Array<{
-    id: number;
-    name: string;
-    value: string | null;
-    unit: string | null;
-    date: string;
-  }>;
-  care_gaps: Array<{
-    id: number;
-    measure: string | null;
-    status: string;
-    identified_date: string;
-    resolved_date: string | null;
-  }>;
+  summary: {
+    conditions_count: number;
+    encounters_count: number;
+    allergies_count: number;
+    open_care_gaps_count: number;
+  };
 }
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
@@ -93,8 +71,6 @@ export function PatientDetailPage() {
     enabled: !!patientId,
   });
 
-  // Pre-fetch medications for overview tab (also used for OverviewTab)
-  const { data: medsData } = usePatientMedications(patientId);
 
   const patient = data?.data;
 
@@ -145,18 +121,21 @@ export function PatientDetailPage() {
   }
 
   // ── Derived counts for tab badges ──────────────────────────────────────
-  const openGaps = (patient.care_gaps ?? []).filter(
-    (g) => ['open', 'identified'].includes(g.status?.toLowerCase() ?? ''),
-  );
+  const summary = patient.summary ?? {
+    conditions_count: 0,
+    encounters_count: 0,
+    allergies_count: 0,
+    open_care_gaps_count: 0,
+  };
 
   const tabs: Array<Tab & { id: TabId }> = [
     { id: 'overview', label: 'Overview' },
-    { id: 'encounters', label: 'Encounters', count: (patient.encounters ?? []).length },
-    { id: 'conditions', label: 'Conditions', count: (patient.conditions ?? []).length },
+    { id: 'encounters', label: 'Encounters', count: summary.encounters_count },
+    { id: 'conditions', label: 'Conditions', count: summary.conditions_count },
     { id: 'medications', label: 'Medications' },
     { id: 'labs', label: 'Labs & Vitals' },
-    { id: 'allergies', label: 'Allergies', count: (patient.allergies ?? []).length },
-    { id: 'care-gaps', label: 'Care Gaps', count: openGaps.length || undefined },
+    { id: 'allergies', label: 'Allergies', count: summary.allergies_count },
+    { id: 'care-gaps', label: 'Care Gaps', count: summary.open_care_gaps_count || undefined },
     { id: 'abby', label: 'Abby', icon: <Sparkles size={13} strokeWidth={1.5} className="text-violet" /> },
   ];
 
@@ -195,11 +174,6 @@ export function PatientDetailPage() {
         {activeTab === 'overview' && (
           <OverviewTab
             patientId={String(patient.id)}
-            conditions={patient.conditions}
-            encounters={patient.encounters}
-            observations={patient.observations.map((o) => ({ ...o, code: o.name }))}
-            careGaps={patient.care_gaps}
-            medications={(medsData?.data as Array<{ id: number; name: string; dosage: string | null; frequency: string | null; status: string | null }> | undefined) ?? []}
             onTabChange={(id) => setActiveTab(id as TabId)}
           />
         )}
@@ -207,7 +181,7 @@ export function PatientDetailPage() {
           <EncountersTab patientId={patientId!} />
         )}
         {activeTab === 'conditions' && (
-          <ConditionsTab conditions={patient.conditions ?? []} />
+          <ConditionsTab patientId={patientId!} />
         )}
         {activeTab === 'medications' && (
           <MedicationsTab patientId={patientId!} />

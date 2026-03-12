@@ -16,15 +16,10 @@ import {
   Minus,
   AlertTriangle,
 } from 'lucide-react';
-import { usePatientCareBundle } from '../../hooks/useApi.js';
+import { usePatientCareBundle, usePatientConditions, usePatientEncounters, usePatientObservations, usePatientMedications } from '../../hooks/useApi.js';
 
 interface OverviewTabProps {
   patientId: string;
-  conditions: Array<{ id: number; code: string; name: string; status: string; onset_date: string }>;
-  encounters: Array<{ id: number; date: string; type: string; reason: string | null; provider_name?: string | null }>;
-  observations: Array<{ id: number; code: string; description?: string | null; value: string | null; unit: string | null; date: string; abnormal_flag?: string | null }>;
-  careGaps: Array<{ id: number; measure: string | null; status: string; identified_date: string }>;
-  medications?: Array<{ id: number; name: string; dosage: string | null; frequency: string | null; status: string | null }>;
   onTabChange: (tab: string) => void;
 }
 
@@ -97,7 +92,16 @@ function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
   );
 }
 
-export function OverviewTab({ patientId, conditions, encounters, observations, careGaps: _careGaps, medications, onTabChange }: OverviewTabProps) {
+export function OverviewTab({ patientId, onTabChange }: OverviewTabProps) {
+  const { data: conditionsData } = usePatientConditions(patientId, { limit: 50 });
+  const { data: encountersData } = usePatientEncounters(patientId, { limit: 5, page: 1 });
+  const { data: observationsData } = usePatientObservations(patientId, { limit: 20, offset: 0 });
+  const { data: medicationsData } = usePatientMedications(patientId);
+
+  const conditions = (conditionsData?.data ?? []) as Array<{ id: number; code: string; name: string; status: string; onset_date: string }>;
+  const encounters = (encountersData?.data ?? []) as Array<{ id: number; date: string; type: string; reason: string | null; provider_name?: string | null }>;
+  const observations = (observationsData?.data ?? []) as Array<{ id: number; code: string; description?: string | null; value: string | null; unit: string | null; date: string; abnormal_flag?: string | null }>;
+  const medications = (medicationsData?.data ?? []) as Array<{ id: number; name: string; dosage: string | null; frequency: string | null; status: string | null }>;
   const activeConditions = conditions.filter((c) => c.status?.toUpperCase() === 'ACTIVE');
   const recentObs = observations.slice(0, 5);
   const recentEnc = encounters.slice(0, 5);

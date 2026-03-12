@@ -1,0 +1,37 @@
+# Medical abbreviation synonyms for Medgnosis search core
+# Format: abbreviation => expanded form
+
+DM => diabetes mellitus
+DM2 => diabetes mellitus type 2
+T2DM => diabetes mellitus type 2
+HTN => hypertension
+HBP => high blood pressure, hypertension
+CHF => congestive heart failure
+CAD => coronary artery disease
+COPD => chronic obstructive pulmonary disease
+CKD => chronic kidney disease
+ESRD => end stage renal disease
+MI => myocardial infarction
+CVA => cerebrovascular accident, stroke
+TIA => transient ischemic attack
+DVT => deep vein thrombosis
+PE => pulmonary embolism
+AFib => atrial fibrillation
+RA => rheumatoid arthritis
+OA => osteoarthritis
+GERD => gastroesophageal reflux disease
+UTI => urinary tract infection
+URI => upper respiratory infection
+ADHD => attention deficit hyperactivity disorder
+BMI => body mass index
+BP => blood pressure
+HR => heart rate
+HbA1c => hemoglobin a1c, glycated hemoglobin
+LDL => low density lipoprotein
+HDL => high density lipoprotein
+BMP => basic metabolic panel
+CBC => complete blood count
+TSH => thyroid stimulating hormone
+A1C => hemoglobin a1c, glycated hemoglobin
+BUN => blood urea nitrogen
+eGFR => estimated glomerular filtration rate

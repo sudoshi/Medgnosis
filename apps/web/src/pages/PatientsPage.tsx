@@ -3,8 +3,8 @@
 // Population patient browser with avatar table and numbered pagination
 // =============================================================================
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -42,14 +42,22 @@ function formatGender(g: string): string {
 export function PatientsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage]     = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['patients', search, page],
+    queryKey: ['patients', debouncedSearch, page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), per_page: '20' });
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return api.get<PatientRow[]>(`/patients?${params}`);
     },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 
   const patients   = data?.data ?? [];

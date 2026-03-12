@@ -17,6 +17,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
 
   // GET /dashboard — Aggregated dashboard data (pop-health + clinician)
   fastify.get('/', async (request, reply) => {
+    const startedAt = process.hrtime.bigint();
     // Provider scoping: all queries filtered to the logged-in provider's panel.
     // Admin users (no provider_id in JWT) see the full population.
     const providerId = request.user.provider_id;
@@ -263,7 +264,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
     const priorOpen = gaps.open + trends.gaps_closed_30d - trends.gaps_opened_30d;
     const careGapTrend = calcTrend(gaps.open, Math.max(priorOpen, 0));
 
-    return reply.send({
+    const response = {
       success: true,
       data: {
         stats: {
@@ -294,6 +295,12 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
           },
         },
       },
-    });
+    };
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    request.log.info(
+      { route: '/dashboard', provider_id: request.user.provider_id ?? null, duration_ms: Math.round(durationMs * 100) / 100 },
+      'Route timing',
+    );
+    return reply.send(response);
   });
 }

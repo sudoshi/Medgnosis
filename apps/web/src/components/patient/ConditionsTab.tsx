@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Activity } from 'lucide-react';
+import { usePatientConditions } from '../../hooks/useApi.js';
 
 interface Condition {
   id: number;
@@ -17,7 +18,7 @@ interface Condition {
 }
 
 interface ConditionsTabProps {
-  conditions: Condition[];
+  patientId: string;
 }
 
 function formatDate(dateStr: string | null | undefined) {
@@ -65,8 +66,20 @@ const GROUPS: GroupConfig[] = [
   },
 ];
 
-export function ConditionsTab({ conditions }: ConditionsTabProps) {
+export function ConditionsTab({ patientId }: ConditionsTabProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ resolved: true });
+  const { data, isLoading } = usePatientConditions(patientId, { limit: 500 });
+  const conditions = (data?.data ?? []) as Condition[];
+
+  if (isLoading) {
+    return (
+      <div className="surface space-y-3">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton h-16 rounded-card" />
+        ))}
+      </div>
+    );
+  }
 
   if (conditions.length === 0) {
     return (

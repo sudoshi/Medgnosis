@@ -144,6 +144,21 @@ export function usePatientAllergies(patientId: string | undefined) {
   });
 }
 
+export function usePatientConditions(
+  patientId: string | undefined,
+  params: { limit?: number; offset?: number } = {},
+) {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+
+  return useQuery({
+    queryKey: ['patient', patientId, 'conditions', params],
+    queryFn: () => api.get(`/patients/${patientId}/conditions?${qs}`),
+    enabled: !!patientId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
 export function usePatientObservations(
   patientId: string | undefined,
   params: { category?: string; limit?: number; offset?: number } = {},
@@ -416,10 +431,11 @@ export function useAiChat() {
   });
 }
 
-export function useMorningBriefing() {
+export function useMorningBriefing(enabled = true) {
   return useQuery({
     queryKey: ['morning-briefing'],
     queryFn: () => api.post('/insights/morning-briefing'),
+    enabled,
     staleTime: 30 * 60 * 1000, // 30 min — don't re-fetch on tab switch
     retry: false, // Don't spam LLM on failure
   });

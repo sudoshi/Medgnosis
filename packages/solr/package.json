@@ -1,0 +1,34 @@
+{
+  "name": "@medgnosis/solr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run",
+    "reindex:search": "node --import tsx/esm src/sync/full-reindex.ts --core=search",
+    "reindex:clinical": "node --import tsx/esm src/sync/full-reindex.ts --core=clinical",
+    "reindex:all": "npm run reindex:search && npm run reindex:clinical",
+    "cdc:start": "node --import tsx/esm src/sync/cdc-listener.ts",
+    "benchmark": "node --import tsx/esm src/benchmark/run.ts"
+  },
+  "dependencies": {
+    "@medgnosis/db": "*",
+    "undici": "^7.0.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -6,6 +6,7 @@
 #   postgres  — PostgreSQL 15 on :5432
 #   redis     — Redis 7 on :6379  (BullMQ + WebSocket pub/sub)
 #   mailhog   — MailHog SMTP :1025 / Web UI :8025 (captures outgoing email)
+#   solr      — Solr 9.7 on :8983  (search + clinical cores)
 # =============================================================================
 
 services:
@@ -50,8 +51,28 @@ services:
       - '8025:8025'   # Web UI
     restart: unless-stopped
 
+  solr:
+    image: solr:9.7-slim
+    container_name: medgnosis-demo-solr
+    ports:
+      - '8984:8983'
+    volumes:
+      - medgnosis-demo-solrdata:/var/solr/data
+      - ./solr/search/conf:/opt/solr/server/solr/configsets/search/conf
+      - ./solr/clinical/conf:/opt/solr/server/solr/configsets/clinical/conf
+    environment:
+      SOLR_JAVA_MEM: '-Xms2g -Xmx4g'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:8983/solr/admin/info/system']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   medgnosis-demo-pgdata:
     name: medgnosis-demo-pgdata
   medgnosis-demo-redisdata:
     name: medgnosis-demo-redisdata
+  medgnosis-demo-solrdata:
+    name: medgnosis-demo-solrdata

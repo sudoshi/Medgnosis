@@ -15,6 +15,7 @@ import authPlugin from './plugins/auth.js';
 import auditPlugin from './plugins/audit.js';
 import errorHandlerPlugin from './plugins/error-handler.js';
 import websocketPlugin from './plugins/websocket.js';
+import solrPlugin from './plugins/solr.js';
 import { registerRoutes } from './routes/index.js';
 
 export async function buildApp() {
@@ -127,6 +128,7 @@ export async function buildApp() {
   await fastify.register(authPlugin);
   await fastify.register(auditPlugin);
   await fastify.register(websocketPlugin);
+  await fastify.register(solrPlugin);
 
   // ------------------------------------------------------------------
   // Routes

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Medgnosis — Clinical Core Schema
+  Indexes encounters, conditions, observations, and medications.
+-->
+<schema name="clinical" version="1.6">
+
+  <!-- ================================================================== -->
+  <!-- Field Types                                                         -->
+  <!-- ================================================================== -->
+  <fieldType name="string"       class="solr.StrField"          sortMissingLast="true" />
+  <fieldType name="plong"        class="solr.LongPointField"    docValues="true" />
+  <fieldType name="pint"         class="solr.IntPointField"     docValues="true" />
+  <fieldType name="pdouble"      class="solr.DoublePointField"  docValues="true" />
+  <fieldType name="pdate"        class="solr.DatePointField"    docValues="true" />
+  <fieldType name="text_general" class="solr.TextField"         positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory" />
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.LowerCaseFilterFactory" />
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory" />
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.LowerCaseFilterFactory" />
+    </analyzer>
+  </fieldType>
+
+  <!-- ================================================================== -->
+  <!-- Shared Fields                                                       -->
+  <!-- ================================================================== -->
+  <uniqueKey>id</uniqueKey>
+
+  <field name="id"          type="string" indexed="true" stored="true" required="true" />
+  <field name="doc_type"    type="string" indexed="true" stored="true" />
+  <field name="patient_id"  type="plong"  indexed="true" stored="true" />
+  <field name="provider_id" type="plong"  indexed="true" stored="true" />
+  <field name="updated_at"  type="pdate"  indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Encounter Fields                                                    -->
+  <!-- ================================================================== -->
+  <field name="encounter_id"       type="plong"        indexed="true"  stored="true" />
+  <field name="encounter_datetime" type="pdate"        indexed="true"  stored="true" />
+  <field name="encounter_type"     type="string"       indexed="true"  stored="true" />
+  <field name="disposition"        type="string"       indexed="false" stored="true" />
+  <field name="facility_name"      type="text_general" indexed="true"  stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Condition Fields                                                    -->
+  <!-- ================================================================== -->
+  <field name="condition_id"     type="plong"        indexed="true" stored="true" />
+  <field name="condition_name"   type="text_general" indexed="true" stored="true" />
+  <field name="icd10_code"       type="string"       indexed="true" stored="true" />
+  <field name="diagnosis_status" type="string"       indexed="true" stored="true" />
+  <field name="onset_date"       type="pdate"        indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Observation Fields                                                  -->
+  <!-- ================================================================== -->
+  <field name="observation_id"       type="plong"        indexed="true"  stored="true" />
+  <field name="observation_code"     type="string"       indexed="true"  stored="true" />
+  <field name="observation_name"     type="text_general" indexed="true"  stored="true" />
+  <field name="value_numeric"        type="pdouble"      indexed="true"  stored="true" />
+  <field name="value_text"           type="text_general" indexed="false" stored="true" />
+  <field name="units"                type="string"       indexed="false" stored="true" />
+  <field name="observation_datetime" type="pdate"        indexed="true"  stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Medication Fields                                                   -->
+  <!-- ================================================================== -->
+  <field name="medication_order_id"  type="plong"        indexed="true" stored="true" />
+  <field name="medication_name"      type="text_general" indexed="true" stored="true" />
+  <field name="prescription_status"  type="string"       indexed="true" stored="true" />
+
+  <!-- ================================================================== -->
+  <!-- Catch-all field for default search                                  -->
+  <!-- ================================================================== -->
+  <field name="_text_" type="text_general" indexed="true" stored="false" multiValued="true" />
+
+  <copyField source="condition_name"   dest="_text_" />
+  <copyField source="icd10_code"       dest="_text_" />
+  <copyField source="observation_name" dest="_text_" />
+  <copyField source="observation_code" dest="_text_" />
+  <copyField source="medication_name"  dest="_text_" />
+  <copyField source="encounter_type"   dest="_text_" />
+  <copyField source="facility_name"    dest="_text_" />
+
+</schema>

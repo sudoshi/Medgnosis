@@ -39,6 +39,14 @@ export const config = {
   // Redis
   redisUrl: optional('REDIS_URL', 'redis://localhost:6379'),
 
+  // Solr (full-text search acceleration)
+  solrEnabled: optionalBool('SOLR_ENABLED', false),
+  solrUrl: optional('SOLR_URL', 'http://localhost:8984/solr'),
+  solrSearchCore: optional('SOLR_SEARCH_CORE', 'search'),
+  solrClinicalCore: optional('SOLR_CLINICAL_CORE', 'clinical'),
+  solrAuthUser: optional('SOLR_AUTH_USER', 'medgnosis'),
+  solrAuthPassword: optional('SOLR_AUTH_PASSWORD', 'devsecret'),
+
   // Compliance gates — NEVER enable without BAA in place
   aiInsightsEnabled: optionalBool('AI_INSIGHTS_ENABLED', false),
   anthropicBaaSigned: optionalBool('ANTHROPIC_BAA_SIGNED', false),
