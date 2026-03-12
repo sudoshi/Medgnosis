@@ -1,6 +1,6 @@
 // =============================================================================
 // Medgnosis API — Dashboard routes  (Phase 10.1 — Clinician Morning View)
-// Population health stats + clinician-facing schedule, alerts, tasks
+// Population health stats from mv_dashboard_stats + live clinician queries
 // =============================================================================
 
 import type { FastifyInstance } from 'fastify';
@@ -12,92 +12,59 @@ function calcTrend(current: number, prior: number): number {
   return Math.round(((current - prior) / prior) * 100);
 }
 
+// Mat view row shape
+interface DashboardStats {
+  provider_id: number | null;
+  total_patients: number;
+  active_patients: number;
+  gaps_total: number;
+  gaps_open: number;
+  gaps_closed: number;
+  gaps_priority_high: number;
+  gaps_priority_medium: number;
+  gaps_priority_low: number;
+  gaps_opened_30d: number;
+  gaps_closed_30d: number;
+  encounters_30d: number;
+  encounters_prior_30d: number;
+  patients_new_30d: number;
+  patients_prior_30d: number;
+  risk_critical: number;
+  risk_high: number;
+  risk_moderate: number;
+  risk_low: number;
+  refreshed_at: string;
+}
+
 export default async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /dashboard — Aggregated dashboard data (pop-health + clinician)
   fastify.get('/', async (request, reply) => {
     const startedAt = process.hrtime.bigint();
-    // Provider scoping: all queries filtered to the logged-in provider's panel.
-    // Admin users (no provider_id in JWT) see the full population.
     const providerId = request.user.provider_id;
     const scoped = providerId !== undefined;
 
-    // Run all dashboard queries in parallel
+    // ── Fast path: pre-aggregated stats from mat view + live clinician queries ──
     const [
-      patientStats,
-      careGapStats,
-      riskDistribution,
-      gapPriorityResult,
-      encounterCountResult,
+      dashStats,
       recentEncounters,
       todaysEncounters,
       urgentAlerts,
       criticalAlertCount,
-      trendResult,
     ] = await Promise.all([
-      // Total and active patients — scoped to provider's PCP panel
-      sql<{ total: number; active: number }[]>`
-        SELECT
-          COUNT(*)::int AS total,
-          COUNT(*)::int AS active
-        FROM phm_edw.patient
-        WHERE active_ind = 'Y'
-          ${scoped ? sql`AND pcp_provider_id = ${providerId}` : sql``}
-      `,
-      // Care gap summary — scoped via patient PCP
-      sql<{ total: number; open: number; closed: number }[]>`
-        SELECT
-          COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE cg.gap_status = 'open')::int AS open,
-          COUNT(*) FILTER (WHERE cg.gap_status = 'closed')::int AS closed
-        FROM phm_edw.care_gap cg
-        ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = cg.patient_id` : sql``}
-        WHERE cg.active_ind = 'Y'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``}
-      `,
-      // Risk stratification from star schema — scoped by provider_key
-      sql<{ risk_level: string; count: number }[]>`
-        SELECT risk_tier AS risk_level, COUNT(*)::int AS count
-        FROM phm_star.fact_patient_composite
-        WHERE risk_tier IS NOT NULL
-          ${scoped ? sql`AND provider_key = (
-              SELECT provider_key FROM phm_star.dim_provider
-              WHERE provider_id = ${providerId} LIMIT 1
-            )` : sql``}
-        GROUP BY risk_tier
-        ORDER BY CASE risk_tier
-          WHEN 'critical' THEN 1 WHEN 'high' THEN 2
-          WHEN 'moderate' THEN 3 WHEN 'low' THEN 4 ELSE 5
-        END
+      // Single-row lookup from materialized view
+      sql<DashboardStats[]>`
+        SELECT *
+        FROM phm_star.mv_dashboard_stats
+        WHERE ${scoped ? sql`provider_id = ${providerId!}` : sql`provider_id IS NULL`}
+        LIMIT 1
       `.catch((err) => {
-        fastify.log.error({ err }, 'Dashboard: risk stratification query failed');
-        return [];
+        fastify.log.error({ err }, 'Dashboard: mv_dashboard_stats query failed');
+        return [] as DashboardStats[];
       }),
-      // Care gap priority breakdown — scoped via patient PCP
-      sql<{ high: number; medium: number; low: number }[]>`
-        SELECT
-          COUNT(*) FILTER (WHERE cg.gap_priority = 'high')::int AS high,
-          COUNT(*) FILTER (WHERE cg.gap_priority = 'medium')::int AS medium,
-          COUNT(*) FILTER (WHERE cg.gap_priority = 'low')::int AS low
-        FROM phm_edw.care_gap cg
-        ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = cg.patient_id` : sql``}
-        WHERE cg.gap_status = 'open' AND cg.active_ind = 'Y'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``}
-      `.catch((err) => {
-        fastify.log.error({ err }, 'Dashboard: care gap priority query failed');
-        return [{ high: 0, medium: 0, low: 0 }];
-      }),
-      // Encounter count (30-day) — scoped to patient panel
-      sql<{ value: number }[]>`
-        SELECT COUNT(*)::int AS value
-        FROM phm_edw.encounter e
-        ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = e.patient_id` : sql``}
-        WHERE e.active_ind = 'Y'
-          AND e.encounter_datetime >= NOW() - INTERVAL '30 days'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``}
-      `.catch(() => [{ value: 0 }]),
-      // Recent encounters (pop-health section) — scoped to patient panel
+
+      // Recent encounters (10 rows, fast with new index)
       sql`
         SELECT
           e.encounter_id AS id,
@@ -107,7 +74,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         FROM phm_edw.encounter e
         JOIN phm_edw.patient p ON p.patient_id = e.patient_id
         WHERE e.active_ind = 'Y'
-          ${scoped ? sql`AND p.pcp_provider_id = ${providerId}` : sql``}
+          ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
         ORDER BY e.encounter_datetime DESC
         LIMIT 10
       `.catch((err) => {
@@ -115,10 +82,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         return [];
       }),
 
-      // ── Clinician queries (Phase 10.1) ─────────────────────────────────
-
-      // Today's encounters (schedule) — scoped to provider's own appointments
-      // Range predicate (not ::date cast) so idx_encounter_datetime_active is usable
+      // Today's encounters (schedule) — small result set
       sql`
         SELECT
           e.encounter_id AS id,
@@ -135,7 +99,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         WHERE e.active_ind = 'Y'
           AND e.encounter_datetime >= CURRENT_DATE::timestamp
           AND e.encounter_datetime <  (CURRENT_DATE + 1)::timestamp
-          ${scoped ? sql`AND e.provider_id = ${providerId}` : sql``}
+          ${scoped ? sql`AND e.provider_id = ${providerId!}` : sql``}
         ORDER BY e.encounter_datetime ASC
         LIMIT 20
       `.catch((err) => {
@@ -143,7 +107,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         return [];
       }),
 
-      // Urgent unacknowledged alerts — scoped to provider's patients
+      // Urgent alerts — small table
       sql`
         SELECT
           ca.id,
@@ -160,7 +124,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         WHERE ca.acknowledged_at IS NULL
           AND ca.auto_resolved = FALSE
           AND ca.severity IN ('warning', 'critical')
-          ${scoped ? sql`AND (ca.patient_id IS NULL OR p.pcp_provider_id = ${providerId})` : sql``}
+          ${scoped ? sql`AND (ca.patient_id IS NULL OR p.pcp_provider_id = ${providerId!})` : sql``}
         ORDER BY
           CASE ca.severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
           ca.created_at DESC
@@ -170,7 +134,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         return [];
       }),
 
-      // Critical alert count — scoped to provider's patients
+      // Critical alert count — small table
       sql<{ count: number }[]>`
         SELECT COUNT(*)::int AS count
         FROM public.clinical_alerts ca
@@ -178,113 +142,67 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
         WHERE ca.acknowledged_at IS NULL
           AND ca.auto_resolved = FALSE
           AND ca.severity = 'critical'
-          ${scoped ? sql`AND (ca.patient_id IS NULL OR p.pcp_provider_id = ${providerId})` : sql``}
+          ${scoped ? sql`AND (ca.patient_id IS NULL OR p.pcp_provider_id = ${providerId!})` : sql``}
       `.catch(() => [{ count: 0 }]),
-
-      // ── Trend calculations (30-day rolling comparison) ──────────────
-      sql<{
-        patients_current: number; patients_prior: number;
-        encounters_current: number; encounters_prior: number;
-        gaps_opened_30d: number; gaps_closed_30d: number;
-      }[]>`
-        SELECT
-          (SELECT COUNT(*) FROM phm_edw.patient
-           WHERE active_ind = 'Y'
-             AND created_date >= NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND pcp_provider_id = ${providerId}` : sql``})::int
-            AS patients_current,
-          (SELECT COUNT(*) FROM phm_edw.patient
-           WHERE active_ind = 'Y'
-             AND created_date >= NOW() - INTERVAL '60 days'
-             AND created_date < NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND pcp_provider_id = ${providerId}` : sql``})::int
-            AS patients_prior,
-          (SELECT COUNT(*) FROM phm_edw.encounter e
-             ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = e.patient_id` : sql``}
-           WHERE e.active_ind = 'Y'
-             AND e.encounter_datetime >= NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``})::int
-            AS encounters_current,
-          (SELECT COUNT(*) FROM phm_edw.encounter e
-             ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = e.patient_id` : sql``}
-           WHERE e.active_ind = 'Y'
-             AND e.encounter_datetime >= NOW() - INTERVAL '60 days'
-             AND e.encounter_datetime < NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``})::int
-            AS encounters_prior,
-          (SELECT COUNT(*) FROM phm_edw.care_gap cg
-             ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = cg.patient_id` : sql``}
-           WHERE cg.active_ind = 'Y'
-             AND cg.identified_date >= NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``})::int
-            AS gaps_opened_30d,
-          (SELECT COUNT(*) FROM phm_edw.care_gap cg
-             ${scoped ? sql`JOIN phm_edw.patient p ON p.patient_id = cg.patient_id` : sql``}
-           WHERE cg.active_ind = 'Y'
-             AND cg.gap_status = 'closed'
-             AND cg.resolved_date >= NOW() - INTERVAL '30 days'
-             ${scoped ? sql`AND p.pcp_provider_id = ${providerId} AND p.active_ind = 'Y'` : sql``})::int
-            AS gaps_closed_30d
-      `.catch((err) => {
-        fastify.log.error({ err }, 'Dashboard: trend query failed');
-        return [{ patients_current: 0, patients_prior: 0, encounters_current: 0, encounters_prior: 0, gaps_opened_30d: 0, gaps_closed_30d: 0 }];
-      }),
     ]);
 
-    const stats = patientStats[0] ?? { total: 0, active: 0 };
-    const gaps = careGapStats[0] ?? { total: 0, open: 0, closed: 0 };
+    // Extract mat view row (fallback to zeros if missing)
+    const mv: DashboardStats = dashStats[0] ?? {
+      provider_id: providerId ?? null,
+      total_patients: 0, active_patients: 0,
+      gaps_total: 0, gaps_open: 0, gaps_closed: 0,
+      gaps_priority_high: 0, gaps_priority_medium: 0, gaps_priority_low: 0,
+      gaps_opened_30d: 0, gaps_closed_30d: 0,
+      encounters_30d: 0, encounters_prior_30d: 0,
+      patients_new_30d: 0, patients_prior_30d: 0,
+      risk_critical: 0, risk_high: 0, risk_moderate: 0, risk_low: 0,
+      refreshed_at: new Date().toISOString(),
+    };
+
     const critCount = (criticalAlertCount as { count: number }[])[0]?.count ?? 0;
 
-    // Risk stratification — derive high-risk stats
-    const riskDist = riskDistribution as { risk_level: string; count: number }[];
-    const highRiskCount = riskDist
-      .filter((r) => r.risk_level === 'high' || r.risk_level === 'critical')
-      .reduce((sum, r) => sum + r.count, 0);
-    const highRiskPct = stats.total > 0
-      ? Math.round((highRiskCount / stats.total) * 100)
+    // Risk stratification from mat view
+    const riskDist: { risk_level: string; count: number }[] = [];
+    if (mv.risk_critical > 0) riskDist.push({ risk_level: 'critical', count: mv.risk_critical });
+    if (mv.risk_high > 0) riskDist.push({ risk_level: 'high', count: mv.risk_high });
+    if (mv.risk_moderate > 0) riskDist.push({ risk_level: 'moderate', count: mv.risk_moderate });
+    if (mv.risk_low > 0) riskDist.push({ risk_level: 'low', count: mv.risk_low });
+
+    const highRiskCount = mv.risk_high + mv.risk_critical;
+    const highRiskPct = mv.total_patients > 0
+      ? Math.round((highRiskCount / mv.total_patients) * 100)
       : 0;
 
-    // Care gap priority breakdown
-    const gapPriority = (gapPriorityResult as { high: number; medium: number; low: number }[])[0]
-      ?? { high: 0, medium: 0, low: 0 };
-
-    // Encounter count (30-day)
-    const encCount = (encounterCountResult as { value: number }[])[0]?.value ?? 0;
-
-    // Trend calculations
-    const trends = (trendResult as {
-      patients_current: number; patients_prior: number;
-      encounters_current: number; encounters_prior: number;
-      gaps_opened_30d: number; gaps_closed_30d: number;
-    }[])[0] ?? { patients_current: 0, patients_prior: 0, encounters_current: 0, encounters_prior: 0, gaps_opened_30d: 0, gaps_closed_30d: 0 };
-
-    const patientTrend = calcTrend(trends.patients_current, trends.patients_prior);
-    const encounterTrend = calcTrend(trends.encounters_current, trends.encounters_prior);
-    // Care gap trend: prior_open ≈ current_open + closed_in_30d - opened_in_30d
-    const priorOpen = gaps.open + trends.gaps_closed_30d - trends.gaps_opened_30d;
-    const careGapTrend = calcTrend(gaps.open, Math.max(priorOpen, 0));
+    // Trend calculations from mat view
+    const patientTrend = calcTrend(mv.patients_new_30d, mv.patients_prior_30d);
+    const encounterTrend = calcTrend(mv.encounters_30d, mv.encounters_prior_30d);
+    const priorOpen = mv.gaps_open + mv.gaps_closed_30d - mv.gaps_opened_30d;
+    const careGapTrend = calcTrend(mv.gaps_open, Math.max(priorOpen, 0));
 
     const response = {
       success: true,
       data: {
         stats: {
-          total_patients: { value: stats.total, trend: patientTrend },
-          active_patients: stats.active,
-          care_gaps: { value: gaps.open, trend: careGapTrend },
+          total_patients: { value: mv.total_patients, trend: patientTrend },
+          active_patients: mv.active_patients,
+          care_gaps: { value: mv.gaps_open, trend: careGapTrend },
           risk_score: { high_risk_count: highRiskCount, high_risk_percentage: highRiskPct, trend: 0 },
-          encounters: { value: encCount, trend: encounterTrend },
+          encounters: { value: mv.encounters_30d, trend: encounterTrend },
         },
         analytics: {
           care_gap_summary: {
-            total: gaps.total,
-            by_priority: gapPriority,
+            total: mv.gaps_total,
+            by_priority: {
+              high: mv.gaps_priority_high,
+              medium: mv.gaps_priority_medium,
+              low: mv.gaps_priority_low,
+            },
           },
           risk_stratification: {
             distribution: riskDist,
           },
           recent_encounters: recentEncounters,
         },
-        // ── Clinician data ───────────────────────────────────────────────
         clinician: {
           todays_schedule: todaysEncounters,
           urgent_alerts: urgentAlerts,

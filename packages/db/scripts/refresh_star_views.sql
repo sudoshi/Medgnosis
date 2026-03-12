@@ -18,3 +18,4 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY phm_star.mv_bundle_compliance_by_provider
 REFRESH MATERIALIZED VIEW CONCURRENTLY phm_star.mv_population_overview;
 REFRESH MATERIALIZED VIEW CONCURRENTLY phm_star.mv_care_gap_worklist;
 REFRESH MATERIALIZED VIEW CONCURRENTLY phm_star.mv_patient_dashboard;
+REFRESH MATERIALIZED VIEW CONCURRENTLY phm_star.mv_dashboard_stats;
