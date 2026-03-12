@@ -39,6 +39,7 @@
   - [Session 14 — Performance: Missing EDW Indexes + Query Optimizations](#session-14--performance-missing-edw-indexes--query-optimizations-feb-26-2026)
   - [Session 15 — Provider Scoping: JWT + All Query Endpoints](#session-15--provider-scoping-jwt--all-query-endpoints-feb-26-2026)
   - [Session 16 — Mock Schedule: 18 Real Patients with Past-Appointment Graying](#session-16--mock-schedule-18-real-patients-with-past-appointment-graying-feb-26-2026)
+  - [Session 17 — Solr Query Acceleration + Dashboard & Index Optimization](#session-17--solr-query-acceleration--dashboard--index-optimization-mar-12-2026)
 - [Architecture Reference](#architecture-reference)
 
 ---
@@ -1753,6 +1754,65 @@ Today's Schedule panel was showing 0 visits because no real `encounter` rows exi
 ### To Activate Real Data
 
 Once today's encounter rows exist (via ETL or seed), set `USE_MOCK_SCHEDULE = false` at line 298 of `DashboardPage.tsx`. The live `clinician.todays_schedule` from the dashboard API will take over.
+
+---
+
+## Session 17 — Solr Query Acceleration + Dashboard & Index Optimization (Mar 12, 2026)
+
+### Context
+
+Application load times were unacceptably slow across the platform — global search 343ms, care gaps 134ms, dashboard 5s, patient encounters 673ms, conditions 599ms. With ~1M patients, 28M encounters, and 42M diagnoses, PostgreSQL trigram queries and unoptimized aggregations couldn't keep up.
+
+### Implementation
+
+**Apache Solr 9.7 Integration** (53 files, 7,189 insertions):
+
+- **Infrastructure**: Solr 9.7 added to `docker-compose.demo.yml` on port 8984 (8983 reserved for Parthenon). Two cores: `search` (patients + care gaps) and `clinical` (encounters, conditions, observations, medications). Custom `managed-schema.xml`, `solrconfig.xml`, medical `synonyms.txt` per core.
+- **`@medgnosis/solr` package**: `SolrClient` (undici HTTP, Basic auth), search/clinical query builders (edismax, provider scoping via `fq`), 6 cursor-paginated batch indexers, full-reindex script with PG advisory lock + ETL logging, CDC listener (PG LISTEN/NOTIFY + Redis overflow queue + batched delta reindex), benchmark runner with percentile stats.
+- **Migration 029**: CDC NOTIFY triggers on 6 tables + `updated_at` columns.
+- **API integration**: Fastify Solr plugin with `SOLR_ENABLED` feature flag (default false), graceful degradation to PG, `X-Query-Source` response header. Routes modified: search, patients, care-gaps.
+- **Search core indexed**: 1,005,791 patients + 26,967 care gaps.
+
+**Dashboard Optimization** (migration 030):
+
+- `phm_star.mv_dashboard_stats` materialized view — pre-aggregates per provider: patient/encounter/care gap counts, priority breakdown, risk distribution, 30d trends. One NULL-provider row for admin.
+- 3 composite partial indexes: `idx_encounter_active_datetime_patient`, `idx_patient_pcp_active`, `idx_care_gap_patient_status`.
+- Dashboard route rewritten from 10 parallel PG queries to single mat view lookup + 4 fast clinician queries.
+
+**Invalid Index Discovery & Repair**:
+
+- Found 4 indexes marked `indisvalid = false` on `encounter`, `condition_diagnosis`, `observation`, `medication_order` (patient_id indexes). PG planner was falling back to seq scans on 28M+ row tables.
+- Fixed via `REINDEX INDEX CONCURRENTLY` — zero code changes required.
+
+### Benchmark Results (20 samples each, p50)
+
+| Endpoint | PG Baseline | Optimized | Speedup |
+|----------|------------|-----------|---------|
+| Patient encounters | 673ms | 0.6ms | **1,124x** |
+| Patient conditions | 599ms | 1.1ms | **530x** |
+| Global search | 343ms | 1.2ms | **286x** |
+| Dashboard | 4,985ms | 26ms | **194x** |
+| Care gaps search | 134ms | 1.2ms | **116x** |
+| Patient list search | 5.4ms | 1.0ms | **5x** |
+
+### Commits
+
+- `07e00c9` feat: integrate Apache Solr 9.7 for sub-5ms search acceleration
+- `b87d60f` perf: optimize dashboard from 5s to 26ms via materialized view
+- `dfc9277` perf: fix invalid indexes — encounters 673ms→0.6ms, conditions 599ms→1.1ms
+
+### Files Changed
+
+| Area | Files |
+|------|-------|
+| New package | `packages/solr/` (client, query builders, indexers, CDC, benchmark — 20 files) |
+| Solr configs | `solr/search/conf/`, `solr/clinical/conf/` (7 files) |
+| Migrations | `029_solr_cdc_triggers.sql`, `030_dashboard_perf.sql` |
+| API routes | `search/`, `patients/`, `care-gaps/`, `dashboard/`, `admin/` |
+| API plugins | `plugins/solr.ts` |
+| API config | `config.ts`, `app.ts`, `tsconfig.json`, `package.json` |
+| Infrastructure | `docker-compose.demo.yml`, `turbo.json` |
+| Docs | `DEVLOG.md`, `DESIGNLOG.md`, spec + plan |
 
 ---
 
