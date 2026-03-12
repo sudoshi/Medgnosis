@@ -1,0 +1,165 @@
+# =============================================================================
+# Medgnosis — Production Docker Compose
+# Replaces systemd-based deployment. PostgreSQL stays on host.
+# Usage: docker compose up --build -d
+# =============================================================================
+
+name: medgnosis
+
+services:
+  # ── nginx: reverse proxy + SPA static files ──
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    ports:
+      - "${NGINX_PORT:-3081}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/nginx-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - medgnosis
+
+  # ── api: Fastify REST API ──
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    env_file:
+      - .env
+    environment:
+      # Docker-internal URLs (override any .env defaults for container networking)
+      REDIS_URL: redis://redis:6379
+      SOLR_URL: http://solr:8983/solr
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      solr:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2"
+    networks:
+      - medgnosis
+
+  # ── worker: BullMQ background job processor ──
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ["node", "apps/api/dist/worker.js"]
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+    networks:
+      - medgnosis
+
+  # ── redis: cache, BullMQ queue, WebSocket pub/sub ──
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+    networks:
+      - medgnosis
+
+  # ── solr: search + clinical cores ──
+  solr:
+    image: solr:9.7-slim
+    command: >
+      bash -c "
+        precreate-core search /opt/solr/server/solr/configsets/search;
+        precreate-core clinical /opt/solr/server/solr/configsets/clinical;
+        exec solr-foreground
+      "
+    ports:
+      - "${SOLR_PORT:-8984}:8983"
+    environment:
+      SOLR_JAVA_MEM: "-Xms2g -Xmx4g"
+    volumes:
+      - solr_data:/var/solr
+      - ./solr/search/conf:/opt/solr/server/solr/configsets/search/conf:ro
+      - ./solr/clinical/conf:/opt/solr/server/solr/configsets/clinical/conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8983/solr/admin/info/system"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+    networks:
+      - medgnosis
+
+  # ── mailpit: dev email capture (replaces MailHog) ──
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+    profiles:
+      - dev
+    networks:
+      - medgnosis
+
+volumes:
+  redis_data:
+  solr_data:
+
+networks:
+  medgnosis:
+    driver: bridge

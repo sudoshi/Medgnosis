@@ -1,0 +1,51 @@
+# Dependencies (rebuilt in container)
+node_modules/
+.npm
+
+# Build artifacts (rebuilt in container)
+dist/
+.turbo
+.next
+build/
+out/
+coverage/
+
+# Git
+.git
+.gitignore
+
+# Environment (secrets — never bake into image)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# Legacy / data
+archive/
+backend/
+*.log
+
+# SQL data dumps (but keep migration/seed SQL files via negation)
+*.sql
+!packages/db/migrations/*.sql
+!packages/db/seeds/*.sql
+
+# Docker (prevent recursive context)
+docker-compose*.yml
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Installer (not needed in app images)
+installer/
+
+# Documentation
+docs/
+README.md
+CLAUDE.md

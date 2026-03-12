@@ -51,3 +51,8 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+.env.docker
+
+# Installer
+installer/config.json
+installer/output/
