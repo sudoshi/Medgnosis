@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-03-12T16:23:46.786Z",
+  "mode": "solr",
+  "results": [
+    {
+      "endpoint": "Global search",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 1.2,
+      "p95Ms": 2.29,
+      "p99Ms": 2.93,
+      "meanMs": 1.33,
+      "minMs": 0.87,
+      "maxMs": 3.09
+    },
+    {
+      "endpoint": "Patient list search",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 0.99,
+      "p95Ms": 1.47,
+      "p99Ms": 1.8,
+      "meanMs": 1.08,
+      "minMs": 0.76,
+      "maxMs": 1.88
+    },
+    {
+      "endpoint": "Care gaps search",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 1.16,
+      "p95Ms": 1.66,
+      "p99Ms": 1.74,
+      "meanMs": 1.2,
+      "minMs": 0.8,
+      "maxMs": 1.76
+    },
+    {
+      "endpoint": "Dashboard",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 25.69,
+      "p95Ms": 31.13,
+      "p99Ms": 33.15,
+      "meanMs": 26.32,
+      "minMs": 22,
+      "maxMs": 33.65
+    },
+    {
+      "endpoint": "Patient conditions",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 1.13,
+      "p95Ms": 1.65,
+      "p99Ms": 1.86,
+      "meanMs": 1.19,
+      "minMs": 0.93,
+      "maxMs": 1.91
+    },
+    {
+      "endpoint": "Patient encounters",
+      "method": "GET",
+      "source": "solr",
+      "samples": 20,
+      "p50Ms": 0.57,
+      "p95Ms": 0.97,
+      "p99Ms": 1.03,
+      "meanMs": 0.6,
+      "minMs": 0.46,
+      "maxMs": 1.04
+    }
+  ]
+}
