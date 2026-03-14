@@ -434,7 +434,7 @@ export default async function adminRoutes(app: FastifyInstance) {
         SELECT COUNT(*) AS count FROM phm_edw.encounter
         WHERE encounter_datetime >= NOW() - INTERVAL '30 days'
       `,
-      sql`SELECT COUNT(DISTINCT measure_id) AS count FROM phm_star.fact_measure_result`,
+      sql`SELECT COUNT(DISTINCT measure_key) AS count FROM phm_star.fact_measure_result`,
     ]);
 
     return {
