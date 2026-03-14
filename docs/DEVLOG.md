@@ -1816,6 +1816,69 @@ Application load times were unacceptably slow across the platform — global sea
 
 ---
 
+## Session 18 — Measure Calculator v2: Star Schema Aggregation (Mar 13, 2026)
+
+### Context
+
+The original eCQM measure calculator loaded 45 CMS SQL files from `archive/backend/database/Measures/` and executed them via `sql.unsafe()` against the raw EDW. On March 8, the `medgnosis-worker.service` systemd unit triggered a nightly batch that catastrophically failed: most SQL files referenced non-existent CTEs/tables, CMS347v7 ran for ~20 minutes exhausting PostgreSQL connections, no circuit breaker existed (it restarted the batch after all 45 failed), and it ignored SIGTERM (requiring SIGKILL after 90s). The service was masked. `fact_measure_result` had 0 rows — it was never successfully populated.
+
+### Solution
+
+The star schema ETL (migration 014) already evaluates every patient against every bundle measure. `fact_patient_bundle_detail` contains 26,967 rows across 202 measures and 992 patients, with `gap_status` encoding eCQM population logic: `open` → denominator, `closed` → numerator, `excluded` → exclusion. A single transactional aggregation query replaces all 45 broken SQL files.
+
+### Implementation
+
+**`measureCalculatorV2.ts`** (new, replaces `measureEngine.ts`):
+- `refreshMeasureResults()` — `sql.begin()` wrapping `TRUNCATE + INSERT ... SELECT` from `fact_patient_bundle_detail`. `SET LOCAL statement_timeout = '30s'` scoped to transaction (no pool leak). `LOWER(gap_status)` for case safety. Returns `{ rowCount, durationMs }`.
+- `getMeasureSummary()` — per-measure performance rates via `fact_measure_result` joined to `dim_measure`.
+- Sub-second execution (26,967 rows), atomic (failed INSERT rolls back TRUNCATE), idempotent.
+
+**`measure-calculator.ts`** (rewritten):
+- Simplified BullMQ worker calling `refreshMeasureResults()` instead of iterating 45 SQL files.
+- `attempts: 2` with fixed 5-min backoff (was exponential 30s). SIGTERM handled by parent `worker.ts`.
+
+**`routes/admin/index.ts`** (extended):
+- `POST /admin/refresh-measures` — on-demand measure refresh with audit logging.
+- `POST /admin/refresh-mat-views` — now also refreshes `fact_measure_result` after mat views.
+
+**Bugfixes discovered during review:**
+- `routes/measures/index.ts:63` — `WHERE measure_key = ${id}` used `measure_id` (91) as `measure_key` (586), always returning 0 rows. Fixed: JOIN through `dim_measure` to resolve correctly.
+- `routes/admin/index.ts:396` — `COUNT(DISTINCT measure_id)` referenced non-existent column on `fact_measure_result` (has `measure_key`). Latent bug (table was empty). Fixed.
+
+**Docker:** Added explicit `container_name` to all 5 services in `docker-compose.yml` to remove `-1` suffix.
+
+### Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| `fact_measure_result` rows | 0 | **26,967** |
+| Denominator (open+closed) | — | 24,278 |
+| Numerator (closed/met) | — | 6,697 |
+| Excluded | — | 2,689 |
+| Execution time | ~20 min (crashed) | **< 1 second** |
+| SQL files executed | 45 (most broken) | 1 query |
+| Connection exhaustion risk | Critical | None |
+
+### Commits
+
+- `2f6b9e1` refactor: replace broken eCQM SQL engine with star schema aggregation
+- `8e63937` feat: add POST /admin/refresh-measures + extend mat-views to refresh measures
+- `d21fb69` fix: correct measure_key column references in measures + admin routes
+
+### Files Changed
+
+| Area | Files |
+|------|-------|
+| New service | `apps/api/src/services/measureCalculatorV2.ts` |
+| Deleted | `apps/api/src/services/measureEngine.ts` |
+| Worker | `apps/api/src/workers/measure-calculator.ts` |
+| Admin routes | `apps/api/src/routes/admin/index.ts` |
+| Measures route | `apps/api/src/routes/measures/index.ts` |
+| Docker | `docker-compose.yml` |
+| Docs | `DEVLOG.md`, `DESIGNLOG.md`, spec + plan |
+
+---
+
 ## Architecture Reference
 
 ### Monorepo Structure

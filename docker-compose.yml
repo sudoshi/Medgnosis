@@ -9,6 +9,7 @@ name: medgnosis
 services:
   # ── nginx: reverse proxy + SPA static files ──
   nginx:
+    container_name: medgnosis-nginx
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
@@ -34,6 +35,7 @@ services:
 
   # ── api: Fastify REST API ──
   api:
+    container_name: medgnosis-api
     build:
       context: .
       dockerfile: docker/api/Dockerfile
@@ -67,6 +69,7 @@ services:
 
   # ── worker: BullMQ background job processor ──
   worker:
+    container_name: medgnosis-worker
     build:
       context: .
       dockerfile: docker/api/Dockerfile
@@ -91,6 +94,7 @@ services:
 
   # ── redis: cache, BullMQ queue, WebSocket pub/sub ──
   redis:
+    container_name: medgnosis-redis
     image: redis:7-alpine
     command: redis-server --appendonly yes
     ports:
@@ -114,6 +118,7 @@ services:
 
   # ── solr: search + clinical cores ──
   solr:
+    container_name: medgnosis-solr
     image: solr:9.7-slim
     command: >
       bash -c "
