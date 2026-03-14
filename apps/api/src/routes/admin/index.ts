@@ -16,6 +16,7 @@ import {
   generateDeidentifiedCohort,
 } from '../../services/omopExport.js';
 import { sql } from '@medgnosis/db';
+import { refreshMeasureResults } from '../../services/measureCalculatorV2.js';
 import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
 import { config } from '../../config.js';
 
@@ -377,10 +378,50 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
 
+    // Also refresh measure results after mat views
+    try {
+      await refreshMeasureResults();
+      results.push({ view: 'fact_measure_result', status: 'ok' });
+    } catch (err) {
+      results.push({ view: 'fact_measure_result', status: 'error', error: String(err) });
+    }
+
     const allOk = results.every((r) => r.status === 'ok');
     return reply
       .status(allOk ? 200 : 207)
       .send({ success: allOk, data: { results } });
+  });
+
+  // ---- Refresh Measure Results ----
+
+  app.post('/refresh-measures', async (req, reply) => {
+    try {
+      const result = await refreshMeasureResults();
+
+      await sql`
+        INSERT INTO public.audit_log (user_id, action, resource_type, details)
+        VALUES (
+          ${req.user.sub}::UUID,
+          'measure_refresh',
+          'measure_result',
+          ${JSON.stringify({ rowCount: result.rowCount, durationMs: result.durationMs })}::jsonb
+        )
+      `;
+
+      return reply.send({
+        success: true,
+        data: {
+          rows_refreshed: result.rowCount,
+          duration_ms: result.durationMs,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({
+        success: false,
+        error: { message: `Measure refresh failed: ${msg}` },
+      });
+    }
   });
 
   // ---- Analytics Overview (legacy endpoint — kept for backwards compatibility) ----
