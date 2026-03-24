@@ -1,5 +1,11 @@
 # Medgnosis
 
+<img width="5120" height="2674" alt="image" src="https://github.com/user-attachments/assets/bb1a6e4b-bf4f-4498-8657-0b26bff374d2" />
+<img width="5120" height="2674" alt="image" src="https://github.com/user-attachments/assets/bd6e7a06-07a9-4e6c-916d-cfba3f7d7222" />
+<img width="5120" height="2674" alt="image" src="https://github.com/user-attachments/assets/5aba121f-200a-403b-989b-d4e728080185" />
+<img width="5120" height="2674" alt="image" src="https://github.com/user-attachments/assets/c788d952-c10a-4707-90cb-86a8a31e632e" />
+<img width="5120" height="2674" alt="image" src="https://github.com/user-attachments/assets/6f8820dc-62db-4843-8f47-18784c1af14a" />
+
 Population health management platform for healthcare organizations. Tracks patient outcomes, closes care gaps, calculates eCQMs, and supports value-based care through risk stratification, cohort analysis, and quality reporting.
 
 Built as a TypeScript monorepo: **Fastify API + Vite/React SPA + PostgreSQL + Redis**.
