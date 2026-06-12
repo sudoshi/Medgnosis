@@ -5,7 +5,7 @@
 
 import { Worker, Queue } from 'bullmq';
 import { connection } from './rules-engine.js';
-import { refreshMeasureResults } from '../services/measureCalculatorV2.js';
+import { getMeasureEvaluator } from '../services/measureEvaluator.js';
 
 export const MEASURE_QUEUE_NAME = 'medgnosis-measure-calc';
 
@@ -27,7 +27,9 @@ async function processMeasureJob(job: { data: MeasureJobData }): Promise<void> {
   const { triggerType } = job.data;
   console.info(`[measure-calc] ${triggerType} refresh starting...`);
 
-  const result = await refreshMeasureResults();
+  const evaluator = getMeasureEvaluator();
+  console.info(`[measure-calc] evaluator: ${evaluator.kind}`);
+  const result = await evaluator.refresh();
   console.info(
     `[measure-calc] ${triggerType} refresh complete: ${result.rowCount} rows in ${result.durationMs}ms`,
   );

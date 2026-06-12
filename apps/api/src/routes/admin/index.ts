@@ -16,7 +16,7 @@ import {
   generateDeidentifiedCohort,
 } from '../../services/omopExport.js';
 import { sql } from '@medgnosis/db';
-import { refreshMeasureResults } from '../../services/measureCalculatorV2.js';
+import { getMeasureEvaluator } from '../../services/measureEvaluator.js';
 import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
 import { config } from '../../config.js';
 
@@ -380,7 +380,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     // Also refresh measure results after mat views
     try {
-      await refreshMeasureResults();
+      await getMeasureEvaluator().refresh();
       results.push({ view: 'fact_measure_result', status: 'ok' });
     } catch (err) {
       results.push({ view: 'fact_measure_result', status: 'error', error: String(err) });
@@ -396,7 +396,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.post('/refresh-measures', async (req, reply) => {
     try {
-      const result = await refreshMeasureResults();
+      const result = await getMeasureEvaluator().refresh();
 
       await sql`
         INSERT INTO public.audit_log (user_id, action, resource_type, details)
