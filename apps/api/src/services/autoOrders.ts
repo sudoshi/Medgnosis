@@ -89,7 +89,7 @@ export async function generateForEnrollments(): Promise<GenerateResult> {
       VALUES (
         ${item.patient_id}, ${item.item_type}, ${item.item_name},
         ${item.loinc_code}, ${item.cpt_code}, 'routine',
-        NOW(), (CURRENT_DATE + ${FUTURE_DATE_DAYS})::date, 'Future', 'protocol'
+        NOW(), (CURRENT_DATE + ${FUTURE_DATE_DAYS}::int), 'Future', 'protocol'
       )
     `;
     generated += 1;
