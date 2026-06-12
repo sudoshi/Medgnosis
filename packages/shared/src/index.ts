@@ -47,6 +47,8 @@ export {
   protocolEnrollSchema,
   ampDispositionSchema,
   superNoteFinalizeSchema,
+  cohortCreateSchema,
+  cohortMessageSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -69,4 +71,6 @@ export type {
   ProtocolEnrollRequest,
   AmpDispositionRequest,
   SuperNoteFinalizeRequest,
+  CohortCreateRequest,
+  CohortMessageRequest,
 } from './schemas/index.js';

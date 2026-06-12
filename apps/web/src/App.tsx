@@ -13,6 +13,8 @@ import { CloseTheLoopPage } from './pages/CloseTheLoopPage.js';
 import { AnticipatoryPage } from './pages/AnticipatoryPage.js';
 import { SurveillancePage } from './pages/SurveillancePage.js';
 import { SuperNotePage } from './pages/SuperNotePage.js';
+import { DataQualityPage } from './pages/DataQualityPage.js';
+import { CohortManagerPage } from './pages/CohortManagerPage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AdminPage } from './pages/AdminPage.js';
@@ -60,6 +62,8 @@ export function App() {
             <Route path="/close-the-loop" element={<CloseTheLoopPage />} />
             <Route path="/anticipatory" element={<AnticipatoryPage />} />
             <Route path="/surveillance" element={<SurveillancePage />} />
+            <Route path="/data-quality" element={<DataQualityPage />} />
+            <Route path="/cohorts" element={<CohortManagerPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
