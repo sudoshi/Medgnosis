@@ -172,6 +172,12 @@ export const finderDismissSchema = z.object({
   reason: z.enum(['does_not_have', 'snooze']),
 });
 
+// Close the Loop — resolve an open loop with a documented disposition
+export const loopResolveSchema = z.object({
+  closure_type: z.enum(['appropriate_care', 'refused', 'unable_to_reach', 'reviewed']),
+  note: z.string().max(1000).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
@@ -192,3 +198,4 @@ export type PlaceOrderRequest = z.infer<typeof placeOrderSchema>;
 export type PlaceOrderBatchRequest = z.infer<typeof placeOrderBatchSchema>;
 export type BulkProblemActionRequest = z.infer<typeof bulkProblemActionSchema>;
 export type FinderDismissRequest = z.infer<typeof finderDismissSchema>;
+export type LoopResolveRequest = z.infer<typeof loopResolveSchema>;

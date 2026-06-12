@@ -43,6 +43,7 @@ export {
   placeOrderBatchSchema,
   bulkProblemActionSchema,
   finderDismissSchema,
+  loopResolveSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -61,4 +62,5 @@ export type {
   PlaceOrderBatchRequest,
   BulkProblemActionRequest,
   FinderDismissRequest,
+  LoopResolveRequest,
 } from './schemas/index.js';
