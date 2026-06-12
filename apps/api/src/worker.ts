@@ -11,6 +11,7 @@ import { startNightlyScheduler } from './workers/nightly-scheduler.js';
 import { startPopulationFinderWorker } from './workers/population-finder.js';
 import { startCloseTheLoopWorker, startRiskModelWorker } from './workers/close-the-loop.js';
 import { startAutoOrdersWorker, startAmpWorker, startMtmWorker } from './workers/anticipatory.js';
+import { startSurveillanceWorker } from './workers/surveillance.js';
 
 console.info('[worker] Starting Medgnosis background workers...');
 
@@ -24,6 +25,7 @@ const workers = [
   startAutoOrdersWorker(),
   startAmpWorker(),
   startMtmWorker(),
+  startSurveillanceWorker(),
   startNightlyScheduler(),
 ];
 

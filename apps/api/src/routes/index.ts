@@ -27,6 +27,8 @@ import riskModelRoutes from './risk-models/index.js';
 import autoOrdersRoutes from './auto-orders/index.js';
 import ampRoutes from './amp/index.js';
 import mtmRoutes from './mtm/index.js';
+import surveillanceRoutes from './surveillance/index.js';
+import glucometricsRoutes from './glucometrics/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -59,6 +61,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(autoOrdersRoutes, { prefix: '/auto-orders' });
       await api.register(ampRoutes, { prefix: '/amp' });
       await api.register(mtmRoutes, { prefix: '/mtm' });
+      await api.register(surveillanceRoutes, { prefix: '/surveillance' });
+      await api.register(glucometricsRoutes, { prefix: '/glucometrics' });
     },
     { prefix: API_PREFIX },
   );

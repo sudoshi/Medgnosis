@@ -14,6 +14,7 @@ import {
   ListChecks,
   ScanSearch,
   CalendarClock,
+  Activity,
   Bell,
   Settings,
   LogOut,
@@ -41,6 +42,7 @@ const mainNav = [
   { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
   { to: '/close-the-loop', icon: ShieldCheck, label: 'Loops',     end: true },
   { to: '/anticipatory', icon: CalendarClock, label: 'Anticipatory', end: true },
+  { to: '/surveillance', icon: Activity,      label: 'Surveillance', end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
 
