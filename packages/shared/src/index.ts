@@ -44,6 +44,8 @@ export {
   bulkProblemActionSchema,
   finderDismissSchema,
   loopResolveSchema,
+  protocolEnrollSchema,
+  ampDispositionSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -63,4 +65,6 @@ export type {
   BulkProblemActionRequest,
   FinderDismissRequest,
   LoopResolveRequest,
+  ProtocolEnrollRequest,
+  AmpDispositionRequest,
 } from './schemas/index.js';
