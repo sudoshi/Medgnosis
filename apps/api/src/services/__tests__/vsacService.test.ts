@@ -53,9 +53,8 @@ describe('listValueSets', () => {
 });
 
 describe('getValueSetCodes', () => {
-  // NOTE: call WITHOUT codeSystem here. With it, the nested sql`` fragment
-  // fires an extra mock call that consumes mockResolvedValueOnce before the
-  // outer query runs — the mock can't distinguish fragments from queries.
+  // First test asserts the full return path (no filter); the next test
+  // exercises the code-system filter branch.
   it('returns the codes for an OID', async () => {
     mockSql.mockResolvedValueOnce([
       { code: '44054006', description: 'Diabetes mellitus type 2', code_system: 'SNOMEDCT' },
