@@ -38,6 +38,7 @@ const mainNav = [
   { to: '/bundles',   icon: Layers,           label: 'Bundles',   end: true },
   { to: '/care-lists',icon: ListChecks,       label: 'Care Lists',end: true },
   { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
+  { to: '/close-the-loop', icon: ShieldCheck, label: 'Loops',     end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
 
