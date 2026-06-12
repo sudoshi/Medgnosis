@@ -12,6 +12,7 @@ import {
   BarChart3,
   Layers,
   ListChecks,
+  ScanSearch,
   Bell,
   Settings,
   LogOut,
@@ -36,6 +37,7 @@ const mainNav = [
   { to: '/measures',  icon: BarChart3,        label: 'Measures',  end: true },
   { to: '/bundles',   icon: Layers,           label: 'Bundles',   end: true },
   { to: '/care-lists',icon: ListChecks,       label: 'Care Lists',end: true },
+  { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
 
