@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { api } from '../services/api.js';
 import { PatientBanner } from '../components/patient/PatientBanner.js';
 import { TabBar, type Tab } from '../components/patient/TabBar.js';
@@ -156,6 +156,14 @@ export function PatientDetailPage() {
 
       {/* Patient Banner */}
       <PatientBanner patient={patient} onNewNote={handleNewNote} />
+
+      {/* SuperNote — self-assembling, self-coding note */}
+      <Link
+        to={`/patients/${patientId}/supernote`}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-btn text-xs font-ui border border-teal/40 text-teal hover:bg-teal/10 transition-colors"
+      >
+        <FileText size={13} strokeWidth={1.5} aria-hidden="true" /> Generate SuperNote
+      </Link>
 
       {/* Tab Bar */}
       <TabBar

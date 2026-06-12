@@ -12,6 +12,7 @@ import { PopulationFinderPage } from './pages/PopulationFinderPage.js';
 import { CloseTheLoopPage } from './pages/CloseTheLoopPage.js';
 import { AnticipatoryPage } from './pages/AnticipatoryPage.js';
 import { SurveillancePage } from './pages/SurveillancePage.js';
+import { SuperNotePage } from './pages/SuperNotePage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AdminPage } from './pages/AdminPage.js';
@@ -51,6 +52,7 @@ export function App() {
             <Route path="/patients" element={<PatientsPage />} />
             <Route path="/patients/:patientId" element={<PatientDetailPage />} />
             <Route path="/patients/:patientId/encounter-note" element={<EncounterNotePage />} />
+            <Route path="/patients/:patientId/supernote" element={<SuperNotePage />} />
             <Route path="/measures" element={<MeasuresPage />} />
             <Route path="/bundles" element={<BundlesPage />} />
             <Route path="/care-lists" element={<CareListsPage />} />
