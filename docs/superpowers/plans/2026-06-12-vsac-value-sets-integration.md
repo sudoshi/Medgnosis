@@ -30,7 +30,7 @@ These were established by direct inspection of both live databases and the codeb
 | `gap_status` values in live data | `open`, `closed`, `excluded` (26,967 rows in `fact_patient_bundle_detail`) |
 | `dim_patient` | Has `date_of_birth DATE`, `gender VARCHAR`, SCD2 — **must filter `is_current = TRUE`** in joins or rows multiply |
 | Migration runner | `packages/db/src/migrate.ts`, `npm run db:migrate` (from `packages/db/`), tracks by filename in `_migrations`, runs each file via `tx.unsafe()` in a transaction |
-| ⚠ Highest migration | `038_seed_phase4.sql` (re-verified 2026-06-12 against origin/main `d32acf7`, post Phase-4 merge) — this plan claims **039** and **040**. Concurrent sessions are landing phases same-day; re-check `ls packages/db/migrations/ | sort | tail -3` AND `git log --all --oneline -- 'packages/db/migrations/039*' 'packages/db/migrations/040*'` at execution and renumber to the next free slots if taken. |
+| ⚠ Migration numbers | This plan claims **050** and **051** — deliberately ahead of the sequence. Concurrent sessions land phases same-day (039/040 were claimed by Phase 5 within minutes of this plan's first numbering); the live `_migrations` table is the authoritative claim registry: `psql -h 127.0.0.1 -U claude_dev -d medgnosis -At -c "SELECT name FROM _migrations ORDER BY name DESC LIMIT 5;"`. Gaps are harmless — the runner sorts lexicographically and tracks full filenames. |
 | Tests | Vitest, mocked DB (`vi.mock('@medgnosis/db')` with `vi.hoisted` — see `apps/api/src/services/__tests__/rulesEngine.test.ts`). Run: `npm run test -- <path>` from `apps/api/`. |
 | API DB connection | `DATABASE_URL` (postgres.js, `@medgnosis/db`); API runs in Docker pointing at `host.docker.internal:5432/medgnosis` — same instance as the host-side `127.0.0.1` psql access |
 
@@ -46,9 +46,9 @@ These were established by direct inspection of both live databases and the codeb
 
 | File | Action | Responsibility |
 |---|---|---|
-| `packages/db/migrations/039_vsac_value_sets.sql` | Create | DDL: 4 VSAC reference tables + `measure_value_set` bridge + indexes |
+| `packages/db/migrations/050_vsac_value_sets.sql` | Create | DDL: 4 VSAC reference tables + `measure_value_set` bridge + indexes |
 | `packages/db/scripts/load-vsac.sh` | Create | One-shot data transfer parthenon→medgnosis via `\copy` pipes + bridge seed + verification |
-| `packages/db/migrations/040_measure_strata.sql` | Create | DDL: `phm_star.fact_measure_strata` |
+| `packages/db/migrations/051_measure_strata.sql` | Create | DDL: `phm_star.fact_measure_strata` |
 | `apps/api/src/services/wilsonCI.ts` | Create | Pure Wilson 95% CI function |
 | `apps/api/src/services/__tests__/wilsonCI.test.ts` | Create | TDD tests for the above |
 | `apps/api/src/services/vsacService.ts` | Create | Value-set queries: list, codes, measure bridge resolution |
@@ -89,11 +89,11 @@ cd .claude/worktrees/feature+cds-vsac-value-sets
 - [ ] **Step 2: Confirm migration numbering is free**
 
 ```bash
-ls packages/db/migrations/ | grep -E '^[0-9]{3}' | sort | tail -3
-git log --all --oneline -- 'packages/db/migrations/039*' 'packages/db/migrations/040*'
+psql -h 127.0.0.1 -U claude_dev -d medgnosis -At -c "SELECT name FROM _migrations WHERE name >= '050' ORDER BY name;"
+git log --all --oneline -- 'packages/db/migrations/050*' 'packages/db/migrations/051*'
 ```
 
-Expected: highest is `038_seed_phase4.sql` and no commits touch 039/040. If 039 or 040 is taken on any branch, renumber every reference to 039→NNN and 040→NNN+1 throughout this plan.
+Expected: only this plan's own files (`050_vsac_value_sets.sql`, `051_measure_strata.sql`) or nothing. If another session claimed 050/051, renumber every reference throughout this plan AND `UPDATE _migrations SET name=...` for any already-applied file you rename.
 
 - [ ] **Step 3: Confirm source data is reachable**
 
@@ -106,10 +106,10 @@ Expected: `225261`. (Collation-mismatch WARNINGs from the parthenon DB are known
 
 ---
 
-### Task 1: Migration 039 — VSAC Reference Tables + Measure Bridge
+### Task 1: Migration 050 — VSAC Reference Tables + Measure Bridge
 
 **Files:**
-- Create: `packages/db/migrations/039_vsac_value_sets.sql`
+- Create: `packages/db/migrations/050_vsac_value_sets.sql`
 
 Naming follows Medgnosis house style (singular table names — `condition`, `measure_definition`), so Parthenon's `app.vsac_value_sets` becomes `phm_edw.vsac_value_set`, etc.
 
@@ -117,7 +117,7 @@ Naming follows Medgnosis house style (singular table names — `condition`, `mea
 
 ```sql
 -- =============================================================================
--- 039: VSAC value sets + measure bridge (Parthenon eCQM handoff, steps 1-2)
+-- 050: VSAC value sets + measure bridge (Parthenon eCQM handoff, steps 1-2)
 -- CMS-versioned value sets replace hand-typed code lists. One OID carries
 -- thousands of codes across code systems; re-ingesting a new VSAC release
 -- updates every measure at once.
@@ -211,7 +211,7 @@ COMMENT ON TABLE phm_edw.measure_value_set IS
 cd "$(git rev-parse --show-toplevel)/packages/db" && npm run db:migrate
 ```
 
-Expected output includes: `039_vsac_value_sets.sql` applied (and nothing else fails).
+Expected output includes: `050_vsac_value_sets.sql` applied (and nothing else fails).
 
 - [ ] **Step 3: Verify the tables exist and are empty**
 
@@ -228,8 +228,8 @@ Expected: `measure_value_set`, `vsac_measure`, `vsac_measure_value_set`, `vsac_v
 
 ```bash
 git branch --show-current   # verify: feature/cds-vsac-value-sets
-git add packages/db/migrations/039_vsac_value_sets.sql
-git commit -m "feat: VSAC value set reference tables + measure bridge (migration 039)"
+git add packages/db/migrations/050_vsac_value_sets.sql
+git commit -m "feat: VSAC value set reference tables + measure bridge (migration 050)"
 ```
 
 ---
@@ -858,19 +858,19 @@ git commit -m "feat: value-sets transparency endpoints (/value-sets, /measure/:c
 
 ---
 
-### Task 6: Measure Strata — Migration 040 + GROUPING SETS + Wilson CIs
+### Task 6: Measure Strata — Migration 051 + GROUPING SETS + Wilson CIs
 
 **Files:**
-- Create: `packages/db/migrations/040_measure_strata.sql`
+- Create: `packages/db/migrations/051_measure_strata.sql`
 - Modify: `apps/api/src/services/measureCalculatorV2.ts`
 
 Single-pass GROUPING SETS (handoff §5.1): classify each (patient, measure) row once, produce headline + age + sex strata in one scan, inside the SAME refresh transaction so facts and strata can never diverge.
 
-- [ ] **Step 1: Write migration 040**
+- [ ] **Step 1: Write migration 051**
 
 ```sql
 -- =============================================================================
--- 040: Measure stratification facts (CDS parity — calculator hardening)
+-- 051: Measure stratification facts (CDS parity — calculator hardening)
 -- Populated by measureCalculatorV2 in the same transaction as
 -- fact_measure_result, via single-pass GROUPING SETS (one scan -> headline
 -- 'all' row + age_band strata + gender strata per measure).
@@ -900,7 +900,7 @@ COMMENT ON TABLE phm_star.fact_measure_strata IS
 cd "$(git rev-parse --show-toplevel)/packages/db" && npm run db:migrate
 ```
 
-Expected: `040_measure_strata.sql` applied.
+Expected: `051_measure_strata.sql` applied.
 
 - [ ] **Step 3: Extend the refresh transaction and add CIs to the summary**
 
@@ -1118,8 +1118,8 @@ Expected: `dimensions: age_band, all, gender`, `violations (expect 0): 0`, `mism
 
 ```bash
 git branch --show-current
-git add packages/db/migrations/040_measure_strata.sql apps/api/src/services/measureCalculatorV2.ts
-git commit -m "feat: single-pass GROUPING SETS measure strata + Wilson CIs (migration 040)"
+git add packages/db/migrations/051_measure_strata.sql apps/api/src/services/measureCalculatorV2.ts
+git commit -m "feat: single-pass GROUPING SETS measure strata + Wilson CIs (migration 051)"
 ```
 
 ---
@@ -1459,7 +1459,7 @@ git branch --show-current   # verify: feature/cds-vsac-value-sets
 git push -u origin feature/cds-vsac-value-sets
 ```
 
-Then follow superpowers:finishing-a-development-branch (merge/PR decision). Note for the PR body: migrations 039/040 are additive; the VSAC data load is a one-time script run, required once per environment (`packages/db/scripts/load-vsac.sh`); prod deploys need a reachable source DB or a portable dump (`pg_dump --data-only` of the four `phm_edw.vsac_*` tables from a loaded environment).
+Then follow superpowers:finishing-a-development-branch (merge/PR decision). Note for the PR body: migrations 050/051 are additive (numbered ahead of sequence to avoid same-day concurrent-session collisions — gaps are harmless to the runner); the VSAC data load is a one-time script run, required once per environment (`packages/db/scripts/load-vsac.sh`); prod deploys need a reachable source DB or a portable dump (`pg_dump --data-only` of the four `phm_edw.vsac_*` tables from a loaded environment).
 
 ---
 
