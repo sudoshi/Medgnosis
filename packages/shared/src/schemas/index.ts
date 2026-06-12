@@ -190,6 +190,19 @@ export const ampDispositionSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+// SuperNote — finalize the note, coding the A&P diagnoses
+export const superNoteFinalizeSchema = z.object({
+  chief_complaint: z.string().max(500).optional(),
+  ap: z
+    .array(z.object({
+      icd10_code: z.string().min(1).max(20),
+      diagnosis_name: z.string().max(255).optional(),
+      plan: z.string().max(2000),
+    }))
+    .min(1)
+    .max(50),
+});
+
 // ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
@@ -213,3 +226,4 @@ export type FinderDismissRequest = z.infer<typeof finderDismissSchema>;
 export type LoopResolveRequest = z.infer<typeof loopResolveSchema>;
 export type ProtocolEnrollRequest = z.infer<typeof protocolEnrollSchema>;
 export type AmpDispositionRequest = z.infer<typeof ampDispositionSchema>;
+export type SuperNoteFinalizeRequest = z.infer<typeof superNoteFinalizeSchema>;
