@@ -20,6 +20,8 @@ import clinicalNoteRoutes from './clinical-notes/index.js';
 import orderRoutes from './orders/index.js';
 import cdsHooksRoutes from './cds-hooks/index.js';
 import rulesRoutes from './rules/index.js';
+import problemListRoutes from './problem-list/index.js';
+import populationFinderRoutes from './population-finder/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -45,6 +47,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(clinicalNoteRoutes, { prefix: '/clinical-notes' });
       await api.register(orderRoutes, { prefix: '/orders' });
       await api.register(rulesRoutes, { prefix: '/rules' });
+      await api.register(problemListRoutes, { prefix: '/problem-list' });
+      await api.register(populationFinderRoutes, { prefix: '/population-finder' });
     },
     { prefix: API_PREFIX },
   );

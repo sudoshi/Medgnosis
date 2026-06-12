@@ -11,6 +11,7 @@ import { sql } from '@medgnosis/db';
 import { connection, rulesQueue, type RulesJobData } from './rules-engine.js';
 import { aiInsightsQueue, type InsightJobData } from './ai-insights-worker.js';
 import { measureQueue, type MeasureJobData } from './measure-calculator.js';
+import { finderQueue, type FinderJobData } from './population-finder.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -69,6 +70,12 @@ async function processNightlyJob(): Promise<void> {
   await measureQueue.add('nightly-measures', {
     triggerType: 'nightly',
   } satisfies MeasureJobData);
+
+  // 5. Enqueue a single population-finder sweep (self-scopes to the cohort)
+  await finderQueue.add('nightly-finder', {
+    triggeredBy: 'nightly_batch',
+  } satisfies FinderJobData);
+  console.info('[nightly] Enqueued population-finder sweep');
 
   console.info('[nightly] Nightly batch complete.');
 }

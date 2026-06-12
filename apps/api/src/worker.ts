@@ -8,6 +8,7 @@ import { startRulesWorker } from './workers/rules-engine.js';
 import { startAiInsightsWorker } from './workers/ai-insights-worker.js';
 import { startMeasureCalculatorWorker } from './workers/measure-calculator.js';
 import { startNightlyScheduler } from './workers/nightly-scheduler.js';
+import { startPopulationFinderWorker } from './workers/population-finder.js';
 
 console.info('[worker] Starting Medgnosis background workers...');
 
@@ -15,6 +16,7 @@ const workers = [
   startRulesWorker(),
   startAiInsightsWorker(),
   startMeasureCalculatorWorker(),
+  startPopulationFinderWorker(),
   startNightlyScheduler(),
 ];
 
