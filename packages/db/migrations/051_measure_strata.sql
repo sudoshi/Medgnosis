@@ -7,7 +7,8 @@
 
 CREATE TABLE phm_star.fact_measure_strata (
   strata_key      SERIAL PRIMARY KEY,
-  measure_key     INT NOT NULL,
+  measure_key     INT NOT NULL
+                  REFERENCES phm_star.dim_measure (measure_key) ON DELETE RESTRICT,
   date_key_period INT,
   dimension       VARCHAR(20) NOT NULL,  -- 'all' | 'age_band' | 'gender'
   stratum         VARCHAR(50) NOT NULL,  -- 'all' | '<18' | '18-39' | '40-64' | '65+' | gender values
