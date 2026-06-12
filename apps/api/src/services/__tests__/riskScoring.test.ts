@@ -9,8 +9,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 
 type SqlRow = Record<string, unknown>;
-const mockSql = vi.fn<(strings: TemplateStringsArray, ...values: unknown[]) => Promise<SqlRow[]>>();
-mockSql.mockResolvedValue([]);
+
+// vi.hoisted: initialise the mock fn before the hoisted vi.mock factory runs,
+// avoiding the temporal-dead-zone error under the current vitest version.
+const { mockSql } = vi.hoisted(() => {
+  const fn = vi.fn<(strings: TemplateStringsArray, ...values: unknown[]) => Promise<SqlRow[]>>();
+  fn.mockResolvedValue([]);
+  return { mockSql: fn };
+});
 
 vi.mock('@medgnosis/db', () => ({
   sql: Object.assign(mockSql, {

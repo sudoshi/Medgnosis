@@ -8,6 +8,7 @@ import { sql } from '@medgnosis/db';
 import { ALERT_RULE_KEYS, ALERT_THRESHOLDS } from '@medgnosis/shared';
 import { config } from '../config.js';
 import { publishAlert } from '../plugins/websocket.js';
+import { getNumericThreshold } from '../services/rulesEngine.js';
 
 export const RULES_QUEUE_NAME = 'medgnosis-rules';
 
@@ -57,9 +58,17 @@ async function evaluateCareGapOverdue(
       AND cg.due_date < NOW()
   `;
 
+  // Threshold resolved from the rules engine (clinical_rule), with the shared
+  // constant as the fallback — a rules-table outage never breaks evaluation.
+  const criticalDays = await getNumericThreshold(
+    'ALERT_THRESHOLDS',
+    'CARE_GAP_CRITICAL_DAYS',
+    ALERT_THRESHOLDS.CARE_GAP_CRITICAL_DAYS,
+  );
+
   for (const gap of overdue) {
     const severity =
-      gap.days_overdue >= ALERT_THRESHOLDS.CARE_GAP_CRITICAL_DAYS
+      gap.days_overdue >= criticalDays
         ? 'critical' as const
         : 'warning' as const;
 
