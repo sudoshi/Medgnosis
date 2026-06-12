@@ -12,6 +12,7 @@ import { connection, rulesQueue, type RulesJobData } from './rules-engine.js';
 import { aiInsightsQueue, type InsightJobData } from './ai-insights-worker.js';
 import { measureQueue, type MeasureJobData } from './measure-calculator.js';
 import { finderQueue, type FinderJobData } from './population-finder.js';
+import { loopsQueue, riskQueue, type LoopsJobData, type RiskJobData } from './close-the-loop.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -76,6 +77,11 @@ async function processNightlyJob(): Promise<void> {
     triggeredBy: 'nightly_batch',
   } satisfies FinderJobData);
   console.info('[nightly] Enqueued population-finder sweep');
+
+  // 6. Close-the-Loop scan + population risk-model run (single self-scoping jobs)
+  await loopsQueue.add('nightly-loops', { triggeredBy: 'nightly_batch' } satisfies LoopsJobData);
+  await riskQueue.add('nightly-risk', { triggeredBy: 'nightly_batch' } satisfies RiskJobData);
+  console.info('[nightly] Enqueued Close-the-Loop scan + risk-model run');
 
   console.info('[nightly] Nightly batch complete.');
 }
