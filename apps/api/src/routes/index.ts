@@ -19,6 +19,7 @@ import bundleRoutes from './bundles/index.js';
 import clinicalNoteRoutes from './clinical-notes/index.js';
 import orderRoutes from './orders/index.js';
 import cdsHooksRoutes from './cds-hooks/index.js';
+import rulesRoutes from './rules/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -43,6 +44,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(bundleRoutes, { prefix: '/bundles' });
       await api.register(clinicalNoteRoutes, { prefix: '/clinical-notes' });
       await api.register(orderRoutes, { prefix: '/orders' });
+      await api.register(rulesRoutes, { prefix: '/rules' });
     },
     { prefix: API_PREFIX },
   );
