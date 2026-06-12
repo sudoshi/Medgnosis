@@ -41,6 +41,8 @@ export {
   scribeRequestSchema,
   placeOrderSchema,
   placeOrderBatchSchema,
+  bulkProblemActionSchema,
+  finderDismissSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -57,4 +59,6 @@ export type {
   ScribeRequest,
   PlaceOrderRequest,
   PlaceOrderBatchRequest,
+  BulkProblemActionRequest,
+  FinderDismissRequest,
 } from './schemas/index.js';

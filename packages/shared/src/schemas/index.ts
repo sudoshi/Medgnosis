@@ -136,6 +136,43 @@ export const placeOrderBatchSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Problem-list curation + population finder schemas (CDS parity Phase 2)
+// ---------------------------------------------------------------------------
+
+const addActionSchema = z.object({
+  type: z.literal('add'),
+  patient_id: z.coerce.number().int().positive(),
+  icd10_code: z.string().min(1).max(20),
+  problem_name: z.string().min(1).max(255),
+  ontology_id: z.coerce.number().int().positive().optional(),
+  provenance: z.string().max(40).optional(),
+});
+const resolveActionSchema = z.object({
+  type: z.literal('resolve'),
+  patient_id: z.coerce.number().int().positive(),
+  problem_id: z.coerce.number().int().positive(),
+});
+const restageActionSchema = z.object({
+  type: z.literal('restage'),
+  patient_id: z.coerce.number().int().positive(),
+  old_problem_id: z.coerce.number().int().positive(),
+  icd10_code: z.string().min(1).max(20),
+  problem_name: z.string().min(1).max(255),
+  ontology_id: z.coerce.number().int().positive().optional(),
+});
+
+export const bulkProblemActionSchema = z.object({
+  actions: z
+    .array(z.discriminatedUnion('type', [addActionSchema, resolveActionSchema, restageActionSchema]))
+    .min(1)
+    .max(500),
+});
+
+export const finderDismissSchema = z.object({
+  reason: z.enum(['does_not_have', 'snooze']),
+});
+
+// ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
 
@@ -153,3 +190,5 @@ export type ClinicalNoteUpdateRequest = z.infer<typeof clinicalNoteUpdateSchema>
 export type ScribeRequest = z.infer<typeof scribeRequestSchema>;
 export type PlaceOrderRequest = z.infer<typeof placeOrderSchema>;
 export type PlaceOrderBatchRequest = z.infer<typeof placeOrderBatchSchema>;
+export type BulkProblemActionRequest = z.infer<typeof bulkProblemActionSchema>;
+export type FinderDismissRequest = z.infer<typeof finderDismissSchema>;
