@@ -178,6 +178,18 @@ export const loopResolveSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+// Auto-Orders — enroll a patient in a protocol (pending co-sign)
+export const protocolEnrollSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  protocol_id: z.coerce.number().int().positive(),
+});
+
+// AMP — record an outreach disposition (declined is a counted outcome)
+export const ampDispositionSchema = z.object({
+  disposition: z.enum(['labs_completed', 'procedure', 'reminder', 'declined', 'education', 'referral']),
+  note: z.string().max(1000).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
@@ -199,3 +211,5 @@ export type PlaceOrderBatchRequest = z.infer<typeof placeOrderBatchSchema>;
 export type BulkProblemActionRequest = z.infer<typeof bulkProblemActionSchema>;
 export type FinderDismissRequest = z.infer<typeof finderDismissSchema>;
 export type LoopResolveRequest = z.infer<typeof loopResolveSchema>;
+export type ProtocolEnrollRequest = z.infer<typeof protocolEnrollSchema>;
+export type AmpDispositionRequest = z.infer<typeof ampDispositionSchema>;

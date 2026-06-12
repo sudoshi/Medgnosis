@@ -13,6 +13,7 @@ import {
   Layers,
   ListChecks,
   ScanSearch,
+  CalendarClock,
   Bell,
   Settings,
   LogOut,
@@ -39,6 +40,7 @@ const mainNav = [
   { to: '/care-lists',icon: ListChecks,       label: 'Care Lists',end: true },
   { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
   { to: '/close-the-loop', icon: ShieldCheck, label: 'Loops',     end: true },
+  { to: '/anticipatory', icon: CalendarClock, label: 'Anticipatory', end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
 

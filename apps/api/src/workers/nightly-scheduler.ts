@@ -13,6 +13,7 @@ import { aiInsightsQueue, type InsightJobData } from './ai-insights-worker.js';
 import { measureQueue, type MeasureJobData } from './measure-calculator.js';
 import { finderQueue, type FinderJobData } from './population-finder.js';
 import { loopsQueue, riskQueue, type LoopsJobData, type RiskJobData } from './close-the-loop.js';
+import { ampQueue, mtmQueue, autoOrdersQueue, type AnticipatoryJobData } from './anticipatory.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -82,6 +83,16 @@ async function processNightlyJob(): Promise<void> {
   await loopsQueue.add('nightly-loops', { triggeredBy: 'nightly_batch' } satisfies LoopsJobData);
   await riskQueue.add('nightly-risk', { triggeredBy: 'nightly_batch' } satisfies RiskJobData);
   console.info('[nightly] Enqueued Close-the-Loop scan + risk-model run');
+
+  // 7. Anticipatory care: AMP sweep + MTM scan nightly; Auto-Orders generation
+  // on the 1st of the month (orders are future-dated, so monthly cadence suffices).
+  await ampQueue.add('nightly-amp', { triggeredBy: 'nightly_batch' } satisfies AnticipatoryJobData);
+  await mtmQueue.add('nightly-mtm', { triggeredBy: 'nightly_batch' } satisfies AnticipatoryJobData);
+  if (new Date().getUTCDate() === 1) {
+    await autoOrdersQueue.add('monthly-autoorders', { triggeredBy: 'monthly_batch' } satisfies AnticipatoryJobData);
+    console.info('[nightly] Enqueued monthly Auto-Orders generation');
+  }
+  console.info('[nightly] Enqueued AMP sweep + MTM scan');
 
   console.info('[nightly] Nightly batch complete.');
 }
