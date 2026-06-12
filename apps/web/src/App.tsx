@@ -11,6 +11,7 @@ import { CareListsPage } from './pages/CareListsPage.js';
 import { PopulationFinderPage } from './pages/PopulationFinderPage.js';
 import { CloseTheLoopPage } from './pages/CloseTheLoopPage.js';
 import { AnticipatoryPage } from './pages/AnticipatoryPage.js';
+import { SurveillancePage } from './pages/SurveillancePage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AdminPage } from './pages/AdminPage.js';
@@ -56,6 +57,7 @@ export function App() {
             <Route path="/population-finder" element={<PopulationFinderPage />} />
             <Route path="/close-the-loop" element={<CloseTheLoopPage />} />
             <Route path="/anticipatory" element={<AnticipatoryPage />} />
+            <Route path="/surveillance" element={<SurveillancePage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
