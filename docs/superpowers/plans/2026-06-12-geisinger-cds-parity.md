@@ -1,5 +1,9 @@
 # Geisinger CDS Compendium Parity — Gap Analysis & Implementation Plan
 
+> ## ✅ COMPLETE — ALL 8 PHASES SHIPPED, ALL 18 DELTAS (D1–D18) DELIVERED (2026-06-12)
+> All 16 compendium capabilities (C1–C16) realized and merged to `main`. Per-phase detailed plans + migrations 031–044. Every phase TDD-tested and live-verified end-to-end.
+> Phase 1 rules engine + ontology · 2 problem-list analytics/finder · 3 close-the-loop + risk · 4 auto-orders/AMP/MTM · 5 real-time MEWS/NEWS2/glucometrics · 6 SuperNote · 7 data quality + cohort manager · 8 HCC/coding analytics.
+
 > **For agentic workers:** This is a **master roadmap**, not a single executable plan. It covers 8 independent subsystems. Per the writing-plans scope rule, each phase below MUST get its own detailed task-level plan (`docs/superpowers/plans/YYYY-MM-DD-phase-N-<name>.md`) before execution, using superpowers:writing-plans → superpowers:subagent-driven-development. Do not attempt to execute this document directly.
 
 **Goal:** Make Medgnosis the complete realization of the Geisinger CDS portfolio (`~/Documents/Geisinger-CDS-Compendium/index.html`) — population identification, anticipatory care, closed-loop safety, real-time surveillance, and self-coding documentation — on modern standards (FHIR R4, SNOMED CT, ICD-10-CM, LOINC, CDS Hooks).
@@ -91,7 +95,7 @@ Ordered by build sequence (dependencies flow downward). This is the canonical ch
 
 ### Documentation
 - [x] **D15. SuperNote assembly** ✅ *Phase 6 (migration 041).* `superNote.assembleSuperNote` builds the note from the record: deterministic Brief Clinical History (leads with what's due), interval events (encounters/admits/referrals), organ-system-grouped problem list via the D2 ontology (dual-mapping preserved), in-note care gaps (include-toggle + as-of), 8-analyte trended labs (`fact_observation` code-filtered), and an A&P scaffold. `finalizeSuperNote` writes a `clinical_note` (`visit_type='supernote'`) + `note_coded_diagnosis` — **typing the plan codes the diagnosis** (HCC-relevance flagged, feeds Phase 8). `/supernote/:id` + finalize routes + `SuperNotePage`. Live-verified end-to-end (patient 9: 3 systems, 23 A&P entries, 2 dx coded incl. E11.22→HCC). **Deviation:** deterministic assembly (LLM narrative deferred — testable, no flakiness); OurNotes/PRO sections empty (no patient-entered data exists). (C11)
-- [ ] **D16. Coding/HCC analytics** — HCC capture rate per provider, E&M level distribution shift, missed-opportunity report. (C16)
+- [x] **D16. Coding/HCC analytics** ✅ *Phase 8 (migration 044).* `hccAnalytics`: HCC capture % per provider (coded `note_coded_diagnosis` vs evident `problem_list` HCC), E&M level distribution from `billing_line_item` (99213/14/15 + % level-4-plus), missed-opportunity report (finder-pending lab-evident + uncoded-HCC residue). `/coding/*` routes + `CodingPage`. Historical coding backfilled (~68% capture, the gap visible). Live-verified: capture 68%, E&M 66% level-4+, 287 uncoded HCC. HCC-relevance = prefix heuristic (not full CMS-HCC V28). (C16)
 
 ### Trust layer
 - [x] **D17. Data-quality discovery module** ✅ *Phase 7 (migrations 042/043).* `dqDetectors.runDqScan` over small tables (vital_sign/provider) — impossible heights/temps/weights, implausible weight jumps, trailing-space identity; `dq_finding` rogues' gallery (confirm → `is_regression` standing check / dismiss); `dq_feed` five-tests board (accurate/timely/complete/understood/trusted + freshness/latency). Nightly worker. Live-verified: all 5 seeded specimens caught (985in, 212°F, 1480lb, jump, trailing-space provider). **Deviations:** "zombie" detector dropped (no death column); anomalies seeded (Synthea data clean); NEVER scans observation/patient (memory rule). (C4)
