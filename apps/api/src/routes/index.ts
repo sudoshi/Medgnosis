@@ -30,6 +30,8 @@ import mtmRoutes from './mtm/index.js';
 import surveillanceRoutes from './surveillance/index.js';
 import glucometricsRoutes from './glucometrics/index.js';
 import superNoteRoutes from './supernote/index.js';
+import dataQualityRoutes from './data-quality/index.js';
+import cohortRoutes from './cohorts/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -65,6 +67,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(surveillanceRoutes, { prefix: '/surveillance' });
       await api.register(glucometricsRoutes, { prefix: '/glucometrics' });
       await api.register(superNoteRoutes, { prefix: '/supernote' });
+      await api.register(dataQualityRoutes, { prefix: '/data-quality' });
+      await api.register(cohortRoutes, { prefix: '/cohorts' });
     },
     { prefix: API_PREFIX },
   );
