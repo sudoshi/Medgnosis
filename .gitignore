@@ -2,14 +2,9 @@
 node_modules/
 vendor/
 
-# Environment files
+# Environment files — never track real env files; only the example template
 .env
-.env.local
-.env.development.local
-.env.test.local
-# Keep production and demo env files for deployment
-!.env.production
-!.env.demo
+.env.*
 !.env.example
 
 # Build output
