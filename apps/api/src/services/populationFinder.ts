@@ -11,7 +11,10 @@
 
 import { sql } from '@medgnosis/db';
 
-const EGFR_LOINC = '48642-3';
+// eGFR LOINC codes seen in the data: 33914-3 (MDRD, Synthea's resulted code)
+// and 48642-3 (CKD-EPI, used by the order catalog). Match both — the resulted
+// observations use 33914-3, so querying only 48642-3 silently finds nothing.
+const EGFR_CODES = ['33914-3', '48642-3'];
 
 // Generic/unstaged CKD codes that Pass 1 re-stages into a specific KDIGO stage.
 export const CKD_GENERIC_CODES = ['N18.9', 'N18.30'];
@@ -120,9 +123,14 @@ async function upsertCandidate(c: CandidateInput): Promise<boolean> {
  * @param opts.cohortLimit cap the cohort (testing / incremental runs)
  */
 export async function runFinder(opts: { cohortLimit?: number } = {}): Promise<FinderResult> {
-  const cohort = await sql<{ patient_id: number }[]>`
-    SELECT DISTINCT patient_id FROM phm_edw.problem_list
-    WHERE active_ind = 'Y'
+  // Cohort carries patient_key so eGFR can use fact_observation's code-filtered
+  // (patient_key, observation_code) index — phm_edw.observation (~1B rows) has
+  // no code index, so a per-patient scan there is pathological for big histories.
+  const cohort = await sql<{ patient_id: number; patient_key: number }[]>`
+    SELECT DISTINCT pl.patient_id, dp.patient_key
+    FROM phm_edw.problem_list pl
+    JOIN phm_star.dim_patient dp ON dp.patient_id = pl.patient_id
+    WHERE pl.active_ind = 'Y'
     ${opts.cohortLimit ? sql`LIMIT ${opts.cohortLimit}` : sql``}
   `;
 
@@ -130,16 +138,16 @@ export async function runFinder(opts: { cohortLimit?: number } = {}): Promise<Fi
   let candidates = 0;
   const bump = (t: string): void => { byType[t] = (byType[t] ?? 0) + 1; candidates += 1; };
 
-  for (const { patient_id } of cohort) {
-    // Latest eGFR (LOINC 48642-3) — patient-leading index.
+  for (const { patient_id, patient_key } of cohort) {
+    // Latest eGFR (LOINC 48642-3) via the star schema's code-filtered index.
     const [egfr] = await sql<{ value_numeric: string; observation_datetime: string }[]>`
-      SELECT value_numeric, observation_datetime
-      FROM phm_edw.observation
-      WHERE patient_id = ${patient_id}
-        AND observation_code = ${EGFR_LOINC}
-        AND active_ind = 'Y'
-        AND value_numeric IS NOT NULL
-      ORDER BY observation_datetime DESC
+      SELECT fo.value_numeric, dd.full_date::text AS observation_datetime
+      FROM phm_star.fact_observation fo
+      JOIN phm_star.dim_date dd ON dd.date_key = fo.date_key_obs
+      WHERE fo.patient_key = ${patient_key}
+        AND fo.observation_code IN ${sql(EGFR_CODES)}
+        AND fo.value_numeric IS NOT NULL
+      ORDER BY fo.date_key_obs DESC
       LIMIT 1
     `;
     // Latest BMI.

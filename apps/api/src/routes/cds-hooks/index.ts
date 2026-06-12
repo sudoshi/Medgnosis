@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { randomUUID } from 'node:crypto';
+import { config } from '../../config.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ interface CdsCard {
       resource: Record<string, unknown>;
     }[];
   }[];
+  links?: { label: string; url: string; type: 'absolute' | 'smart' }[];
 }
 
 // ─── Route registration ──────────────────────────────────────────────────────
@@ -61,6 +63,16 @@ export default async function cdsHooksRoutes(fastify: FastifyInstance): Promise<
           prefetch: {
             patient: 'Patient/{{context.patientId}}',
             conditions: 'Condition?patient={{context.patientId}}&clinical-status=active',
+          },
+        },
+        {
+          hook: 'patient-view',
+          title: 'Medgnosis Problem List Recommendations',
+          description:
+            'Surfaces lab/vitals-evident conditions missing from (or generic on) the problem list, with the evidence and a one-click add. Dismissal is first-class.',
+          id: 'medgnosis-problem-list',
+          prefetch: {
+            patient: 'Patient/{{context.patientId}}',
           },
         },
       ],
@@ -192,6 +204,88 @@ export default async function cdsHooksRoutes(fastify: FastifyInstance): Promise<
         ],
       });
     }
+
+    return reply.send({ cards });
+  });
+
+  // =========================================================================
+  // POST /cds-services/medgnosis-problem-list — patient-view hook handler
+  // Respectful CDS: surface the evidence, propose the add, delegate the
+  // judgment. Dismissal ("does not have X") is first-class — handled in-app
+  // via the linked Population Finder.
+  // =========================================================================
+  fastify.post('/medgnosis-problem-list', async (request, reply) => {
+    const body = request.body as CdsHookRequest;
+    if (body.hook !== 'patient-view') {
+      return reply.status(400).send({ cards: [], _error: 'Only patient-view hook is supported' });
+    }
+    const patientId = body.context?.patientId;
+    if (!patientId) {
+      return reply.send({ cards: [] });
+    }
+
+    const rows = await sql<{
+      candidate_id: number;
+      finding_type: string;
+      current_icd10: string | null;
+      suggested_icd10: string;
+      suggested_name: string;
+      evidence: { egfr?: number; bmi?: number; observed_at?: string | null };
+    }[]>`
+      SELECT candidate_id, finding_type, current_icd10, suggested_icd10, suggested_name, evidence
+      FROM phm_edw.population_finder_candidate
+      WHERE patient_id = ${patientId}::int AND status = 'pending'
+      ORDER BY pass, candidate_id
+      LIMIT 20
+    `.catch((err) => {
+      fastify.log.error({ err }, 'CDS Hooks: problem-list query failed');
+      return [];
+    });
+
+    const finderUrl = `${config.webAppUrl}/population-finder`;
+    const cards: CdsCard[] = rows.map((row) => {
+      const ev =
+        row.evidence?.egfr != null
+          ? `eGFR ${row.evidence.egfr}`
+          : row.evidence?.bmi != null
+            ? `BMI ${row.evidence.bmi}`
+            : 'clinical data';
+      const when = row.evidence?.observed_at
+        ? ` (${new Date(row.evidence.observed_at).toISOString().slice(0, 10)})`
+        : '';
+      const context = row.current_icd10
+        ? `currently coded generically as ${row.current_icd10}`
+        : 'not currently on the problem list';
+
+      return {
+        uuid: randomUUID(),
+        summary: `Evidence suggests ${row.suggested_name}`,
+        detail: `${ev}${when} supports ${row.suggested_icd10} — ${context}. Add it, or mark "does not have" in the Population Finder.`,
+        indicator: 'info',
+        source: { label: 'Medgnosis PHM', url: 'https://medgnosis.app' },
+        suggestions: [
+          {
+            label: `Add ${row.suggested_icd10} to problem list`,
+            uuid: randomUUID(),
+            actions: [
+              {
+                type: 'create',
+                description: `Add ${row.suggested_name} (${row.suggested_icd10})`,
+                resource: {
+                  resourceType: 'Condition',
+                  clinicalStatus: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/condition-clinical', code: 'active' }] },
+                  code: {
+                    coding: [{ system: 'http://hl7.org/fhir/sid/icd-10-cm', code: row.suggested_icd10, display: row.suggested_name }],
+                  },
+                  subject: { reference: `Patient/${patientId}` },
+                },
+              },
+            ],
+          },
+        ],
+        links: [{ label: 'Review in Population Finder', url: finderUrl, type: 'absolute' }],
+      };
+    });
 
     return reply.send({ cards });
   });
