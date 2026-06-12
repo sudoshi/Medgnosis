@@ -29,6 +29,7 @@ import ampRoutes from './amp/index.js';
 import mtmRoutes from './mtm/index.js';
 import surveillanceRoutes from './surveillance/index.js';
 import glucometricsRoutes from './glucometrics/index.js';
+import superNoteRoutes from './supernote/index.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -63,6 +64,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(mtmRoutes, { prefix: '/mtm' });
       await api.register(surveillanceRoutes, { prefix: '/surveillance' });
       await api.register(glucometricsRoutes, { prefix: '/glucometrics' });
+      await api.register(superNoteRoutes, { prefix: '/supernote' });
     },
     { prefix: API_PREFIX },
   );

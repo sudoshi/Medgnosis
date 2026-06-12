@@ -46,6 +46,7 @@ export {
   loopResolveSchema,
   protocolEnrollSchema,
   ampDispositionSchema,
+  superNoteFinalizeSchema,
 } from './schemas/index.js';
 export type {
   LoginRequest,
@@ -67,4 +68,5 @@ export type {
   LoopResolveRequest,
   ProtocolEnrollRequest,
   AmpDispositionRequest,
+  SuperNoteFinalizeRequest,
 } from './schemas/index.js';
