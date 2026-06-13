@@ -134,7 +134,7 @@ export function CodingPage() {
       </div>
       <p className="text-sm text-dim max-w-2xl">
         Honest severity documentation makes risk scores reflect reality. Capture follows the
-        medicine — the gap between what's evident and what's coded is a worklist, not a mystery.
+        medicine — the gap between what&apos;s evident and what&apos;s coded is a worklist, not a mystery.
       </p>
       <CaptureSection />
       <EmSection />

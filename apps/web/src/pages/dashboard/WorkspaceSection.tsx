@@ -50,7 +50,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <Calendar size={15} strokeWidth={1.5} className="text-teal" />
-            <h3 className="text-base font-semibold text-bright">Today's Schedule</h3>
+            <h3 className="text-base font-semibold text-bright">Today&apos;s Schedule</h3>
           </div>
           <span className="font-data text-sm text-ghost tabular-nums">
             {schedule.length} visit{schedule.length !== 1 ? 's' : ''}

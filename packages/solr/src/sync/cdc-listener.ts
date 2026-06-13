@@ -605,7 +605,7 @@ async function main(): Promise<void> {
   }
 
   // Start LISTEN on solr_sync channel
-  listenConnection = await sql.listen('solr_sync', (payload) => {
+  listenConnection = await sql.listen('solr_sync', (payload: string) => {
     if (shutdownRequested) return;
 
     try {

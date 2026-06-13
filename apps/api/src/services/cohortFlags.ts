@@ -35,8 +35,6 @@ export function matchesCohort(p: { conditions: string[]; flags: string[] }, crit
 
 // ─── DB orchestration ────────────────────────────────────────────────────────
 
-const ACEARB_RE = 'lisinopril|enalapril|ramipril|benazepril|captopril|quinapril|losartan|valsartan|olmesartan|irbesartan|candesartan|telmisartan';
-
 export interface CohortFlagResult {
   cohort: number;
   byFlag: Record<string, number>;
@@ -63,6 +61,26 @@ async function setFlag(patientId: number, key: string, on: boolean, valueText: s
 }
 
 export async function runCohortFlags(): Promise<CohortFlagResult> {
+  // Codes come from clinical_rule → VSAC, not a hardcoded regex: one VSAC
+  // re-ingest updates the flag; allergy/intolerance suppression is impossible
+  // to express as a name regex.
+  const acearbOidRows = await sql<{ value_text: string }[]>`
+    SELECT value_text FROM phm_edw.clinical_rule
+    WHERE entity = 'COHORT_FLAGS' AND attribute = 'ACEARB_RXNORM_VALUE_SET_OID'
+      AND active_ind = 'Y' AND expiration_date IS NULL LIMIT 1
+  `;
+  const suppressOidRows = await sql<{ value_text: string }[]>`
+    SELECT value_text FROM phm_edw.clinical_rule
+    WHERE entity = 'COHORT_FLAGS' AND attribute = 'ACEARB_SUPPRESS_VALUE_SET_OID'
+      AND active_ind = 'Y' AND expiration_date IS NULL
+  `;
+  const acearbOid = acearbOidRows[0]?.value_text;
+  if (!acearbOid) {
+    // Fail loudly: a safety flag silently matching nothing is worse than crashing.
+    throw new Error('COHORT_FLAGS/ACEARB_RXNORM_VALUE_SET_OID missing — run migration 053');
+  }
+  const suppressOids = suppressOidRows.map((r) => r.value_text);
+
   const cohort = await sql<FlagCohortRow[]>`
     WITH c AS (
       SELECT DISTINCT pl.patient_id, dp.patient_key
@@ -77,8 +95,22 @@ export async function runCohortFlags(): Promise<CohortFlagResult> {
       (SELECT fo.value_numeric FROM phm_star.fact_observation fo
        WHERE fo.patient_key = c.patient_key AND fo.observation_code = '33914-3' AND fo.value_numeric IS NOT NULL
        ORDER BY fo.date_key_obs DESC LIMIT 1) AS latest_gfr,
-      EXISTS (SELECT 1 FROM phm_edw.medication_order mo JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
-              WHERE mo.patient_id = c.patient_id AND mo.active_ind = 'Y' AND m.medication_name ~* ${ACEARB_RE}) AS on_acearb,
+      EXISTS (
+        SELECT 1 FROM phm_edw.medication_order mo
+        JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
+        JOIN phm_edw.vsac_value_set_code vc
+          ON vc.code = m.medication_code AND vc.code_system = 'RXNORM'
+         AND vc.value_set_oid = ${acearbOid}
+        WHERE mo.patient_id = c.patient_id AND mo.active_ind = 'Y'
+        ${suppressOids.length > 0 ? sql`AND NOT EXISTS (
+          SELECT 1 FROM phm_edw.condition_diagnosis cd
+          JOIN phm_edw.condition con ON con.condition_id = cd.condition_id
+          JOIN phm_edw.vsac_value_set_code svc
+            ON svc.code = con.condition_code AND svc.code_system = 'SNOMEDCT'
+           AND svc.value_set_oid = ANY(${suppressOids})
+          WHERE cd.patient_id = c.patient_id AND cd.active_ind = 'Y'
+        )` : sql``}
+      ) AS on_acearb,
       EXISTS (SELECT 1 FROM phm_edw.clinical_order co
               WHERE co.patient_id = c.patient_id AND co.loinc_code = '51990-0'
                 AND co.order_datetime > NOW() - INTERVAL '12 months') AS has_recent_bmp

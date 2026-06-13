@@ -282,7 +282,7 @@ export function PatientsPage() {
             {search ? (
               <p className="empty-state-desc">
                 No results for{' '}
-                <span className="text-bright font-medium">"{search}"</span>.
+                <span className="text-bright font-medium">&quot;{search}&quot;</span>.
                 Try a different name or MRN.
               </p>
             ) : (

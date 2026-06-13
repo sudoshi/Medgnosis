@@ -14,6 +14,7 @@ import { measureQueue, type MeasureJobData } from './measure-calculator.js';
 import { finderQueue, type FinderJobData } from './population-finder.js';
 import { loopsQueue, riskQueue, type LoopsJobData, type RiskJobData } from './close-the-loop.js';
 import { ampQueue, mtmQueue, autoOrdersQueue, type AnticipatoryJobData } from './anticipatory.js';
+import { recomputeClinicalExclusions } from '../services/exclusionEngine.js';
 import { dqQueue, cohortFlagsQueue, type DqJobData } from './data-quality.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
@@ -69,18 +70,25 @@ async function processNightlyJob(): Promise<void> {
     console.info(`[nightly] Enqueued ${riskJobs.length} risk score jobs`);
   }
 
-  // 4. Enqueue measure recalculation
+  // 4. Recompute clinical exclusions before enqueuing the measure refresh so
+  //    the refresh reads corrected gap_status values from bundle_detail.
+  const exclusions = await recomputeClinicalExclusions();
+  console.info(
+    `[nightly] exclusions recomputed: +${exclusions.newlyExcluded} / reverted ${exclusions.revertedToOpen}`,
+  );
+
+  // 5. Enqueue measure recalculation
   await measureQueue.add('nightly-measures', {
     triggerType: 'nightly',
   } satisfies MeasureJobData);
 
-  // 5. Enqueue a single population-finder sweep (self-scopes to the cohort)
+  // 6. Enqueue a single population-finder sweep (self-scopes to the cohort)
   await finderQueue.add('nightly-finder', {
     triggeredBy: 'nightly_batch',
   } satisfies FinderJobData);
   console.info('[nightly] Enqueued population-finder sweep');
 
-  // 6. Close-the-Loop scan + population risk-model run (single self-scoping jobs)
+  // 7. Close-the-Loop scan + population risk-model run (single self-scoping jobs)
   await loopsQueue.add('nightly-loops', { triggeredBy: 'nightly_batch' } satisfies LoopsJobData);
   await riskQueue.add('nightly-risk', { triggeredBy: 'nightly_batch' } satisfies RiskJobData);
   console.info('[nightly] Enqueued Close-the-Loop scan + risk-model run');

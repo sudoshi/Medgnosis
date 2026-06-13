@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { measureFilterSchema } from '@medgnosis/shared';
+import { wilsonCI } from '../../services/wilsonCI.js';
 
 export default async function measureRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -76,5 +77,49 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
         population: populationStats[0],
       },
     });
+  });
+
+  // GET /measures/:id/strata — age/sex strata with Wilson 95% CIs.
+  // measure_id != measure_key: resolve through dim_measure (see GET /:id).
+  fastify.get<{ Params: { id: string } }>('/:id/strata', async (request, reply) => {
+    const { id } = request.params;
+
+    const rows = await sql<
+      { dimension: string; stratum: string; denominator: number; numerator: number; excluded: number }[]
+    >`
+      SELECT fms.dimension, fms.stratum,
+             fms.denominator::int, fms.numerator::int, fms.excluded::int
+      FROM phm_star.fact_measure_strata fms
+      JOIN phm_star.dim_measure dm ON dm.measure_key = fms.measure_key
+      WHERE dm.measure_id = ${id}::int
+      ORDER BY fms.dimension, fms.stratum
+    `;
+
+    if (rows.length === 0) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'No strata for this measure (run a measure refresh first)' },
+      });
+    }
+
+    const data = rows.map((row) => {
+      // small_cell: display guidance for wide-CI / small-n strata (denominator
+      // 1–10). NOT suppression — this is an internal clinical tool; raw n stays
+      // visible. Consumers may render a warning indicator alongside the rate.
+      const small_cell = row.denominator > 0 && row.denominator < 11;
+      if (row.denominator <= 0) {
+        return { ...row, rate: null, ci_lower: null, ci_upper: null, small_cell };
+      }
+      const ci = wilsonCI(row.numerator, row.denominator);
+      return {
+        ...row,
+        rate: Math.round((row.numerator / row.denominator) * 1000) / 10,
+        ci_lower: Math.round(ci.lower * 1000) / 10,
+        ci_upper: Math.round(ci.upper * 1000) / 10,
+        small_cell,
+      };
+    });
+
+    return reply.send({ success: true, data });
   });
 }
