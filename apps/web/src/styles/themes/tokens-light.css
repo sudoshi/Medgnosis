@@ -19,8 +19,8 @@
 
   /* ── Text (AA on white) ─────────────────────────────────────────────────── */
   --bright: 22 36 59;    /* #16243B  ink ~12:1 */
-  --dim:    74 98 126;   /* #4A627E  ~6:1 */
-  --ghost:  118 132 156; /* #76849C  ~3.6:1 — chrome only */
+  --dim:    74 98 126;   /* #4A627E  secondary ~6:1 */
+  --ghost:  107 121 144; /* #6B7990  tertiary ~4.4:1, legible */
 
   /* ── Semantic accents — deepened for AA on white ────────────────────────── */
   --teal: 11 122 122;  --teal-dark: 9 104 104;  /* #0B7A7A */

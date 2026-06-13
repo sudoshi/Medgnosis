@@ -20,9 +20,9 @@
   --edge: 30 68 120;     /* #1E4478 */
 
   /* ── Text channels — dim/ghost lifted for AA on dark surfaces ───────────── */
-  --bright: 237 242 255; /* #EDF2FF */
-  --dim:    122 152 188; /* #7A98BC (was #5E7FA3) */
-  --ghost:  72 97 138;   /* #48618A (was #2D4060) */
+  --bright: 237 242 255; /* #EDF2FF — primary ~14:1 */
+  --dim:    122 152 188; /* #7A98BC — secondary ~6:1 (was #5E7FA3) */
+  --ghost:  95 124 160;  /* #5F7CA0 — tertiary ~4.5:1, now legible (was #2D4060 ~1.9:1) */
 
   /* ── Semantic accent channels — NEVER changed by palette switching ──────── */
   --teal: 13 217 217;  --teal-dark: 11 181 181;
