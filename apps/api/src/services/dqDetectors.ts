@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
+import { EDW_TO_VSAC_CODE_SYSTEM } from './vsacService.js';
 
 // ─── Pure threshold helpers ──────────────────────────────────────────────────
 
@@ -94,6 +95,132 @@ export async function runDqScan(): Promise<DqScanResult> {
     if (hasEdgeWhitespace(p.display_name)) {
       if (await upsertFinding({ detector: 'provider_trailing_space', entity_table: 'provider', entity_id: p.provider_id, patient_id: null, field: 'display_name', observed: JSON.stringify(p.display_name), severity: 'warning', detail: { display_name: p.display_name } })) bump('provider_trailing_space');
     }
+  }
+
+  // ─── Code-system contract: EDW ↔ VSAC label alignment ───────────────────────
+  // Scope: phm_edw.condition (324 rows) and phm_edw.procedure (415 rows).
+  // These are small dimension tables — full scans are safe.
+  //
+  // phm_edw.observation is EXPLICITLY OUT OF SCOPE: it has ~1B rows, no
+  // code_system column, and is not part of the VSAC eCQM code-system contract.
+  //
+  // Three finding types:
+  //   1. warning — code_system value absent from EDW_TO_VSAC_CODE_SYSTEM entirely
+  //      (not a known EDW label; indicates schema drift or mis-ingest)
+  //   2. warning — code_system maps to a VSAC label but a LIMIT-500 sample join
+  //      against vsac_value_set_code yields zero matching codes while the EDW
+  //      has >100 rows of that system (mapped-but-zero-overlap hazard)
+  //   3. info — condition rows whose code_system='ICD-10' (the column DEFAULT)
+  //      but condition_code matches ^[0-9]+$ (purely numeric = SNOMED-shaped);
+  //      the column default silently mislabels SNOMED codes as ICD-10
+  //
+  // Dedup: entity_id=0 is a sentinel for aggregate/table-level findings (no
+  // single row is the culprit). field='code_system:<VALUE>' gives each distinct
+  // system its own ON CONFLICT slot per table, so re-runs are idempotent.
+  // entity_id=0 is safe because all real PK sequences start at 1.
+
+  const CODE_SYSTEM_TABLES = ['condition', 'procedure'] as const;
+  for (const tbl of CODE_SYSTEM_TABLES) {
+    const dist = await sql<{ code_system: string; row_count: number }[]>`
+      SELECT code_system, count(*)::int AS row_count
+      FROM ${sql.unsafe(`phm_edw.${tbl}`)}
+      GROUP BY code_system
+    `;
+
+    for (const row of dist) {
+      const cs = row.code_system;
+      const n = row.row_count;
+      const field = `code_system:${cs}`;
+
+      if (!(cs in EDW_TO_VSAC_CODE_SYSTEM)) {
+        // Not in the map at all — unknown EDW code_system label
+        if (await upsertFinding({
+          detector: 'code_system_contract',
+          entity_table: tbl,
+          entity_id: 0,
+          patient_id: null,
+          field,
+          observed: cs,
+          severity: 'warning',
+          detail: { code_system: cs, row_count: n, reason: 'unmapped_label' },
+        })) bump('code_system_contract');
+        continue;
+      }
+
+      const vsacLabel = EDW_TO_VSAC_CODE_SYSTEM[cs];
+      if (vsacLabel === null) {
+        // In the map but null-mapped by design (ICD-9, OTHER) — warn when rows exist
+        if (n > 0) {
+          if (await upsertFinding({
+            detector: 'code_system_contract',
+            entity_table: tbl,
+            entity_id: 0,
+            patient_id: null,
+            field,
+            observed: cs,
+            severity: 'warning',
+            detail: { code_system: cs, row_count: n, reason: 'null_mapped_system_has_rows', note: 'ICD-9 and OTHER have no corresponding VSAC code system; codes cannot be reconciled against value sets' },
+          })) bump('code_system_contract');
+        }
+        continue;
+      }
+
+      // Mapped to a VSAC label: sample-join to detect zero-overlap (>100 EDW rows threshold).
+      // The code column name differs by table: condition_code / procedure_code.
+      // Both are VARCHAR(50); the join is against vsac_value_set_code.code (VARCHAR(50)).
+      if (n > 100) {
+        const codeCol = tbl === 'condition' ? 'condition_code' : 'procedure_code';
+        const overlap = await sql<{ overlap_count: number }[]>`
+          SELECT count(DISTINCT vc.code)::int AS overlap_count
+          FROM (
+            SELECT ${sql.unsafe(codeCol)} AS code
+            FROM ${sql.unsafe(`phm_edw.${tbl}`)}
+            WHERE code_system = ${cs}
+            LIMIT 500
+          ) edw_sample
+          JOIN phm_edw.vsac_value_set_code vc
+            ON vc.code = edw_sample.code
+           AND vc.code_system = ${vsacLabel}
+        `;
+        const overlapCount = overlap[0]?.overlap_count ?? 0;
+        if (overlapCount === 0) {
+          if (await upsertFinding({
+            detector: 'code_system_contract',
+            entity_table: tbl,
+            entity_id: 0,
+            patient_id: null,
+            field,
+            observed: cs,
+            severity: 'warning',
+            detail: { code_system: cs, vsac_label: vsacLabel, row_count: n, sample_size: 500, overlap_count: 0, reason: 'mapped_zero_overlap' },
+          })) bump('code_system_contract');
+        }
+      }
+    }
+  }
+
+  // Informational: condition rows with code_system='ICD-10' (the column DEFAULT)
+  // but condition_code matching ^[0-9]+$ — SNOMED concept IDs are purely numeric;
+  // ICD-10 codes always contain letters. These are SNOMED codes that inherited the
+  // column default instead of being explicitly labeled 'SNOMED'.
+  const mislabelRows = await sql<{ mislabel_count: number }[]>`
+    SELECT count(*)::int AS mislabel_count
+    FROM phm_edw.condition
+    WHERE code_system = 'ICD-10'
+      AND condition_code ~ '^[0-9]+$'
+  `;
+  const mislabelCount = mislabelRows[0]?.mislabel_count ?? 0;
+  if (mislabelCount > 0) {
+    if (await upsertFinding({
+      detector: 'code_system_contract',
+      entity_table: 'condition',
+      entity_id: 0,
+      patient_id: null,
+      field: 'code_system:ICD-10_default_mislabel',
+      observed: `ICD-10 (${mislabelCount} rows with numeric codes)`,
+      severity: 'info',
+      detail: { mislabel_count: mislabelCount, reason: 'icd10_default_mislabel', note: "code_system column defaults to 'ICD-10'; purely numeric codes are SNOMED-shaped and likely miscategorized" },
+    })) bump('code_system_contract');
   }
 
   return { byDetector };

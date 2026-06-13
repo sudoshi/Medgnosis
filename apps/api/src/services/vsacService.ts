@@ -22,6 +22,20 @@ export const EDW_CODE_SYSTEM = {
   observation: 'LOINC',
 } as const;
 
+// EDW code_system column labels → VSAC code_system labels. The EDW CHECK
+// constraints allow 'ICD-10','SNOMED','ICD-9','OTHER'; VSAC uses different
+// labels. NEVER join the columns directly — translate through this map.
+// null means unmapped by design: ICD-9 and OTHER have no corresponding VSAC
+// eCQM code system in the loaded value sets. Rows with a null-mapped system
+// are still reported as warnings when the table contains >0 rows (the system
+// exists in live data but cannot be reconciled against VSAC extracts).
+export const EDW_TO_VSAC_CODE_SYSTEM: Record<string, string | null> = {
+  SNOMED: 'SNOMEDCT',
+  'ICD-10': 'ICD10CM',
+  'ICD-9': null, // VSAC eCQM extracts carry no ICD-9 — unmapped by design
+  OTHER: null,
+};
+
 export type EdwDomain = keyof typeof EDW_CODE_SYSTEM;
 
 export type PopulationRole =
