@@ -9,17 +9,17 @@
 --    Eliminates 750ms seq scans on 28M rows for date-range queries
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_encounter_active_datetime_patient
+CREATE INDEX IF NOT EXISTS idx_encounter_active_datetime_patient
   ON phm_edw.encounter (encounter_datetime, patient_id)
   WHERE active_ind = 'Y';
 
 -- Also add a provider-scoped patient index for fast panel lookups
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_patient_pcp_active
+CREATE INDEX IF NOT EXISTS idx_patient_pcp_active
   ON phm_edw.patient (pcp_provider_id)
   WHERE active_ind = 'Y';
 
 -- Care gap join acceleration (provider-scoped dashboards)
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_care_gap_patient_status
+CREATE INDEX IF NOT EXISTS idx_care_gap_patient_status
   ON phm_edw.care_gap (patient_id, gap_status)
   WHERE active_ind = 'Y';
 
