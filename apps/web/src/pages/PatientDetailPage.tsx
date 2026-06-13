@@ -113,7 +113,7 @@ export function PatientDetailPage() {
         <div className="empty-state py-20">
           <p className="empty-state-title">Patient not found</p>
           <p className="empty-state-desc">
-            No patient with ID {patientId} exists or you don't have access.
+            No patient with ID {patientId} exists or you don&apos;t have access.
           </p>
         </div>
       </div>

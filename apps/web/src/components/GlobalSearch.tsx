@@ -349,7 +349,7 @@ export function GlobalSearch() {
             <div className="px-4 py-8 text-center">
               <p className="text-sm text-dim">
                 No patients found for{' '}
-                <span className="text-bright font-medium">"{query}"</span>
+                <span className="text-bright font-medium">&quot;{query}&quot;</span>
               </p>
               <p className="text-xs text-ghost mt-1">
                 Try searching by full name or MRN number
