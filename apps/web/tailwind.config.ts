@@ -115,11 +115,11 @@ const config: Config = {
             secondary: 'rgb(var(--dim) / <alpha-value>)',
           },
         },
+        // shadcn hover surface (NOT a brand accent). Replaces the old legacy
+        // `accent` brand object, which had 0 class usages (grep-confirmed).
         accent: {
-          primary: 'rgb(var(--teal) / <alpha-value>)',
-          success: 'rgb(var(--emerald) / <alpha-value>)',
-          warning: 'rgb(var(--amber) / <alpha-value>)',
-          error:   'rgb(var(--crimson) / <alpha-value>)',
+          DEFAULT:    'rgb(var(--s2) / <alpha-value>)',
+          foreground: 'rgb(var(--bright) / <alpha-value>)',
         },
         // Legacy gray references (AppShell uses raw gray-* until migrated)
         gray: {
