@@ -22,6 +22,15 @@ import { api } from '../services/api.js';
 import type { User as UserType } from '@medgnosis/shared';
 import { PALETTES } from '../styles/palettes.js';
 import { useThemeStore } from '../stores/theme.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
@@ -148,12 +157,11 @@ function ProfileSection({ user }: { user: UserType | null }) {
               <label htmlFor="profile-first" className="block text-xs font-medium text-dim mb-1.5">
                 First name
               </label>
-              <input
+              <Input
                 id="profile-first"
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="input-field w-full"
                 required
               />
             </div>
@@ -161,12 +169,11 @@ function ProfileSection({ user }: { user: UserType | null }) {
               <label htmlFor="profile-last" className="block text-xs font-medium text-dim mb-1.5">
                 Last name
               </label>
-              <input
+              <Input
                 id="profile-last"
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="input-field w-full"
               />
             </div>
           </div>
@@ -175,31 +182,30 @@ function ProfileSection({ user }: { user: UserType | null }) {
             <label htmlFor="profile-email" className="block text-xs font-medium text-dim mb-1.5">
               Email address
             </label>
-            <input
+            <Input
               id="profile-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="input-field w-full"
               required
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-dim mb-1.5">Role</label>
-            <input
+            <Input
               type="text"
               defaultValue={(user as { role?: string } | null)?.role ?? 'Clinician'}
-              className="input-field w-full opacity-60 cursor-not-allowed"
+              className="opacity-60 cursor-not-allowed"
               readOnly
             />
           </div>
 
           <div className="flex justify-end pt-1">
-            <button type="submit" className="btn-primary" disabled={updateProfile.isPending}>
-              <Check size={13} strokeWidth={2} aria-hidden="true" />
+            <Button type="submit" disabled={updateProfile.isPending}>
+              <Check strokeWidth={2} aria-hidden="true" />
               <span>{updateProfile.isPending ? 'Saving...' : 'Save changes'}</span>
-            </button>
+            </Button>
           </div>
         </div>
       </form>
@@ -499,19 +505,19 @@ function ScheduleSection({ onPersist }: { onPersist: (key: string, value: Record
                         return (
                           <div key={slot.id} className="flex items-center gap-3 flex-wrap">
                             {/* Time range */}
-                            <input
+                            <Input
                               type="time"
                               value={startTime}
                               onChange={(e) => updateSlot(slot.id, 'start_time', e.target.value)}
-                              className="input-field w-[110px] text-xs font-data py-1.5"
+                              className="w-[110px] py-1.5 font-data text-xs"
                               aria-label={`${DAY_NAMES[day]} start time`}
                             />
                             <span className="text-ghost text-xs">–</span>
-                            <input
+                            <Input
                               type="time"
                               value={endTime}
                               onChange={(e) => updateSlot(slot.id, 'end_time', e.target.value)}
-                              className="input-field w-[110px] text-xs font-data py-1.5"
+                              className="w-[110px] py-1.5 font-data text-xs"
                               aria-label={`${DAY_NAMES[day]} end time`}
                             />
 
@@ -573,14 +579,16 @@ function ScheduleSection({ onPersist }: { onPersist: (key: string, value: Record
         <h3 className="text-xs font-semibold text-bright uppercase tracking-widest">Automated Tasks</h3>
         <div>
           <label className="block text-xs font-medium text-dim mb-1.5">ETL schedule</label>
-          <select
-            className="input-field w-full"
-            onChange={(e) => onPersist('schedule', { etl: e.target.value })}
-          >
-            <option value="daily">Daily at midnight</option>
-            <option value="weekly">Weekly on Sunday</option>
-            <option value="custom">Custom schedule</option>
-          </select>
+          <Select defaultValue="daily" onValueChange={(v) => onPersist('schedule', { etl: v })}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Daily at midnight</SelectItem>
+              <SelectItem value="weekly">Weekly on Sunday</SelectItem>
+              <SelectItem value="custom">Custom schedule</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-xs text-ghost mt-1.5">
             Controls when the star schema refresh runs
           </p>
@@ -588,14 +596,16 @@ function ScheduleSection({ onPersist }: { onPersist: (key: string, value: Record
 
         <div className="border-t border-edge/15 pt-5">
           <label className="block text-xs font-medium text-dim mb-1.5">Report generation</label>
-          <select
-            className="input-field w-full"
-            onChange={(e) => onPersist('schedule', { reports: e.target.value })}
-          >
-            <option value="daily">Daily at 6 AM</option>
-            <option value="weekly">Weekly on Monday</option>
-            <option value="custom">Custom schedule</option>
-          </select>
+          <Select defaultValue="daily" onValueChange={(v) => onPersist('schedule', { reports: v })}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Daily at 6 AM</SelectItem>
+              <SelectItem value="weekly">Weekly on Monday</SelectItem>
+              <SelectItem value="custom">Custom schedule</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-xs text-ghost mt-1.5">
             Controls when automated performance reports are generated
           </p>
@@ -667,10 +677,10 @@ function SecuritySection() {
               Add an extra layer of security to your account with an authenticator app
             </p>
           </div>
-          <button className="btn-primary flex-shrink-0 opacity-60 cursor-not-allowed" disabled>
+          <Button className="flex-shrink-0" disabled>
             <span>Enable 2FA</span>
-            <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
-          </button>
+            <ChevronRight strokeWidth={2} aria-hidden="true" />
+          </Button>
         </div>
         <p className="text-xs text-ghost mt-3">
           Two-factor authentication setup is coming soon.
