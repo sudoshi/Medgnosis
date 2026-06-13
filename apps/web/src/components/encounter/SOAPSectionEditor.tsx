@@ -17,6 +17,7 @@ import {
   Sparkles,
   Loader2,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Typography } from '@tiptap/extension-typography';
 import { Link as TiptapLink } from '@tiptap/extension-link';
@@ -159,19 +160,21 @@ export function SOAPSectionEditor({
         </div>
 
         {!readOnly && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onAiGenerate}
             disabled={isGenerating}
-            className="btn-ghost btn-xs gap-1 text-teal hover:text-teal"
+            className="h-7 gap-1 px-2 text-xs text-teal hover:text-teal"
             title={`Generate ${label} with AI`}
           >
             {isGenerating ? (
-              <Loader2 size={12} className="animate-spin" />
+              <Loader2 className="animate-spin" />
             ) : (
-              <Sparkles size={12} />
+              <Sparkles />
             )}
             AI
-          </button>
+          </Button>
         )}
       </div>
 
