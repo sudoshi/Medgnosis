@@ -6,7 +6,7 @@
 
 CREATE TABLE IF NOT EXISTS phm_edw.note_coded_diagnosis (
   coded_id        SERIAL PRIMARY KEY,
-  note_id         UUID NOT NULL REFERENCES phm_edw.clinical_note(note_id),
+  note_id         INT NOT NULL REFERENCES phm_edw.clinical_note(note_id),
   patient_id      INT NOT NULL REFERENCES phm_edw.patient(patient_id),
   icd10_code      VARCHAR(20) NOT NULL,
   diagnosis_name  VARCHAR(255),
