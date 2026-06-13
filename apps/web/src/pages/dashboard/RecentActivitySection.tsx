@@ -58,7 +58,7 @@ function AbbyChat({ greeting }: { greeting: string }) {
           </p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin">
+        <div className="space-y-2 max-h-[min(360px,40vh)] overflow-y-auto scrollbar-thin">
           {chat.map((msg, i) => (
             <div
               key={i}

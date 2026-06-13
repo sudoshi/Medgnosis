@@ -219,7 +219,7 @@
 
   .panel-list {
     @apply surface;
-    @apply h-[400px] overflow-hidden;
+    @apply max-h-[min(440px,55vh)] min-h-0 overflow-hidden;
   }
 
   .panel-interactive {
