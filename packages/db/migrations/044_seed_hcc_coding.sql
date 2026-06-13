@@ -15,8 +15,8 @@ WITH hcc_patients AS (
 ),
 new_notes AS (
   INSERT INTO phm_edw.clinical_note
-    (note_id, patient_id, author_user_id, visit_type, status, assessment, finalized_at)
-  SELECT gen_random_uuid(), hp.patient_id,
+    (patient_id, author_user_id, visit_type, status, assessment, finalized_at)
+  SELECT hp.patient_id,
          (SELECT id FROM app_users WHERE email = 'admin@acumenus.net' LIMIT 1),
          'supernote_historical', 'final', 'Historical coding backfill', NOW()
   FROM hcc_patients hp
