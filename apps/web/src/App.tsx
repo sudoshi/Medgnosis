@@ -20,7 +20,6 @@ import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AdminPage } from './pages/AdminPage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
-import { ShadcnSpikePage } from './pages/ShadcnSpike.js'; // TEMP: shadcn spike — remove before merge
 import { Toaster } from './components/ui/sonner.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
@@ -49,7 +48,6 @@ export function App() {
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/shadcn-spike" element={<ShadcnSpikePage />} /> {/* TEMP: remove before merge */}
 
         {/* Protected — requires authenticated session */}
         <Route element={<AuthGuard />}>

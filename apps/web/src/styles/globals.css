@@ -281,110 +281,11 @@
   .badge-caution { @apply badge bg-amber/5    text-amber   border border-amber/15;  opacity: 0.78; }
 
   /* ══════════════════════════════════════════════════════════════════════════
-     BUTTONS
+     BUTTONS, INPUTS, SELECTS — now shadcn primitives
+     Migrated 2026-06-13 to src/components/ui/{button,input,textarea,select}.tsx.
+     The legacy .btn, .input-field and .select-field component classes were
+     removed once every consumer was migrated (see docs/superpowers/plans).
      ══════════════════════════════════════════════════════════════════════════ */
-
-  .btn {
-    @apply inline-flex items-center justify-center gap-2;
-    @apply font-ui font-medium text-sm;
-    @apply rounded-btn px-4 py-2;
-    @apply transition-all;
-    transition-duration: var(--duration-fast);
-    transition-timing-function: var(--ease-std);
-  }
-
-  /* Primary — palette-primary filled */
-  .btn-primary {
-    @apply btn;
-    background-color: var(--primary);
-    color: rgb(var(--accent-fg));
-    transition: background-color var(--duration-fast) var(--ease-std),
-                box-shadow       var(--duration-fast) var(--ease-std),
-                transform        var(--duration-fast) var(--ease-out);
-  }
-  .btn-primary:hover {
-    background-color: var(--primary-dark);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px var(--primary-glow), 0 2px 6px rgba(0,0,0,0.3);
-  }
-  .btn-primary:active {
-    transform: translateY(0) scale(0.97);
-    box-shadow: none;
-  }
-
-  /* Secondary — s1 surface with border */
-  .btn-secondary {
-    @apply btn bg-s1 text-bright border border-edge/50;
-    transition: background-color var(--duration-fast) var(--ease-std),
-                border-color     var(--duration-fast) var(--ease-std),
-                transform        var(--duration-fast) var(--ease-out);
-  }
-  .btn-secondary:hover {
-    @apply bg-s2 border-edge/80;
-    transform: translateY(-1px);
-  }
-  .btn-secondary:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  /* Ghost — transparent, text only */
-  .btn-ghost {
-    @apply btn bg-transparent text-dim;
-  }
-  .btn-ghost:hover {
-    @apply bg-s2 text-bright;
-  }
-
-  /* Danger — crimson */
-  .btn-danger {
-    @apply btn bg-crimson/10 text-crimson border border-crimson/25;
-  }
-  .btn-danger:hover {
-    @apply bg-crimson/20;
-    box-shadow: 0 4px 18px rgba(232, 57, 74, 0.25);
-  }
-
-  /* Icon button — square, no label */
-  .btn-icon {
-    @apply btn p-2 w-9 h-9;
-  }
-
-  /* Size modifiers */
-  .btn-sm { @apply text-xs px-3 py-1.5 gap-1.5; }
-  .btn-lg { @apply text-base px-5 py-2.5 gap-2.5; }
-
-  /* Disabled state */
-  .btn:disabled,
-  .btn[aria-disabled="true"] {
-    @apply opacity-40 cursor-not-allowed pointer-events-none;
-  }
-
-  /* ══════════════════════════════════════════════════════════════════════════
-     FORM ELEMENTS
-     ══════════════════════════════════════════════════════════════════════════ */
-
-  .input-field {
-    @apply w-full bg-s0 border border-edge/50 rounded-input;
-    @apply text-bright font-ui text-sm;
-    @apply px-3 py-2.5;
-    @apply placeholder:text-ghost;
-    @apply transition-colors;
-    transition-duration: var(--duration-fast);
-  }
-  .input-field:focus {
-    outline: none;
-    border-color: var(--border-focus);
-    box-shadow: 0 0 0 3px var(--primary-bg),
-                0 0 12px var(--primary-glow);
-  }
-
-  .select-field {
-    @apply input-field;
-    @apply appearance-none pr-8;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235E7FA3' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-  }
 
   /* ══════════════════════════════════════════════════════════════════════════
      PROGRESS BARS
@@ -507,23 +408,9 @@
                 0 0 40px rgba(13,217,217,0.08);
   }
 
-  /* Legacy modal classes — keep for unmigrated components */
-  .modal-backdrop {
-    @apply overlay-backdrop;
-  }
-
-  .modal-container {
-    @apply command-panel;
-    padding: var(--padding-panel);
-  }
-
-  .modal-content {
-    animation: fadeIn 0.25s ease-out both;
-  }
-
-  .modal-animate {
-    animation: fadeIn 0.25s ease-out both;
-  }
+  /* Legacy .modal-* classes removed 2026-06-13 — dialogs now use the shadcn
+     Dialog/AlertDialog/Sheet primitives. (.overlay-backdrop and .command-panel
+     above are retained — still used by CommandPalette.) */
 
   /* ══════════════════════════════════════════════════════════════════════════
      STATS STRIP — horizontal stat bar used across Dashboard/Patients/Care Lists
@@ -561,40 +448,8 @@
   .patient-avatar-lg  { @apply patient-avatar w-12 h-12 text-base; }
   .patient-avatar-xl  { @apply patient-avatar w-16 h-16 text-xl; }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-     TABLE
-     ══════════════════════════════════════════════════════════════════════════ */
-
-  .data-table {
-    @apply w-full;
-  }
-
-  .data-table thead {
-    @apply sticky top-0 bg-s0 z-10;
-  }
-
-  .data-table th {
-    @apply data-label px-4 py-2 text-left border-b border-edge/40;
-  }
-
-  .data-table tbody tr {
-    @apply border-b border-edge/20;
-    @apply transition-colors;
-    transition-duration: var(--duration-fast);
-  }
-
-  .data-table tbody tr:hover {
-    @apply bg-s1;
-  }
-
-  /* Row risk accent — palette-primary left border on hover */
-  .data-table tbody tr:hover td:first-child {
-    box-shadow: inset 3px 0 0 var(--primary);
-  }
-
-  .data-table td {
-    @apply px-4 py-2 text-sm text-bright;
-  }
+  /* TABLE — .data-table removed 2026-06-13; tables now use the shadcn Table
+     primitive (src/components/ui/table.tsx). */
 
   /* ══════════════════════════════════════════════════════════════════════════
      NAVIGATION (sidebar) — used by AppShell
