@@ -35,7 +35,6 @@ import { useWsStore } from '../stores/ws.js';
 import { useThemeStore } from '../stores/theme.js';
 import { api } from '../services/api.js';
 import { ConfirmModal } from './ConfirmModal.js';
-import { ToastContainer } from './Toast.js';
 
 // ─── Nav configuration ────────────────────────────────────────────────────────
 
@@ -464,9 +463,7 @@ export function AppShell() {
         onConfirm={handleLogout}
         onCancel={() => setConfirmLogout(false)}
       />
-
-      {/* ── Toast notifications ──────────────────────────────────── */}
-      <ToastContainer />
+      {/* Toasts render via the sonner <Toaster> mounted at the app root. */}
     </div>
   );
 }
