@@ -290,22 +290,22 @@ SELECT
     2816,
     (SELECT pharmacy_id FROM phm_edw.pharmacy WHERE pharmacy_name ILIKE '%CVS%' LIMIT 1),
     m.medication_name,
-    COALESCE(mo.sig, 'Take as directed'),
-    COALESCE(mo.quantity_dispensed::TEXT, '30'),
-    COALESCE(mo.days_supply, 30),
-    COALESCE(mo.refills, 0),
+    COALESCE(mo.dosage, 'Take as directed'),  -- medication_order has dosage not sig
+    '30',                                      -- quantity_dispensed not in schema; default 30
+    30,                                        -- days_supply not in schema; default 30
+    COALESCE(mo.refill_count, 0),             -- refill_count is the actual column name
     CASE WHEN m.medication_name ILIKE '%codeine%' OR m.medication_name ILIKE '%opioid%'
               OR m.medication_name ILIKE '%benzo%' OR m.medication_name ILIKE '%amphet%'
          THEN TRUE ELSE FALSE END,
     'Filled',
-    mo.order_datetime + INTERVAL '1 hour',
-    mo.order_datetime + INTERVAL '4 hours'
+    COALESCE(mo.start_datetime, mo.created_date) + INTERVAL '1 hour',
+    COALESCE(mo.start_datetime, mo.created_date) + INTERVAL '4 hours'
 FROM phm_edw.medication_order mo
 JOIN phm_edw.medication m ON mo.medication_id = m.medication_id
 JOIN phm_edw.patient p ON mo.patient_id = p.patient_id
 WHERE p.pcp_provider_id = 2816
   AND mo.prescription_status = 'Active'
-  AND mo.order_datetime >= '2024-01-01'
+  AND COALESCE(mo.start_datetime, mo.created_date) >= '2024-01-01'
   AND NOT EXISTS (SELECT 1 FROM phm_edw.e_prescription ex WHERE ex.medication_order_id = mo.medication_order_id)
 ORDER BY mo.medication_order_id
 LIMIT 400;
