@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ArrowUpDown,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { api } from '../services/api.js';
 import { formatDate, calcAge } from '../utils/time.js';
 import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
@@ -141,7 +142,7 @@ export function PatientsPage() {
             className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
             aria-hidden="true"
           />
-          <input
+          <Input
             type="text"
             placeholder="Search by name or MRN..."
             value={search}
@@ -149,7 +150,7 @@ export function PatientsPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="input-field pl-9 w-full"
+            className="pl-9"
             autoComplete="off"
             spellCheck={false}
             aria-label="Search patients"

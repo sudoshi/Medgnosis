@@ -12,6 +12,7 @@ import {
   ChevronRight,
   AlertCircle,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { useAiChat } from '../../hooks/useApi.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -338,7 +339,7 @@ export function AbbyTab({ patientId }: AbbyTabProps) {
       {/* Input Area */}
       <div className="border-t border-edge/20 px-4 py-3">
         <div className="flex items-end gap-2">
-          <textarea
+          <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -350,7 +351,7 @@ export function AbbyTab({ patientId }: AbbyTabProps) {
             }}
             placeholder="Ask Abby about this patient..."
             rows={2}
-            className="input-field flex-1 resize-none text-sm"
+            className="min-h-0 flex-1 resize-none text-sm"
             aria-label="Message Abby"
             disabled={isPending}
           />

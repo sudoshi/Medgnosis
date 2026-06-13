@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogClose,
@@ -415,12 +416,12 @@ export function MeasuresPage() {
               className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
               aria-hidden="true"
             />
-            <input
+            <Input
               type="text"
               placeholder="Search by code or name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-field pl-8 w-full text-sm"
+              className="pl-8 text-sm"
               autoComplete="off"
               spellCheck={false}
               aria-label="Search measures"

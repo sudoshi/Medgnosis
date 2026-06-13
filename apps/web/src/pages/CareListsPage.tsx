@@ -8,6 +8,7 @@ import {
   Search,
   FileCode2,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useOrderWorklist, usePlaceOrder, usePlaceOrderBatch } from '../hooks/useApi.js';
 import { Pagination } from '../components/Pagination.js';
 import { useToast } from '../stores/ui.js';
@@ -166,12 +167,12 @@ export function CareListsPage() {
             strokeWidth={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
           />
-          <input
+          <Input
             type="text"
             placeholder="Search patients..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="input-field pl-9 w-full"
+            className="pl-9"
             autoComplete="off"
             spellCheck={false}
             aria-label="Search patients"
