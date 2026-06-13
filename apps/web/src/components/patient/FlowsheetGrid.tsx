@@ -137,7 +137,7 @@ export function FlowsheetGrid({ patientId, onTrend }: FlowsheetGridProps) {
               {sortedDates.map((d) => (
                 <th key={d} className="px-2 py-2 text-center font-medium text-ghost border-b border-edge/30 min-w-[70px] whitespace-nowrap">
                   <div>{formatShortDate(d)}</div>
-                  <div className="text-[9px] opacity-60">'{formatYear(d)}</div>
+                  <div className="text-[9px] opacity-60">&apos;{formatYear(d)}</div>
                 </th>
               ))}
             </tr>

@@ -209,7 +209,7 @@ export function CareListsPage() {
             <p className="empty-state-title">No open care gaps found</p>
             {debouncedSearch ? (
               <p className="empty-state-desc">
-                No results for <span className="text-bright font-medium">"{debouncedSearch}"</span>
+                No results for <span className="text-bright font-medium">&quot;{debouncedSearch}&quot;</span>
               </p>
             ) : (
               <p className="empty-state-desc text-emerald">

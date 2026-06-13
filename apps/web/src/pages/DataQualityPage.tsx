@@ -114,7 +114,7 @@ export function DataQualityPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-bright">Rogues' gallery</h2>
+        <h2 className="text-sm font-semibold text-bright">Rogues&apos; gallery</h2>
         {isLoading ? (
           <div className="py-8 text-center text-dim">Scanning…</div>
         ) : findings.length === 0 ? (

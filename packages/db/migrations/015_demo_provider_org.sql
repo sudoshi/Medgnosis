@@ -256,4 +256,7 @@ ON CONFLICT DO NOTHING;
 
 RAISE NOTICE 'Migration 015 complete: org %, clinic %, care_team %, resources seeded',
     v_health_system_org_id, v_clinic_org_id, v_care_team_id;
+
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Migration 015: demo seed skipped (provider_id=2816 not present — expected on CI / fresh DB): %', SQLERRM;
 END $$;

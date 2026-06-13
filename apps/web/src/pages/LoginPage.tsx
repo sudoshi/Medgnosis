@@ -805,7 +805,7 @@ export function LoginPage() {
 
           {/* Create account link */}
           <div className="lpg-register">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link to="/register" className="lpg-register-link">Create account</Link>
           </div>
 
