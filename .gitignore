@@ -16,6 +16,9 @@ coverage/
 /backend/public/build
 /backend/storage/*.key
 
+# TypeScript incremental build state — never commit; causes tsc to skip emission on fresh checkouts
+*.tsbuildinfo
+
 # Turbo
 .turbo
 
