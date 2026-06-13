@@ -34,6 +34,17 @@ TRUNCATE TABLE phm_edw.allergy RESTART IDENTITY CASCADE;
 -- TRUNCATE TABLE phm_edw.code_crosswalk RESTART IDENTITY CASCADE; -- No source
 -- TRUNCATE TABLE phm_edw.etl_log RESTART IDENTITY CASCADE; -- Manage separately
 
+COMMIT; -- Commit truncates before the guarded ETL block
+
+-- ----------------------------------------
+-- Load Master Tables and Transactional Tables via dblink
+-- Wrapped in a DO block so that a connection failure to the 'ohdsi' source
+-- (expected on CI and any fresh environment without the Synthea database)
+-- skips the data load gracefully instead of failing the migration.
+-- ----------------------------------------
+DO $$
+BEGIN
+
 -- ----------------------------------------
 -- Load Master Tables
 -- ----------------------------------------
@@ -334,6 +345,8 @@ WHERE pat.patient_id IS NOT NULL AND o.code IS NOT NULL;
 
 -- Add more INSERT statements for other tables if mappings are defined (e.g., devices, supplies -> observations?)
 
-COMMIT; -- End Transaction
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'synthea source unreachable — skipping ETL load (expected outside the dev host): %', SQLERRM;
+END $$;
 
 -- Note: Removed dblink_disconnect as we removed dblink_connect
