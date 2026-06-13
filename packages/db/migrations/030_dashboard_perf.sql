@@ -225,7 +225,4 @@ CREATE INDEX idx_mv_dashboard_stats_provider
   ON phm_star.mv_dashboard_stats (provider_id)
   WHERE provider_id IS NOT NULL;
 
--- Register migration
-INSERT INTO public._migrations (name, applied_at)
-VALUES ('030_dashboard_perf.sql', NOW())
-ON CONFLICT DO NOTHING;
+-- Migration tracking is handled by the runner (migrate.ts); no self-registration needed.
