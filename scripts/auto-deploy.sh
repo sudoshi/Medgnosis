@@ -36,17 +36,24 @@ deploy() {
 
     if sudo -u smudoshi npm run build --silent 2>&1; then
         log "Build succeeded. Restarting services..."
-        /usr/bin/systemctl restart medgnosis-api medgnosis-worker
+        # Apache serves apps/web/dist statically; the build umask (007) strips
+        # world-read, so make the fresh dist readable or the frontend 403s.
+        chmod -R o+rX "$REPO_ROOT/apps/web/dist" 2>/dev/null || true
+        /usr/bin/systemctl restart medgnosis-api
+        # worker may be masked in this environment — restart only if available
+        /usr/bin/systemctl restart medgnosis-worker 2>/dev/null || true
         sleep 2
 
         API_STATUS=$(systemctl is-active medgnosis-api 2>/dev/null || true)
         WORKER_STATUS=$(systemctl is-active medgnosis-worker 2>/dev/null || true)
 
-        if [ "$API_STATUS" = "active" ] && [ "$WORKER_STATUS" = "active" ]; then
+        # Success keys on the API (worker is optional/masked here); otherwise the
+        # hash never advances and the daemon rebuilds every interval forever.
+        if [ "$API_STATUS" = "active" ]; then
             touch "$HASH_FILE"
             log "Deploy complete. API=$API_STATUS Worker=$WORKER_STATUS"
         else
-            log "WARNING: Services not healthy. API=$API_STATUS Worker=$WORKER_STATUS"
+            log "WARNING: API not healthy. API=$API_STATUS Worker=$WORKER_STATUS"
         fi
     else
         log "Build FAILED — services not restarted."
