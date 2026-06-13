@@ -1922,6 +1922,66 @@ The star schema ETL (migration 014) already evaluates every patient against ever
 
 ---
 
+## Session 20 — VSAC Value Sets + Clinical Fidelity Hardening + CI Restoration (Jun 13, 2026)
+
+**Goal:** Import Parthenon's authoritative NLM VSAC value-set asset, make the measure layer *clinically true* (not just mechanically correct), and restore a CI pipeline that had been red since before the Phase 6 merge. Three pull requests, built and verified in stacked worktrees: **#1 VSAC asset + measure hardening**, **#2 CI restoration**, **#3 clinical fidelity** (supersets #1 + #2). Plans: `docs/superpowers/plans/2026-06-12-vsac-value-sets-integration.md`, `…-clinical-fidelity-hardening.md`. Spec: `docs/superpowers/specs/2026-06-12-parthenon-ecqm-handoff.md`.
+
+### Arc 1 — VSAC asset import (PR #1)
+
+Transferred the live VSAC corpus from Parthenon's `app.vsac_*` into `phm_edw.vsac_*` (DB-to-DB `\copy`, no re-source from NLM):
+
+| Table | Rows |
+|-------|------|
+| `vsac_value_set` | 1,545 |
+| `vsac_value_set_code` | 225,261 |
+| `vsac_measure` | 72 |
+| `vsac_measure_value_set` | 1,597 |
+| `measure_value_set` (bridge) | 1,015 (44 of 45 local CMS measures; only CMS249 has no VSAC entry) |
+
+- **Migrations 050–051.** `load-vsac.sh` (`--reload` guard, asserts source==destination counts and exits non-zero on mismatch). Bridge auto-matches local v12-era measures to VSAC v14-era by base CMS number, recording `vsac_cms_id` so version drift is machine-visible.
+- **Corrected the upstream handoff's data-model claim:** Medgnosis `condition`/`procedure` codes are **SNOMED CT**, not ICD-10/CPT — the `EDW_CODE_SYSTEM` routing reflects the verified reality (condition/procedure→SNOMEDCT, medication→RXNORM, observation→LOINC).
+- **Calculator hardening:** single-pass `GROUPING SETS` stratification into `phm_star.fact_measure_strata` (headline + age band + gender, rebuilt atomically with `fact_measure_result`), Wilson 95% CIs (`wilsonCI.ts`), `GET /measures/:id/strata`, and a `MeasureEvaluator` sql/cql seam (`MEASURE_EVALUATOR` env) for a future CQL engine.
+
+### Arc 2 — Adversarial review (the turn)
+
+A skeptic pass refuted two *clinical* safety claims while every *mechanical* invariant held (numerator ⊆ denominator, strata reconcile exactly, 0 exclusion-accounting violations):
+
+1. **`resolveMeasureCodes` was role-blind** — it unioned denominator with exclusion codes. For CMS122, 2,114 of 2,708 SNOMEDCT codes (82%) are hospice/advanced-illness/frailty/palliative — the codes that *remove* patients. A naive population finder would have flagged hospice patients with false care gaps.
+2. **Exclusions were fabricated** — `gap_status='excluded'` (2,689 rows) came from a deterministic hash in demo migration 017, never from clinical evidence. The strata math was correct over meaningless inputs.
+3. **EDW↔VSAC label mismatch** — EDW `code_system` columns hold `'SNOMED'`/`'ICD-10'` (CHECK-constrained, column default `'ICD-10'`); VSAC uses `'SNOMEDCT'`/`'ICD10CM'`. A direct join silently returns zero rows.
+
+### Arc 3 — Clinical fidelity (PR #3) + CI restoration (PR #2)
+
+| Delivered | Detail | Migrations |
+|-----------|--------|------------|
+| Population roles on the bridge | `population_role` (138 denominator_exclusion / 248 initial_population / 132 supplemental / 497 unclassified, name-heuristic + manual-override); `resolveMeasureCodes` now **requires** a role — never serves `unclassified` as a denominator | 052 |
+| Clinical exclusion engine | Computes exclusions from the imported exclusion-family value sets; **retired all 2,689 hash-seeded rows** (none had evidence). `care_gap` now `closed=6,697 / open=20,270 / excluded=0`. Runs nightly before the measure refresh | — |
+| Value-set-driven ACE/ARB flag | Phase 7's 12-name regex → `ACE Inhibitor or ARB or ARNI` RxNorm value set (151 codes) bound through `clinical_rule` + allergy/intolerance suppression the regex couldn't express. Counts stable 367→367 | 053 |
+| Code-system contract detector | `EDW_TO_VSAC_CODE_SYSTEM` map + a Phase 7-style DQ detector flagging unmapped/zero-overlap systems and SNOMED-shaped codes mislabeled by the `'ICD-10'` default | — |
+| Surfacing | `version_drift`/role coverage on `GET /value-sets/measure/:code`; `small_cell` (n<11) on strata rows; `LIMIT 12,000` on the codes endpoint (largest real expansion 11,539) | — |
+| **CI restoration** | Root cause: committed `*.tsbuildinfo` made `tsc` a no-op on fresh checkouts (untracked + gitignored). **Ten migrations had never been runnable on a fresh DB** (FK violations, psql meta-commands, `CONCURRENTLY`-in-txn, wrong FK type in 041, dblink ETL needing graceful-skip) — all guarded, full chain validated on a scratch database. eslint added to both apps | 003 +9 |
+
+### Engineering discipline
+- **Subagent-driven execution** — fresh implementer per task + two-stage review (spec then code-quality) + a final adversarial reviewer; all in isolated worktrees, never touching the main checkout where a concurrent session was active.
+- **Honest rate change, stated as the point:** retiring fabricated exclusions *lowers* measure rates — the PR body calls this out so reviewers read it as truth, not regression.
+- **Caught its own bugs pre-merge:** a heuristic that would have misclassified nursing-facility *encounters* as exclusions (suppressing gaps across 9 measures), a response `LIMIT` that would have truncated the 11,539-code expansion, migration 053 hard-failing fresh environments before the manual VSAC load, and the original role-blindness itself.
+- **Scale-safe** — never scanned the ~1B-row `observation` (per [[medgnosis-observation-table-io]]); contract detector explicitly excludes it.
+
+### Verification
+- 175 unit tests (22 files) green; `turbo typecheck` + `turbo lint` green. **PR #3 CI fully green end-to-end** — the first since before Phase 6 (Type Check / Lint / Unit Tests / Build all SUCCESS).
+- Clinical gates on the live DB: 0 exclusion-accounting violations; 0 excluded gaps without clinical evidence; strata reconcile exactly with facts; bridge roles 138/248/132/497; 3 COHORT_FLAGS rules seeded.
+- Live smoke: role-separated resolution (CMS122 → 2,114 exclusion / 30 initial-population / 564 unclassified), bridge-status + `small_cell` response bodies verified against a booted worktree server.
+
+### Notes / follow-ups
+- **Manual role curation** from the eCQM CQL data criteria (the authoritative role source) supersedes the name heuristic — `role_method='manual'` override path is ready.
+- **Schema drift:** the dev DB predates round-2's migration repairs (e.g. 041 `note_id` type); a fresh-chain-vs-dev schema diff is a worthwhile DQ check.
+- Encounter-domain routing, v14 `measure_definition` content upgrade, and exclusion evidence beyond conditions (hospice encounters/orders) are documented as deferred.
+
+### Commits
+- PR #1 `feature/cds-vsac-value-sets` (VSAC asset + hardening), PR #2 `fix/ci-pipeline` (CI restoration), PR #3 `feature/clinical-fidelity-hardening` (clinical fidelity; supersets #1 + #2). Merging #3 lands all three.
+
+---
+
 ## Architecture Reference
 
 ### Monorepo Structure
