@@ -96,7 +96,7 @@ function NavItem({ to, icon: Icon, label, end = true, sidebarOpen }: NavItemProp
               ? 'bg-s2 text-teal'
               : 'text-dim hover:bg-s2 hover:text-bright',
           ].join(' ')}
-          style={isActive ? { boxShadow: 'inset 3px 0 0 #0DD9D9' } : undefined}
+          style={isActive ? { boxShadow: 'inset 3px 0 0 var(--primary)' } : undefined}
         >
           <Icon
             size={20}
@@ -307,7 +307,7 @@ export function AppShell() {
                     ? 'bg-s2 text-teal'
                     : 'text-dim hover:bg-s2 hover:text-bright',
                 ].join(' ')}
-                style={isActive ? { boxShadow: 'inset 3px 0 0 #0DD9D9' } : undefined}
+                style={isActive ? { boxShadow: 'inset 3px 0 0 var(--primary)' } : undefined}
               >
                 <Settings size={20} className="flex-shrink-0" strokeWidth={isActive ? 2 : 1.5} />
                 <span

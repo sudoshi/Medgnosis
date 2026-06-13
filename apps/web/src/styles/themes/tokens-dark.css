@@ -6,7 +6,10 @@
    Palette switching (palettes.ts) overrides --primary/--accent at runtime.
    ============================================================================= */
 
-:root {
+/* :root = default theme. [data-theme="dark"] lets a subtree (e.g. the branded
+   login splash) pin itself dark even when the app root is in light mode. */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
 
   /* ── Surface channels (depth layers, darkest → most elevated) ───────────── */

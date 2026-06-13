@@ -135,7 +135,7 @@ export function BatchOrderModal({
             disabled={isPlacing}
             className={[
               'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-btn text-sm font-ui font-medium',
-              'bg-violet text-white',
+              'bg-violet text-accent-fg',
               'hover:bg-violet/90 transition-colors duration-100',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet/50',
               isPlacing ? 'opacity-50 cursor-not-allowed' : '',

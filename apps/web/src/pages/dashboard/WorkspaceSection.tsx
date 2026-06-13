@@ -45,7 +45,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
       {/* Today's Schedule */}
       <div
         className="surface animate-fade-up stagger-3"
-        style={{ borderTopColor: 'rgba(13,217,217,0.5)', borderTopWidth: '2px' }}
+        style={{ borderTopColor: 'rgb(var(--teal) / 0.5)', borderTopWidth: '2px' }}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
@@ -125,7 +125,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
       <div
         className="surface animate-fade-up stagger-4"
         style={{
-          borderTopColor: hasCritical ? 'rgba(232,57,74,0.55)' : 'rgba(245,166,35,0.45)',
+          borderTopColor: hasCritical ? 'rgb(var(--crimson) / 0.55)' : 'rgb(var(--amber) / 0.45)',
           borderTopWidth: '2px',
         }}
       >

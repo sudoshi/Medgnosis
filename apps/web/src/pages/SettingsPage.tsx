@@ -555,7 +555,7 @@ function ScheduleSection({ onPersist }: { onPersist: (key: string, value: Record
               disabled={saveSchedule.isPending}
               className={[
                 'flex items-center gap-1.5 px-4 py-2 rounded-btn text-xs font-ui font-medium',
-                'bg-teal text-void hover:bg-teal/90',
+                'bg-teal text-accent-fg hover:bg-teal/90',
                 'transition-colors duration-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50',
                 saveSchedule.isPending ? 'opacity-50 cursor-not-allowed' : '',
@@ -911,7 +911,7 @@ export function SettingsPage() {
                       ? 'bg-teal/10 text-teal'
                       : 'text-dim hover:bg-s2 hover:text-bright',
                   ].join(' ')}
-                  style={isActive ? { boxShadow: 'inset 3px 0 0 #0DD9D9' } : undefined}
+                  style={isActive ? { boxShadow: 'inset 3px 0 0 var(--primary)' } : undefined}
                 >
                   <Icon
                     size={15}

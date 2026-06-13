@@ -35,12 +35,12 @@ interface Alert {
 // Severity → visual tokens (card styles, icon, badge)
 const SEVERITY_CARD: Record<string, { style: React.CSSProperties; borderClass: string; bg: string }> = {
   critical: {
-    style: { boxShadow: 'inset 4px 0 0 #E8394A, 0 0 16px rgba(232, 57, 74, 0.08)' },
+    style: { boxShadow: 'inset 4px 0 0 rgb(var(--crimson)), 0 0 16px rgb(var(--crimson) / 0.08)' },
     borderClass: 'border border-crimson/20',
     bg: 'bg-crimson/5',
   },
   high: {
-    style: { boxShadow: 'inset 4px 0 0 #F5A623' },
+    style: { boxShadow: 'inset 4px 0 0 rgb(var(--amber))' },
     borderClass: 'border border-amber/20',
     bg: 'bg-amber/5',
   },
