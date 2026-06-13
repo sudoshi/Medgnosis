@@ -49,7 +49,7 @@ function statusBadge(status: string) {
 
 function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
   const tier = pct >= 80 ? 'Low Risk' : pct >= 50 ? 'Moderate Risk' : 'High Risk';
-  const color = pct >= 80 ? '#10C981' : pct >= 50 ? '#F5A623' : '#E8394A';
+  const color = pct >= 80 ? 'rgb(var(--emerald))' : pct >= 50 ? 'rgb(var(--amber))' : 'rgb(var(--crimson))';
   const textColor = pct >= 80 ? 'text-emerald' : pct >= 50 ? 'text-amber' : 'text-crimson';
   const bgColor = pct >= 80 ? 'bg-emerald/10 border-emerald/20' : pct >= 50 ? 'bg-amber/10 border-amber/20' : 'bg-crimson/10 border-crimson/20';
   const Icon = pct >= 80 ? TrendingDown : pct >= 50 ? Minus : TrendingUp;
@@ -68,7 +68,7 @@ function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
       {/* Mini gauge */}
       <div className="relative flex-shrink-0" style={{ width: 48, height: 32 }}>
         <svg viewBox="0 0 44 28" width="48" height="32" aria-hidden="true">
-          <circle cx="22" cy="26" r={r} fill="none" stroke="#172239" strokeWidth="5"
+          <circle cx="22" cy="26" r={r} fill="none" stroke="var(--chart-track)" strokeWidth="5"
             strokeDasharray={`${C / 2} ${C / 2}`} transform="rotate(-180 22 26)" />
           {p > 0.01 && (
             <circle cx="22" cy="26" r={r} fill="none" stroke={color} strokeWidth="5"
@@ -118,7 +118,7 @@ export function OverviewTab({ patientId, onTabChange }: OverviewTabProps) {
   } | undefined;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
 
       {/* ── Left Column ─────────────────────────────────────────────── */}
       <div className="space-y-4">

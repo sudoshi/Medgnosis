@@ -6,6 +6,7 @@
 /* Design token imports — must come before @tailwind directives */
 @import './themes/tokens-base.css';
 @import './themes/tokens-dark.css';
+@import './themes/tokens-light.css';
 
 @tailwind base;
 @tailwind components;
@@ -14,12 +15,12 @@
 /* ─── Base Layer ──────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    color-scheme: dark;
+    /* color-scheme is set per-theme in tokens-dark.css / tokens-light.css */
 
     /* Spatial tokens */
-    --padding-page:    1.5rem;     /* outer page padding */
-    --padding-panel:   1.25rem;    /* inside panels/cards */
-    --padding-compact: 0.75rem;    /* tight inner padding */
+    --padding-page:    1rem;       /* outer page padding (clinical-compact) */
+    --padding-panel:   1rem;       /* inside panels/cards (clinical-compact) */
+    --padding-compact: 0.625rem;   /* tight inner padding (clinical-compact) */
     --radius-panel:    12px;
     --radius-card:     8px;
     --radius-pill:     999px;
@@ -109,8 +110,8 @@
 
   /* Selection color */
   ::selection {
-    background: rgba(13, 217, 217, 0.2);
-    color: #EDF2FF;
+    background: var(--selection-bg);
+    color: rgb(var(--bright));
   }
 }
 
@@ -126,8 +127,7 @@
     background-color: var(--surface-raised);
     background-image: var(--gradient-panel);
     border: 1px solid var(--border-default);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
-                inset 0 1px 0 rgba(255,255,255,0.05);
+    box-shadow: var(--shadow-panel);
     padding: var(--padding-panel);
     position: relative;
     overflow: hidden;
@@ -154,8 +154,7 @@
       rgba(255, 255, 255, 0.018) 0%,
       transparent 55%
     );
-    box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.4),
-                inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: var(--shadow-panel);
     padding: var(--padding-panel);
   }
 
@@ -177,8 +176,7 @@
     border-color: var(--border-hover);
     background-image: var(--gradient-panel-raised);
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 12px 40px rgba(0,0,0,0.5),
-                inset 0 1px 0 rgba(255,255,255,0.07);
+    box-shadow: var(--shadow-panel-hover);
   }
   .surface-interactive:active {
     transform: translateY(0) scale(0.995);
@@ -221,11 +219,18 @@
 
   .panel-list {
     @apply surface;
-    @apply h-[400px] overflow-hidden;
+    @apply max-h-[min(440px,55vh)] min-h-0 overflow-hidden;
   }
 
   .panel-interactive {
     @apply surface-hover;
+  }
+
+  /* `.card` was referenced by the CDS-parity pages but never defined — it
+     rendered as an unstyled, unthemeable div. Alias it to the surface treatment
+     so those pages get a proper themed card in both light and dark. */
+  .card {
+    @apply surface;
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -292,7 +297,7 @@
   .btn-primary {
     @apply btn;
     background-color: var(--primary);
-    color: var(--surface-base);
+    color: rgb(var(--accent-fg));
     transition: background-color var(--duration-fast) var(--ease-std),
                 box-shadow       var(--duration-fast) var(--ease-std),
                 transform        var(--duration-fast) var(--ease-out);
@@ -420,7 +425,7 @@
   .timeline-spine {
     @apply absolute left-[7px] top-4 bottom-0;
     width: 1px;
-    background: linear-gradient(to bottom, rgba(30,68,120,0.6) 0%, rgba(30,68,120,0.1) 100%);
+    background: linear-gradient(to bottom, rgb(var(--edge) / 0.6) 0%, rgb(var(--edge) / 0.1) 100%);
   }
 
   .timeline-item {
@@ -458,11 +463,11 @@
     /* High-contrast shimmer: base → navy → subtle teal flash → navy → base */
     background: linear-gradient(
       90deg,
-      rgba(17, 27,  46,  1)    0%,
-      rgba(30, 68,  120, 0.6)  35%,
-      rgba(13, 217, 217, 0.08) 50%,
-      rgba(30, 68,  120, 0.6)  65%,
-      rgba(17, 27,  46,  1)    100%
+      var(--skeleton-base)  0%,
+      var(--skeleton-mid)   35%,
+      var(--skeleton-flash) 50%,
+      var(--skeleton-mid)   65%,
+      var(--skeleton-base)  100%
     );
     background-size: 300% 100%;
     animation: shimmer 2s ease-in-out infinite;
@@ -490,7 +495,7 @@
 
   .overlay-backdrop {
     @apply fixed inset-0 z-40;
-    background: rgba(6, 10, 20, 0.85);
+    background: var(--overlay-backdrop);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
@@ -531,7 +536,7 @@
   }
 
   .stats-strip-cell {
-    @apply px-6 py-2 border-r border-edge/25 last:border-r-0;
+    @apply px-4 py-1.5 border-r border-edge/25 last:border-r-0;
   }
 
   .stats-strip-value {
@@ -569,7 +574,7 @@
   }
 
   .data-table th {
-    @apply data-label px-4 py-3 text-left border-b border-edge/40;
+    @apply data-label px-4 py-2 text-left border-b border-edge/40;
   }
 
   .data-table tbody tr {
@@ -588,7 +593,7 @@
   }
 
   .data-table td {
-    @apply px-4 py-3.5 text-sm text-bright;
+    @apply px-4 py-2 text-sm text-bright;
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -643,8 +648,8 @@
     background: linear-gradient(
       90deg,
       transparent              0%,
-      rgba(30, 68, 120, 0.45) 15%,
-      rgba(30, 68, 120, 0.45) 85%,
+      rgb(var(--edge) / 0.45) 15%,
+      rgb(var(--edge) / 0.45) 85%,
       transparent             100%
     );
   }
@@ -665,7 +670,7 @@
 
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(30, 68, 120, 0.5) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -678,12 +683,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(30, 68, 120, 0.5);
+    background: var(--scrollbar-thumb);
     border-radius: 999px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(30, 68, 120, 0.8);
+    background: var(--scrollbar-thumb-hover);
   }
 
   /* Hide scrollbar visually but keep functionality */
@@ -719,7 +724,7 @@
 
   .gauge-track {
     fill: none;
-    stroke: #172239;
+    stroke: var(--chart-track);
     stroke-width: 8;
     stroke-linecap: round;
   }

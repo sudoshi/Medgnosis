@@ -121,13 +121,13 @@ function ComplianceRing({ pct, size = 36 }: { pct: number; size?: number }) {
   const circ = 2 * Math.PI * r;
   const offset = circ - (pct / 100) * circ;
   const color =
-    pct >= 80 ? 'var(--clr-emerald)' :
-    pct >= 50 ? 'var(--clr-amber)' :
-    'var(--clr-crimson)';
+    pct >= 80 ? 'rgb(var(--emerald))' :
+    pct >= 50 ? 'rgb(var(--amber))' :
+    'rgb(var(--crimson))';
 
   return (
     <svg width={size} height={size} className="flex-shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--clr-s2)" strokeWidth={3} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--chart-track)" strokeWidth={3} />
       <circle
         cx={size / 2} cy={size / 2} r={r}
         fill="none"
@@ -143,7 +143,7 @@ function ComplianceRing({ pct, size = 36 }: { pct: number; size?: number }) {
         x={size / 2} y={size / 2}
         textAnchor="middle" dominantBaseline="central"
         className="font-data text-[9px]"
-        fill="var(--clr-bright)"
+        fill="rgb(var(--bright))"
       >
         {pct}%
       </text>

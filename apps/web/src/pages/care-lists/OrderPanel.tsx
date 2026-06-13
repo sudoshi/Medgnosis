@@ -167,7 +167,7 @@ export function OrderPanel({
             disabled={isPlacing}
             className={[
               'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-btn text-sm font-ui font-medium',
-              'bg-teal text-black',
+              'bg-teal text-accent-fg',
               'hover:bg-teal/90 transition-colors duration-100',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50',
               isPlacing ? 'opacity-50 cursor-not-allowed' : '',

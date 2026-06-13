@@ -21,78 +21,78 @@ const config: Config = {
       //   emerald = success, resolved, met target, healthy
       //   violet  = secondary chart series, annotations
       colors: {
-        // App surface layers
-        void:   '#060A14',
-        s0:     '#0C1320',
-        s1:     '#111B2E',
-        s2:     '#172239',
+        // Surfaces, text, borders, and semantic accents all resolve to channel
+        // CSS vars (tokens-dark.css / tokens-light.css). Channel format keeps
+        // /opacity modifiers working (border-edge/35, bg-teal/10) AND makes every
+        // utility theme-aware automatically. Channels live in the token files.
+        void:    'rgb(var(--void) / <alpha-value>)',
+        s0:      'rgb(var(--s0) / <alpha-value>)',
+        s1:      'rgb(var(--s1) / <alpha-value>)',
+        s2:      'rgb(var(--s2) / <alpha-value>)',
 
         // Border base — use opacity modifier: edge/35 = dim, edge/65 = mid
-        edge:   '#1E4478',
+        edge:    'rgb(var(--edge) / <alpha-value>)',
 
         // Text hierarchy
-        bright: '#EDF2FF',
-        dim:    '#5E7FA3',
-        ghost:  '#2D4060',
+        bright:  'rgb(var(--bright) / <alpha-value>)',
+        dim:     'rgb(var(--dim) / <alpha-value>)',
+        ghost:   'rgb(var(--ghost) / <alpha-value>)',
+        // Foreground for text/icons on a SOLID accent fill (buttons/badges)
+        'accent-fg': 'rgb(var(--accent-fg) / <alpha-value>)',
 
         // Semantic accent colors (use ONLY for designated meaning)
         teal: {
-          DEFAULT: '#0DD9D9',
-          dark:    '#0BB5B5',
+          DEFAULT: 'rgb(var(--teal) / <alpha-value>)',
+          dark:    'rgb(var(--teal-dark) / <alpha-value>)',
         },
-        amber:   '#F5A623',
-        crimson: '#E8394A',
-        emerald: '#10C981',
-        violet:  '#8B5CF6',
+        amber:   'rgb(var(--amber) / <alpha-value>)',
+        crimson: 'rgb(var(--crimson) / <alpha-value>)',
+        emerald: 'rgb(var(--emerald) / <alpha-value>)',
+        violet:  'rgb(var(--violet) / <alpha-value>)',
         // Clinical informational blue (distinct from interactive teal)
-        // Per ISMP/HL7 IEC 60446: blue = neutral/informational, never critical
-        info:    '#4B9EDB',
-        // Caution/watch tier — sits between emerald (good) and amber (warning).
-        // Yellow-gold, deliberately distinct from amber's orange so adjacent
-        // severity bands (e.g. MEWS low vs medium) read apart. Also "value" highlight.
-        gold:    '#F2CB4D',
+        info:    'rgb(var(--info) / <alpha-value>)',
+        // Caution/watch tier — between emerald (good) and amber (warning)
+        gold:    'rgb(var(--gold) / <alpha-value>)',
 
-        // ─── Legacy aliases ─────────────────────────────────────────────────
-        // These keep existing pages functional during migration.
-        // REMOVE in Phase 11 after all pages are rewritten.
+        // ─── Legacy aliases — now token-backed so they theme too ────────────
         dark: {
-          primary:   '#0C1320',
-          secondary: '#111B2E',
-          card:      '#111B2E',
-          border:    '#1E4478',
+          primary:   'rgb(var(--s0) / <alpha-value>)',
+          secondary: 'rgb(var(--s1) / <alpha-value>)',
+          card:      'rgb(var(--s1) / <alpha-value>)',
+          border:    'rgb(var(--edge) / <alpha-value>)',
           text: {
-            primary:   '#EDF2FF',
-            secondary: '#5E7FA3',
+            primary:   'rgb(var(--bright) / <alpha-value>)',
+            secondary: 'rgb(var(--dim) / <alpha-value>)',
           },
         },
         light: {
-          primary:   '#0C1320',
-          secondary: '#111B2E',
-          card:      '#172239',
-          border:    '#1E4478',
+          primary:   'rgb(var(--s0) / <alpha-value>)',
+          secondary: 'rgb(var(--s1) / <alpha-value>)',
+          card:      'rgb(var(--s2) / <alpha-value>)',
+          border:    'rgb(var(--edge) / <alpha-value>)',
           text: {
-            primary:   '#EDF2FF',
-            secondary: '#5E7FA3',
+            primary:   'rgb(var(--bright) / <alpha-value>)',
+            secondary: 'rgb(var(--dim) / <alpha-value>)',
           },
         },
         accent: {
-          primary: '#0DD9D9',  // was #2563EB → teal
-          success: '#10C981',  // unchanged → emerald
-          warning: '#F5A623',  // was #D97706 → amber
-          error:   '#E8394A',  // was #DC2626 → crimson
+          primary: 'rgb(var(--teal) / <alpha-value>)',
+          success: 'rgb(var(--emerald) / <alpha-value>)',
+          warning: 'rgb(var(--amber) / <alpha-value>)',
+          error:   'rgb(var(--crimson) / <alpha-value>)',
         },
-        // Legacy gray references (AppShell uses raw gray-* until Phase 2)
+        // Legacy gray references (AppShell uses raw gray-* until migrated)
         gray: {
-          50:  '#0C1320',
-          100: '#111B2E',
-          200: '#172239',
-          300: '#1E4478',
-          400: '#2D5A8E',
-          500: '#5E7FA3',
-          600: '#7A9CBF',
-          700: '#111B2E',
-          800: '#0C1320',
-          900: '#060A14',
+          50:  'rgb(var(--s0) / <alpha-value>)',
+          100: 'rgb(var(--s1) / <alpha-value>)',
+          200: 'rgb(var(--s2) / <alpha-value>)',
+          300: 'rgb(var(--edge) / <alpha-value>)',
+          400: 'rgb(var(--dim) / <alpha-value>)',
+          500: 'rgb(var(--dim) / <alpha-value>)',
+          600: 'rgb(var(--dim) / <alpha-value>)',
+          700: 'rgb(var(--s1) / <alpha-value>)',
+          800: 'rgb(var(--s0) / <alpha-value>)',
+          900: 'rgb(var(--void) / <alpha-value>)',
         },
       },
 

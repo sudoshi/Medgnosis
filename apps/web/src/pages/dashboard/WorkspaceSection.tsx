@@ -45,7 +45,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
       {/* Today's Schedule */}
       <div
         className="surface animate-fade-up stagger-3"
-        style={{ borderTopColor: 'rgba(13,217,217,0.5)', borderTopWidth: '2px' }}
+        style={{ borderTopColor: 'rgb(var(--teal) / 0.5)', borderTopWidth: '2px' }}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
@@ -63,7 +63,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
             <p className="text-sm text-ghost">No encounters scheduled for today</p>
           </div>
         ) : (
-          <div className="max-h-[480px] overflow-y-auto scrollbar-thin">
+          <div className="max-h-[min(480px,52vh)] overflow-y-auto scrollbar-thin">
             {schedule.map((enc) => {
               const age = calcAge(enc.date_of_birth);
               const isPast = new Date(enc.date) < new Date();
@@ -125,7 +125,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
       <div
         className="surface animate-fade-up stagger-4"
         style={{
-          borderTopColor: hasCritical ? 'rgba(232,57,74,0.55)' : 'rgba(245,166,35,0.45)',
+          borderTopColor: hasCritical ? 'rgb(var(--crimson) / 0.55)' : 'rgb(var(--amber) / 0.45)',
           borderTopWidth: '2px',
         }}
       >
@@ -152,7 +152,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
             <p className="text-xs text-ghost mt-1">No unacknowledged urgent alerts</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[340px] overflow-y-auto scrollbar-thin">
+          <div className="space-y-2 max-h-[min(380px,44vh)] overflow-y-auto scrollbar-thin">
             {alerts.map((alert) => (
               <div
                 key={alert.id}

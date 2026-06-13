@@ -10,7 +10,11 @@ export interface Palette {
   description: string;
   primary: string;
   accent: string;
+  /** Applied under the dark theme. */
   variables: Record<string, string>;
+  /** Applied under the light theme — deepened so accents stay AA on white.
+   *  Omitted for the default palette (token defaults already adapt by theme). */
+  lightVariables?: Record<string, string>;
 }
 
 export const PALETTES: Palette[] = [
@@ -43,6 +47,21 @@ export const PALETTES: Palette[] = [
       '--border-hover':   'rgba(34,211,238,0.30)',
       '--border-focus':   'rgba(34,211,238,0.60)',
     },
+    lightVariables: {
+      '--primary':        '#0E7490',
+      '--primary-light':  '#0E7490',
+      '--primary-dark':   '#0A5A72',
+      '--primary-bg':     'rgba(14,116,144,0.10)',
+      '--primary-border': 'rgba(14,116,144,0.30)',
+      '--primary-glow':   'rgba(14,116,144,0.18)',
+      '--accent':         '#C2570C',
+      '--accent-light':   '#C2570C',
+      '--accent-dark':    '#9A4509',
+      '--accent-bg':      'rgba(194,87,12,0.12)',
+      '--accent-glow':    'rgba(194,87,12,0.18)',
+      '--border-hover':   'rgba(14,116,144,0.35)',
+      '--border-focus':   'rgba(14,116,144,0.60)',
+    },
   },
   {
     id: 'sage',
@@ -64,6 +83,21 @@ export const PALETTES: Palette[] = [
       '--accent-glow':    'rgba(167,139,250,0.18)',
       '--border-hover':   'rgba(52,211,153,0.30)',
       '--border-focus':   'rgba(52,211,153,0.60)',
+    },
+    lightVariables: {
+      '--primary':        '#0A7D54',
+      '--primary-light':  '#0A7D54',
+      '--primary-dark':   '#075B3D',
+      '--primary-bg':     'rgba(10,125,84,0.10)',
+      '--primary-border': 'rgba(10,125,84,0.30)',
+      '--primary-glow':   'rgba(10,125,84,0.18)',
+      '--accent':         '#6D3FD4',
+      '--accent-light':   '#6D3FD4',
+      '--accent-dark':    '#5326A8',
+      '--accent-bg':      'rgba(109,63,212,0.12)',
+      '--accent-glow':    'rgba(109,63,212,0.18)',
+      '--border-hover':   'rgba(10,125,84,0.35)',
+      '--border-focus':   'rgba(10,125,84,0.60)',
     },
   },
   {
@@ -87,6 +121,21 @@ export const PALETTES: Palette[] = [
       '--border-hover':   'rgba(59,130,246,0.30)',
       '--border-focus':   'rgba(59,130,246,0.60)',
     },
+    lightVariables: {
+      '--primary':        '#2563EB',
+      '--primary-light':  '#2563EB',
+      '--primary-dark':   '#1D4ED8',
+      '--primary-bg':     'rgba(37,99,235,0.10)',
+      '--primary-border': 'rgba(37,99,235,0.30)',
+      '--primary-glow':   'rgba(37,99,235,0.18)',
+      '--accent':         '#B5790F',
+      '--accent-light':   '#B5790F',
+      '--accent-dark':    '#8C5D0B',
+      '--accent-bg':      'rgba(181,121,15,0.12)',
+      '--accent-glow':    'rgba(181,121,15,0.18)',
+      '--border-hover':   'rgba(37,99,235,0.35)',
+      '--border-focus':   'rgba(37,99,235,0.60)',
+    },
   },
   {
     id: 'plum',
@@ -109,6 +158,21 @@ export const PALETTES: Palette[] = [
       '--border-hover':   'rgba(168,85,247,0.30)',
       '--border-focus':   'rgba(168,85,247,0.60)',
     },
+    lightVariables: {
+      '--primary':        '#7C2FD6',
+      '--primary-light':  '#7C2FD6',
+      '--primary-dark':   '#6320AB',
+      '--primary-bg':     'rgba(124,47,214,0.10)',
+      '--primary-border': 'rgba(124,47,214,0.30)',
+      '--primary-glow':   'rgba(124,47,214,0.18)',
+      '--accent':         '#0E7490',
+      '--accent-light':   '#0E7490',
+      '--accent-dark':    '#0A5A72',
+      '--accent-bg':      'rgba(14,116,144,0.12)',
+      '--accent-glow':    'rgba(14,116,144,0.18)',
+      '--border-hover':   'rgba(124,47,214,0.35)',
+      '--border-focus':   'rgba(124,47,214,0.60)',
+    },
   },
 ];
 
@@ -130,11 +194,12 @@ const MANAGED_VARIABLES = [
   '--border-focus',
 ];
 
-export function applyPalette(id: string): void {
+export function applyPalette(id: string, resolvedTheme: 'dark' | 'light' = 'dark'): void {
   const palette = PALETTES.find((p) => p.id === id) ?? PALETTES[0];
   const style = document.documentElement.style;
-  // Clear all managed vars first so tokens-dark.css defaults take effect for 'clinical-teal'
+  // Clear all managed vars first so token defaults take effect for 'clinical-teal'
   for (const v of MANAGED_VARIABLES) style.removeProperty(v);
-  // Apply overrides for non-default palettes
-  for (const [k, v] of Object.entries(palette.variables)) style.setProperty(k, v);
+  // Apply the theme-appropriate override set for non-default palettes
+  const vars = resolvedTheme === 'light' ? (palette.lightVariables ?? palette.variables) : palette.variables;
+  for (const [k, v] of Object.entries(vars)) style.setProperty(k, v);
 }

@@ -48,7 +48,7 @@ function AbbyChat({ greeting }: { greeting: string }) {
         <div className="flex flex-col items-center text-center py-2">
           <div
             className="w-12 h-12 rounded-full bg-violet/10 border border-violet/20 flex items-center justify-center mb-3"
-            style={{ boxShadow: '0 0 20px rgba(139,92,246,0.12)' }}
+            style={{ boxShadow: '0 0 20px rgb(var(--violet) / 0.12)' }}
           >
             <Sparkles size={20} strokeWidth={1.5} className="text-violet" />
           </div>
@@ -58,7 +58,7 @@ function AbbyChat({ greeting }: { greeting: string }) {
           </p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin">
+        <div className="space-y-2 max-h-[min(360px,40vh)] overflow-y-auto scrollbar-thin">
           {chat.map((msg, i) => (
             <div
               key={i}
@@ -164,7 +164,7 @@ export function RecentActivitySection({ recentEncounters, abbyGreeting }: Recent
       {/* Abigail AI Chat */}
       <div
         className="surface"
-        style={{ borderTopColor: 'rgba(139,92,246,0.45)', borderTopWidth: '2px' }}
+        style={{ borderTopColor: 'rgb(var(--violet) / 0.45)', borderTopWidth: '2px' }}
       >
         <div className="flex items-center gap-2.5 mb-4">
           <Sparkles size={15} strokeWidth={1.5} className="text-violet" />

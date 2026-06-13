@@ -45,10 +45,10 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
 
   const gaugeColor =
     pct >= 0.75
-      ? '#10C981' // emerald
+      ? 'rgb(var(--emerald))'
       : pct >= 0.50
-        ? '#F5A623' // amber
-        : '#E8394A'; // crimson
+        ? 'rgb(var(--amber))'
+        : 'rgb(var(--crimson))';
 
   return (
     <div className="relative" style={{ width: 140, height: 90 }}>
@@ -57,7 +57,7 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
         <circle
           cx="50" cy="60" r={r}
           fill="none"
-          stroke="#172239"
+          stroke="var(--chart-track)"
           strokeWidth="9"
           strokeLinecap="butt"
           strokeDasharray={`${C / 2} ${C / 2}`}
@@ -334,7 +334,7 @@ export function MeasuresPage() {
   }, [measures, search]);
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] -m-6 overflow-hidden">
+    <div className="flex h-[calc(100vh-7.5rem)] -m-4 overflow-hidden">
 
       {/* ── Measure list ─────────────────────────────────────────────── */}
       <div className="w-[340px] flex-shrink-0 flex flex-col border-r border-edge/35 bg-s0">
