@@ -168,7 +168,7 @@ export function LabsVitalsTab({ patientId }: LabsVitalsTabProps) {
       {/* List view */}
       {viewMode === 'list' && (
         <div className="surface">
-          <div className="space-y-0">
+          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-x-6">
             {sortedGroups.map(([code, obs]) => {
               const latest = obs[0];
               const label = latest.description || code;

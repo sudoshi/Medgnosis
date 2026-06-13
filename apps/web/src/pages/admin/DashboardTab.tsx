@@ -25,7 +25,7 @@ export function DashboardTab() {
   return (
     <div className="space-y-6 animate-fade-up">
       {/* Metric cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6 gap-4">
         <MetricCard label="Total Providers"  value={stats?.total_providers   ?? null} color="teal"    />
         <MetricCard label="Active Patients"  value={stats?.active_patients   ?? null} color="emerald" />
         <MetricCard label="Open Care Gaps"   value={stats?.open_care_gaps    ?? null} color="amber"   />
