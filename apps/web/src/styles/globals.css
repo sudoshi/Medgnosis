@@ -226,6 +226,13 @@
     @apply surface-hover;
   }
 
+  /* `.card` was referenced by the CDS-parity pages but never defined — it
+     rendered as an unstyled, unthemeable div. Alias it to the surface treatment
+     so those pages get a proper themed card in both light and dark. */
+  .card {
+    @apply surface;
+  }
+
   /* ══════════════════════════════════════════════════════════════════════════
      TYPOGRAPHY HELPERS
      ══════════════════════════════════════════════════════════════════════════ */
