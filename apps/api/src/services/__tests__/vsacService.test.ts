@@ -23,7 +23,9 @@ import {
   getValueSetCodes,
   getMeasureValueSets,
   resolveMeasureCodes,
+  getMeasureBridgeStatus,
   EDW_CODE_SYSTEM,
+  type PopulationRole,
 } from '../vsacService.js';
 
 beforeEach(() => {
@@ -87,12 +89,47 @@ describe('getMeasureValueSets', () => {
 describe('resolveMeasureCodes', () => {
   it('flattens code rows to a string array', async () => {
     mockSql.mockResolvedValueOnce([{ code: '44054006' }, { code: '73211009' }]);
-    const codes = await resolveMeasureCodes('CMS122v12', 'SNOMEDCT');
+    const codes = await resolveMeasureCodes('CMS122v12', 'SNOMEDCT', 'denominator_exclusion');
     expect(codes).toEqual(['44054006', '73211009']);
   });
 
   it('returns an empty array for an unbridged measure', async () => {
-    const codes = await resolveMeasureCodes('CMS249v6', 'SNOMEDCT');
+    const codes = await resolveMeasureCodes('CMS249v6', 'SNOMEDCT', 'denominator_exclusion');
     expect(codes).toEqual([]);
   });
 });
+
+describe('resolveMeasureCodes (role-aware)', () => {
+  it('passes the role into the query', async () => {
+    mockSql.mockResolvedValueOnce([{ code: '44054006' }]);
+    const codes = await resolveMeasureCodes('CMS122v12', 'SNOMEDCT', 'denominator_exclusion');
+    expect(codes).toEqual(['44054006']);
+    const values = mockSql.mock.calls[0]?.slice(1) ?? [];
+    expect(values).toContain('denominator_exclusion');
+  });
+});
+
+describe('getMeasureBridgeStatus', () => {
+  it('reports version drift and role coverage', async () => {
+    mockSql.mockResolvedValueOnce([
+      { vsac_cms_id: 'CMS122v14', population_role: 'denominator_exclusion', n: 9 },
+      { vsac_cms_id: 'CMS122v14', population_role: 'unclassified', n: 12 },
+    ]);
+    const status = await getMeasureBridgeStatus('CMS122v12');
+    expect(status).toEqual({
+      measure_code: 'CMS122v12',
+      vsac_cms_id: 'CMS122v14',
+      version_drift: true,
+      roles: { denominator_exclusion: 9, unclassified: 12 },
+      unclassified_count: 12,
+    });
+  });
+
+  it('returns null for an unbridged measure', async () => {
+    expect(await getMeasureBridgeStatus('CMS249v6')).toBeNull();
+  });
+});
+
+// Ensure PopulationRole type is usable (compile-time check)
+const _roleCheck: PopulationRole = 'denominator_exclusion';
+void _roleCheck;

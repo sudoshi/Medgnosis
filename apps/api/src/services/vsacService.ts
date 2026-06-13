@@ -2,12 +2,10 @@
 // Medgnosis API — VSAC value set service
 // Reads phm_edw.vsac_* reference tables and the measure_value_set bridge.
 //
-// SAFETY: resolveMeasureCodes() returns the union of ALL bridged value sets
-// REGARDLESS of population role — denominator, exclusion (hospice / advanced
-// illness / frailty / palliative), and supplemental codes together (~82% of
-// CMS122's SNOMEDCT codes are exclusion-family). Treating that union as a
-// denominator would invert eCQM exclusion semantics. Do NOT drive population
-// finding or gap generation from it until the bridge carries population_role.
+// resolveMeasureCodes() is role-aware: callers must supply a PopulationRole
+// and receive only codes classified under that role. 'unclassified' may be
+// requested explicitly for audit purposes but must NEVER be served as a
+// denominator — consuming code is responsible for enforcing that contract.
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
@@ -25,6 +23,22 @@ export const EDW_CODE_SYSTEM = {
 } as const;
 
 export type EdwDomain = keyof typeof EDW_CODE_SYSTEM;
+
+export type PopulationRole =
+  | 'initial_population'
+  | 'denominator'
+  | 'denominator_exclusion'
+  | 'numerator'
+  | 'supplemental'
+  | 'unclassified';
+
+export interface MeasureBridgeStatus {
+  measure_code: string;
+  vsac_cms_id: string;
+  version_drift: boolean;
+  roles: Record<string, number>;
+  unclassified_count: number;
+}
 
 export interface ValueSetSummary {
   value_set_oid: string;
@@ -99,6 +113,7 @@ export async function getMeasureValueSets(measureCode: string): Promise<MeasureV
 export async function resolveMeasureCodes(
   measureCode: string,
   codeSystem: string,
+  role: PopulationRole,
 ): Promise<string[]> {
   const rows = await sql<{ code: string }[]>`
     SELECT DISTINCT vc.code
@@ -107,7 +122,36 @@ export async function resolveMeasureCodes(
     JOIN phm_edw.vsac_value_set_code vc ON vc.value_set_oid = mv.value_set_oid
     WHERE md.measure_code = ${measureCode}
       AND vc.code_system = ${codeSystem}
+      AND mv.population_role = ${role}
     ORDER BY vc.code
   `;
   return rows.map((r) => r.code);
+}
+
+export async function getMeasureBridgeStatus(
+  measureCode: string,
+): Promise<MeasureBridgeStatus | null> {
+  const rows = await sql<{ vsac_cms_id: string; population_role: string; n: number }[]>`
+    SELECT mv.vsac_cms_id, mv.population_role, count(*)::int AS n
+    FROM phm_edw.measure_value_set mv
+    JOIN phm_edw.measure_definition md ON md.measure_id = mv.measure_id
+    WHERE md.measure_code = ${measureCode}
+    GROUP BY mv.vsac_cms_id, mv.population_role
+  `;
+  if (rows.length === 0) return null;
+  const first = rows[0];
+  if (!first) return null;
+  const roles: Record<string, number> = {};
+  let unclassified = 0;
+  for (const r of rows) {
+    roles[r.population_role] = (roles[r.population_role] ?? 0) + r.n;
+    if (r.population_role === 'unclassified') unclassified += r.n;
+  }
+  return {
+    measure_code: measureCode,
+    vsac_cms_id: first.vsac_cms_id,
+    version_drift: measureCode !== first.vsac_cms_id,
+    roles,
+    unclassified_count: unclassified,
+  };
 }
