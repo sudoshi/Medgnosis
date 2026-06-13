@@ -6,6 +6,7 @@
 import { Link } from 'react-router-dom';
 import { ShieldAlert, Check, X, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import { useDqFindings, useDqFeeds, useDqActions, type DqFinding, type DqFeed } from '../hooks/useDataQuality.js';
 
 const DETECTOR_LABEL: Record<string, string> = {
@@ -94,7 +95,7 @@ function FindingRow({ f }: { f: DqFinding }) {
 }
 
 export function DataQualityPage() {
-  const { data, isLoading } = useDqFindings('open');
+  const { data, isLoading, isError } = useDqFindings('open');
   const findings = data?.data ?? [];
   return (
     <div className="space-y-5">
@@ -117,6 +118,8 @@ export function DataQualityPage() {
         <h2 className="text-sm font-semibold text-bright">Rogues' gallery</h2>
         {isLoading ? (
           <div className="py-8 text-center text-dim">Scanning…</div>
+        ) : isError ? (
+          <QueryError what="data-quality findings" />
         ) : findings.length === 0 ? (
           <div className="card p-8 text-center text-dim text-sm">No open anomalies.</div>
         ) : (

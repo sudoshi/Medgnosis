@@ -1920,6 +1920,13 @@ The star schema ETL (migration 014) already evaluates every patient against ever
 ### Commits
 - 8 phase merges `95d421d … 171e61c` (one `--no-ff` per phase, ~9 commits each) + `59d96f4` deploy-daemon fix. All on `main`, pushed.
 
+### UX/UI hardening pass (post-deploy critical double-check)
+A deliberate review of all 8 new frontend pages for token correctness, state handling, and usability surfaced two real defects:
+- **Undefined `gold` color token.** `text-gold`/`bg-gold` were used in 6 places (Anticipatory, Coding, Surveillance, SuperNote) but `gold` was never a defined utility — it existed only as a description string in `palettes.ts`, so those utilities compiled to nothing. Added `gold: #F2CB4D` to **both** color systems this app mirrors — `tailwind.config.ts` (generates `text-*`/`bg-*` utilities) and `globals.css` `--color-*` (consumed by component classes). Chose a yellow-gold deliberately distinct from amber's orange (`#F5A623`) because the two sit *adjacent* in the MEWS/NEWS2 severity scale; collapsing `gold→amber` would have erased the clinically meaningful "surveillance/watch" band, so a new token was correct over a remap.
+- **Errors masqueraded as "all clear" (clinical-safety UX defect).** None of the pages handled `isError` — on an API failure `data` is `undefined`, so each page fell through to its *empty* state: a failed *Close the Loop* read "No open loops," a failed *Surveillance* census rendered blank. Added a shared `QueryError` component (`role="alert"`, matching the existing DashboardPage crimson convention) and wired distinct error branches into all 7 worklist queries, plus the two missing Surveillance census empty states and a Coding `uncoded_hcc` "None pending" fallback.
+
+Verified: `tsc --noEmit` clean, `vite build` clean, `.text-gold` confirmed present in the **live** production CSS (`rgb(242 203 77)`), bundles 200 (no 403), site healthy. Confirmed nav integrity — all 8 pages routed + in the sidebar, SuperNote reachable via the patient chart's "Generate SuperNote" button (not orphaned).
+
 ---
 
 ## Architecture Reference

@@ -6,6 +6,7 @@
 
 import { Link } from 'react-router-dom';
 import { BadgeDollarSign, TrendingUp, Search } from 'lucide-react';
+import { QueryError } from '../components/QueryError.js';
 import {
   useHccCapture,
   useEmDistribution,
@@ -21,7 +22,7 @@ function captureClass(pct: number): string {
 }
 
 function CaptureSection() {
-  const { data } = useHccCapture();
+  const { data, isError } = useHccCapture();
   const overall = data?.data?.overall;
   const providers = data?.data?.byProvider ?? [];
   return (
@@ -29,6 +30,7 @@ function CaptureSection() {
       <h2 className="text-sm font-semibold text-bright flex items-center gap-2">
         <BadgeDollarSign size={15} className="text-teal" aria-hidden="true" /> HCC capture
       </h2>
+      {isError && <QueryError what="HCC capture metrics" />}
       {overall && (
         <div className="card p-5 flex items-end gap-4">
           <div>
@@ -116,6 +118,7 @@ function MissedSection() {
               <span className="font-data tabular-nums text-bright">{r.count}</span>
             </div>
           ))}
+          {d.uncoded_hcc.length === 0 && <div className="text-xs text-ghost">None pending.</div>}
         </div>
       </div>
     </section>

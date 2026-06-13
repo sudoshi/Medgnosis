@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Check, X, Ban, Clock, FlaskConical, Activity } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import {
   usePopulationFinder,
   useFinderActions,
@@ -125,7 +126,7 @@ function CandidateRow({ c }: { c: FinderCandidate }) {
 
 export function PopulationFinderPage() {
   const [status, setStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
-  const { data, isLoading } = usePopulationFinder(status);
+  const { data, isLoading, isError } = usePopulationFinder(status);
   const candidates = data?.data ?? [];
 
   const tabs: Array<{ key: typeof status; label: string }> = [
@@ -172,6 +173,8 @@ export function PopulationFinderPage() {
         <div className="flex items-center justify-center py-16 text-dim">
           <span className="inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden="true" />
         </div>
+      ) : isError ? (
+        <QueryError what="the review worklist" />
       ) : candidates.length === 0 ? (
         <div className="card p-10 flex flex-col items-center gap-2 text-center">
           <Search size={28} strokeWidth={1.5} className="text-ghost" aria-hidden="true" />

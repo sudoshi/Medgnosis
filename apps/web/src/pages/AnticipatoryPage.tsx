@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarClock, Check, X, FileSignature, Pill } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import {
   useAmpWorklist,
   useAmpRoi,
@@ -116,7 +117,7 @@ function AmpRow({ o }: { o: AmpOutreach }) {
 
 function AmpSection() {
   const [tier, setTier] = useState(1);
-  const { data, isLoading } = useAmpWorklist(tier);
+  const { data, isLoading, isError } = useAmpWorklist(tier);
   const rows = data?.data ?? [];
   return (
     <div className="space-y-3">
@@ -131,6 +132,8 @@ function AmpSection() {
       </div>
       {isLoading ? (
         <div className="py-8 text-center text-dim">Loading…</div>
+      ) : isError ? (
+        <QueryError what="the outreach worklist" />
       ) : rows.length === 0 ? (
         <div className="card p-6 text-center text-dim text-sm">No pending outreach in this tier.</div>
       ) : (

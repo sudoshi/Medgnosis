@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, HeartPulse, Droplet, RefreshCw } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import {
   useSurveillanceCensus,
   useSurveillanceDetail,
@@ -73,7 +74,7 @@ function Drilldown({ admissionId, scoreType }: { admissionId: number; scoreType:
 function SurveillanceTab() {
   const [scoreType, setScoreType] = useState<'MEWS' | 'NEWS2'>('MEWS');
   const [open, setOpen] = useState<number | null>(null);
-  const { data, isLoading } = useSurveillanceCensus(scoreType);
+  const { data, isLoading, isError } = useSurveillanceCensus(scoreType);
   const census = data?.data?.census ?? [];
 
   return (
@@ -89,6 +90,10 @@ function SurveillanceTab() {
       </div>
       {isLoading ? (
         <div className="py-8 text-center text-dim">Loading census…</div>
+      ) : isError ? (
+        <QueryError what="the unit census" />
+      ) : census.length === 0 ? (
+        <div className="card p-8 text-center text-dim text-sm">No active admissions on the census.</div>
       ) : (
         <div className="space-y-1.5">
           {census.map((r: CensusRow) => (
@@ -147,7 +152,7 @@ function GlucoDrilldown({ admissionId }: { admissionId: number }) {
 
 function GlucometricsTab() {
   const [open, setOpen] = useState<number | null>(null);
-  const { data, isLoading } = useGlucoCensus();
+  const { data, isLoading, isError } = useGlucoCensus();
   const census = data?.data?.census ?? [];
   return (
     <div className="space-y-3">
@@ -156,6 +161,10 @@ function GlucometricsTab() {
       )}
       {isLoading ? (
         <div className="py-8 text-center text-dim">Loading…</div>
+      ) : isError ? (
+        <QueryError what="the glucometrics census" />
+      ) : census.length === 0 ? (
+        <div className="card p-8 text-center text-dim text-sm">No active admissions on the census.</div>
       ) : (
         <div className="space-y-1.5">
           {census.map((r) => (

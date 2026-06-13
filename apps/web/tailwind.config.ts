@@ -47,6 +47,10 @@ const config: Config = {
         // Clinical informational blue (distinct from interactive teal)
         // Per ISMP/HL7 IEC 60446: blue = neutral/informational, never critical
         info:    '#4B9EDB',
+        // Caution/watch tier — sits between emerald (good) and amber (warning).
+        // Yellow-gold, deliberately distinct from amber's orange so adjacent
+        // severity bands (e.g. MEWS low vs medium) read apart. Also "value" highlight.
+        gold:    '#F2CB4D',
 
         // ─── Legacy aliases ─────────────────────────────────────────────────
         // These keep existing pages functional during migration.

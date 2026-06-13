@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, AlertTriangle, CheckCircle2, PhoneOff, FileCheck, Eye, HeartPulse } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import {
   useOpenLoops,
   useLoopStats,
@@ -150,7 +151,7 @@ function RiskPanel() {
 
 export function CloseTheLoopPage() {
   const [status, setStatus] = useState<'open' | 'closed'>('open');
-  const { data, isLoading } = useOpenLoops(status);
+  const { data, isLoading, isError } = useOpenLoops(status);
   const loops = data?.data ?? [];
 
   return (
@@ -180,6 +181,8 @@ export function CloseTheLoopPage() {
         <div className="flex items-center justify-center py-12 text-dim">
           <span className="inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden="true" />
         </div>
+      ) : isError ? (
+        <QueryError what={`${status} loops`} />
       ) : loops.length === 0 ? (
         <div className="card p-10 flex flex-col items-center gap-2 text-center">
           <AlertTriangle size={26} strokeWidth={1.5} className="text-ghost" aria-hidden="true" />

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UsersRound, Send, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 import {
   useCohorts,
   useCohortMembers,
@@ -77,7 +78,7 @@ export function CohortManagerPage() {
   const cohorts = cohortsData?.data ?? [];
   const [selected, setSelected] = useState<number | null>(null);
   const activeId = selected ?? cohorts[0]?.cohort_id ?? null;
-  const { data: membersData, isLoading } = useCohortMembers(activeId);
+  const { data: membersData, isLoading, isError } = useCohortMembers(activeId);
   const members = membersData?.data ?? [];
   const activeCohort = cohorts.find((c) => c.cohort_id === activeId);
 
@@ -110,6 +111,8 @@ export function CohortManagerPage() {
           </h2>
           {isLoading ? (
             <div className="py-8 text-center text-dim">Loading…</div>
+          ) : isError ? (
+            <QueryError what="cohort members" />
           ) : members.length === 0 ? (
             <div className="card p-6 text-center text-dim text-sm">No matching patients.</div>
           ) : (
