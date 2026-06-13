@@ -68,9 +68,9 @@ interface BundleMeasure {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function complianceColor(pct: number): string {
-  if (pct >= 75) return '#10C981'; // emerald
-  if (pct >= 50) return '#F5A623'; // amber
-  return '#E8394A'; // crimson
+  if (pct >= 75) return 'rgb(var(--emerald))';
+  if (pct >= 50) return 'rgb(var(--amber))';
+  return 'rgb(var(--crimson))';
 }
 
 function riskBadgeClass(tier: string | null): string {
@@ -96,7 +96,7 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
       <svg viewBox="0 0 100 65" width="140" height="90" aria-hidden="true">
         <circle
           cx="50" cy="60" r={r}
-          fill="none" stroke="#172239" strokeWidth="9"
+          fill="none" stroke="var(--chart-track)" strokeWidth="9"
           strokeLinecap="butt"
           strokeDasharray={`${C / 2} ${C / 2}`}
           transform="rotate(-180 50 60)"

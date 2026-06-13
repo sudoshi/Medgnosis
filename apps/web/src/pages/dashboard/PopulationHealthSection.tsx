@@ -23,9 +23,9 @@ function DonutChart({ high, medium, low }: DonutProps) {
   const startOffset = C * 0.25;
 
   const segments = [
-    { value: high,   color: '#E8394A', label: 'High Priority',   href: '/care-lists?status=open&priority=high'   },
-    { value: medium, color: '#F5A623', label: 'Medium Priority',  href: '/care-lists?status=open&priority=medium' },
-    { value: low,    color: '#10C981', label: 'Low Priority',     href: '/care-lists?status=open&priority=low'    },
+    { value: high,   color: 'rgb(var(--crimson))', label: 'High Priority',   href: '/care-lists?status=open&priority=high'   },
+    { value: medium, color: 'rgb(var(--amber))',   label: 'Medium Priority',  href: '/care-lists?status=open&priority=medium' },
+    { value: low,    color: 'rgb(var(--emerald))', label: 'Low Priority',     href: '/care-lists?status=open&priority=low'    },
   ];
 
   let cumulativePct = 0;
@@ -39,7 +39,7 @@ function DonutChart({ high, medium, low }: DonutProps) {
         role="img"
         onClick={() => navigate('/care-lists?status=open')}
       >
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#172239" strokeWidth="10" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke="var(--chart-track)" strokeWidth="10" />
         {segments.map(({ value, color, label, href }) => {
           if (value === 0) return null;
           const pct   = value / total;

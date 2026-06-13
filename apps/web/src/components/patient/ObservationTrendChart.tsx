@@ -16,6 +16,11 @@ import {
 import { useObservationTrending } from '../../hooks/useApi.js';
 import { X, TrendingUp } from 'lucide-react';
 
+// Theme-reactive color from a channel token (e.g. tok('--teal') → "rgb(var(--teal))").
+// Recharts forwards these straight to SVG attrs / inline styles, where var() resolves
+// against the active [data-theme]. Channel tokens MUST be wrapped in rgb().
+const tok = (name: string) => `rgb(var(${name}))`;
+
 interface ObservationTrendChartProps {
   patientId: string;
   code: string;
@@ -141,31 +146,31 @@ export function ObservationTrendChart({ patientId, code, label, onClose }: Obser
         <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="rgba(30, 68, 120, 0.3)"
+            stroke="var(--chart-grid)"
             vertical={false}
           />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#5E7FA3' }}
+            tick={{ fontSize: 11, fill: 'var(--chart-label)' }}
             tickLine={false}
-            axisLine={{ stroke: 'rgba(30, 68, 120, 0.3)' }}
+            axisLine={{ stroke: 'var(--chart-grid)' }}
           />
           <YAxis
             domain={[minVal - padding, maxVal + padding]}
-            tick={{ fontSize: 10, fill: '#5E7FA3' }}
+            tick={{ fontSize: 11, fill: 'var(--chart-label)' }}
             tickLine={false}
             axisLine={false}
             width={45}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: '#111B2E',
-              border: '1px solid rgba(30, 68, 120, 0.5)',
+              backgroundColor: tok('--s1'),
+              border: '1px solid rgb(var(--edge) / 0.5)',
               borderRadius: '8px',
               fontSize: '12px',
-              color: '#EDF2FF',
+              color: tok('--bright'),
             }}
-            labelStyle={{ color: '#5E7FA3', fontSize: '11px' }}
+            labelStyle={{ color: 'var(--chart-label)', fontSize: '11px' }}
             formatter={(value: number) => [`${value} ${unit}`, label]}
           />
 
@@ -173,28 +178,28 @@ export function ObservationTrendChart({ patientId, code, label, onClose }: Obser
           {refRange.low !== null && (
             <ReferenceLine
               y={refRange.low}
-              stroke="#F5A623"
+              stroke={tok('--amber')}
               strokeDasharray="5 3"
               strokeWidth={1}
               label={{
                 value: `Low: ${refRange.low}`,
                 position: 'right',
                 fontSize: 9,
-                fill: '#F5A623',
+                fill: tok('--amber'),
               }}
             />
           )}
           {refRange.high !== null && (
             <ReferenceLine
               y={refRange.high}
-              stroke="#F5A623"
+              stroke={tok('--amber')}
               strokeDasharray="5 3"
               strokeWidth={1}
               label={{
                 value: `High: ${refRange.high}`,
                 position: 'right',
                 fontSize: 9,
-                fill: '#F5A623',
+                fill: tok('--amber'),
               }}
             />
           )}
@@ -202,7 +207,7 @@ export function ObservationTrendChart({ patientId, code, label, onClose }: Obser
           <Line
             type="monotone"
             dataKey="value"
-            stroke="#0DD9D9"
+            stroke={tok('--teal')}
             strokeWidth={2}
             dot={(props: Record<string, unknown>) => {
               const { cx, cy, payload } = props as { cx: number; cy: number; payload: { abnormal: boolean } };
@@ -213,17 +218,17 @@ export function ObservationTrendChart({ patientId, code, label, onClose }: Obser
                   cx={cx}
                   cy={cy}
                   r={isAbnormal ? 5 : 3.5}
-                  fill={isAbnormal ? '#E8394A' : '#0DD9D9'}
-                  stroke={isAbnormal ? '#E8394A' : '#0DD9D9'}
+                  fill={isAbnormal ? tok('--crimson') : tok('--teal')}
+                  stroke={isAbnormal ? tok('--crimson') : tok('--teal')}
                   strokeWidth={isAbnormal ? 2 : 1}
                 />
               );
             }}
             activeDot={{
               r: 6,
-              stroke: '#0DD9D9',
+              stroke: tok('--teal'),
               strokeWidth: 2,
-              fill: '#111B2E',
+              fill: tok('--s1'),
             }}
           />
         </LineChart>

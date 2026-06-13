@@ -45,10 +45,10 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
 
   const gaugeColor =
     pct >= 0.75
-      ? '#10C981' // emerald
+      ? 'rgb(var(--emerald))'
       : pct >= 0.50
-        ? '#F5A623' // amber
-        : '#E8394A'; // crimson
+        ? 'rgb(var(--amber))'
+        : 'rgb(var(--crimson))';
 
   return (
     <div className="relative" style={{ width: 140, height: 90 }}>
@@ -57,7 +57,7 @@ function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
         <circle
           cx="50" cy="60" r={r}
           fill="none"
-          stroke="#172239"
+          stroke="var(--chart-track)"
           strokeWidth="9"
           strokeLinecap="butt"
           strokeDasharray={`${C / 2} ${C / 2}`}
