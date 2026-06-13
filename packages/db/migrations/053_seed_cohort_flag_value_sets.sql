@@ -33,11 +33,25 @@ WHERE vs.name = 'Intolerance to ACE Inhibitor or ARB'
 ORDER BY vs.value_set_oid
 LIMIT 1;
 
--- Sanity: all three rows must exist (the SELECTs insert nothing if names drift)
+-- Sanity gate, two distinct failure modes:
+--   VSAC tables EMPTY  -> data simply not loaded yet (fresh env / CI): WARN and
+--                         continue — the flag computation fails loudly at
+--                         runtime until load-vsac.sh + a re-run of this seed.
+--   VSAC tables LOADED -> but names didn't match: REAL drift, hard error.
 DO $$
+DECLARE
+  seeded INT;
+  vsac_rows INT;
 BEGIN
-  IF (SELECT count(*) FROM phm_edw.clinical_rule
-      WHERE entity='COHORT_FLAGS' AND attribute LIKE 'ACEARB%' AND active_ind='Y') < 3 THEN
-    RAISE EXCEPTION 'COHORT_FLAGS seed incomplete — VSAC value-set names not found. Run packages/db/scripts/load-vsac.sh first.';
+  SELECT count(*) INTO seeded FROM phm_edw.clinical_rule
+  WHERE entity='COHORT_FLAGS' AND attribute LIKE 'ACEARB%' AND active_ind='Y';
+  IF seeded >= 3 THEN
+    RETURN;
+  END IF;
+  SELECT count(*) INTO vsac_rows FROM phm_edw.vsac_value_set;
+  IF vsac_rows = 0 THEN
+    RAISE WARNING 'COHORT_FLAGS not seeded — VSAC data not loaded in this environment. Run packages/db/scripts/load-vsac.sh, then re-run the INSERTs in migration 053.';
+  ELSE
+    RAISE EXCEPTION 'COHORT_FLAGS seed incomplete — VSAC data is loaded (% value sets) but the ACE/ARB value-set names were not found: name drift in the VSAC release. Fix the names in migration 053.', vsac_rows;
   END IF;
 END $$;
