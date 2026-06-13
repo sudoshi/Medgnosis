@@ -1879,6 +1879,49 @@ The star schema ETL (migration 014) already evaluates every patient against ever
 
 ---
 
+## Session 19 — Geisinger CDS Compendium Parity (8 phases) + Production Deploy (Jun 12, 2026)
+
+**Goal:** Make Medgnosis the complete realization of the Geisinger CDS Compendium — population identification, anticipatory care, closed-loop safety, real-time surveillance, self-coding documentation, data-quality discipline, and coding analytics — on modern standards (FHIR R4, SNOMED CT, ICD-10-CM, LOINC, CDS Hooks). Master roadmap: `docs/superpowers/plans/2026-06-12-geisinger-cds-parity.md` (16 capabilities, 18 deltas, 8 phases). Each phase got its own detailed plan, TDD, live verification, and `--no-ff` merge.
+
+### What shipped (all 8 phases → main)
+
+| Phase | Delivered | Migrations |
+|-------|-----------|------------|
+| 1 | Versioned rules engine (`clinical_rule` EAV, time-travel) + diagnosis ontology (`dx_ontology`) + transparency endpoints | 031–032 |
+| 2 | Problem-list analytics: provenance/audit, bulk-load utility, two-pass population finder, recommendation cards | 033–034 |
+| 3 | Close the Loop (abnormal-result obligation + closure) + pluggable risk models (CHA₂DS₂-VASc computed, Gail registered) | 035–036 |
+| 4 | Auto-Orders (co-sign protocols) + AMP (tiered pre-visit + ROI slider) + Auto-Referral MTM | 037–038 |
+| 5 | Real-time lane (`phm_rt` hot partition + synthetic streamer) + generic MEWS/NEWS2 scoring engine + Glucometrics | 039–040 |
+| 6 | SuperNote — self-assembling, self-coding note (`note_coded_diagnosis`) | 041 |
+| 7 | Data Quality discovery (rogues' gallery, five-tests feeds) + Cohort Manager (flags + closed-loop messaging) | 042–043 |
+| 8 | HCC capture / E&M distribution / missed-opportunity analytics | 044 |
+
+### Engineering discipline
+- **TDD throughout** — 141 API unit tests; every pure helper red-then-green.
+- **Live-verified** every phase end-to-end against the real DB + a booted API with a minted admin token — never "done" on assertion alone.
+- **Scale-safe** — never scanned the ~1B-row `observation` or 1M-row `patient` tables; cohort-scoped via the `fact_observation` `(patient_key, observation_code)` index throughout.
+- **Data-honest adaptations (documented as deviations):** eGFR result code is `33914-3` (MDRD) not the order code `48642-3`; synthetic future appointments / inpatient census / DQ anomalies seeded because Synthea data was clean/past; "zombie" DQ detector dropped (no death column); CHA₂DS₂-VASc over Gail (inputs existed); real-time feed simulated (no live HL7 source); SuperNote deterministic assembly (LLM narrative deferred).
+- Live verification caught real bugs: an eGFR code-system mismatch (P2), a `date + param` SQL ambiguity (P4), and confirmed two suspicious zeros were *true* results (all AFib patients anticoagulated; demo K values normal).
+
+### Production deploy + outage fix
+- Found `medgnosis-api` crash-looping (3078 restarts) on a missing `.env.production` (removed during the morning's secret-exposure fix; correctly gitignored). Reconstructed it from the current `.env` with `host.docker.internal → localhost` for the host systemd context.
+- Caught an API/Apache **port mismatch** — Apache proxies `/api/` → 3081 but the reconstructed env defaulted to 3002; set `API_PORT=3081`. Public API healthy.
+- Fixed a frontend **403** — `vite build` wrote `apps/web/dist` with a 007 umask (no world-read); `chmod -R o+rX`. Public site live at https://medgnosis.acumenus.net.
+- Repaired the **auto-deploy daemon**: it rebuilt dist without re-chmod (re-403) and gated success on the *masked* `medgnosis-worker` (never advanced its hash → rebuilt every 60s). Now chmods dist post-build and keys success on the API. Daemon idle; API restart count 0.
+
+### Verification
+- 8/8 `turbo typecheck`, 141 tests, `vite build` clean. Migrations 031–044 applied (host PG17 `medgnosis`).
+- Public end-to-end: login + Phase 1 rules (22 pairs), Phase 5 census (30 beds), Phase 7 cohorts, Phase 8 HCC capture (68%) all serving through Apache.
+
+### Notes / follow-ups
+- `medgnosis-worker` is **masked** in prod → nightly batch jobs + the surveillance streamer don't run automatically; on-demand API endpoints work. Unmask to enable continuous refresh.
+- Net-new (not parity work): wire LLM narrative into SuperNote; replace the synthetic surveillance streamer with a real MLLP/HL7v2 or FHIR-Subscription source.
+
+### Commits
+- 8 phase merges `95d421d … 171e61c` (one `--no-ff` per phase, ~9 commits each) + `59d96f4` deploy-daemon fix. All on `main`, pushed.
+
+---
+
 ## Architecture Reference
 
 ### Monorepo Structure

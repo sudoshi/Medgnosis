@@ -190,6 +190,38 @@ export const ampDispositionSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+// SuperNote — finalize the note, coding the A&P diagnoses
+export const superNoteFinalizeSchema = z.object({
+  chief_complaint: z.string().max(500).optional(),
+  ap: z
+    .array(z.object({
+      icd10_code: z.string().min(1).max(20),
+      diagnosis_name: z.string().max(255).optional(),
+      plan: z.string().max(2000),
+    }))
+    .min(1)
+    .max(50),
+});
+
+// Cohort Manager — create a cohort definition
+export const cohortCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional(),
+  criteria: z.object({
+    conditions: z.array(z.string().max(20)).max(40).optional(),
+    flags: z.array(z.string().max(60)).max(20).optional(),
+  }),
+});
+
+// Cohort Manager — closed-loop message specialist → PCP
+export const cohortMessageSchema = z.object({
+  patient_id: z.coerce.number().int().positive(),
+  to_provider_id: z.coerce.number().int().positive().optional(),
+  subject: z.string().min(1).max(200),
+  body: z.string().max(2000).optional(),
+  required_disposition: z.string().max(80).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Infer types from schemas
 // ---------------------------------------------------------------------------
@@ -213,3 +245,6 @@ export type FinderDismissRequest = z.infer<typeof finderDismissSchema>;
 export type LoopResolveRequest = z.infer<typeof loopResolveSchema>;
 export type ProtocolEnrollRequest = z.infer<typeof protocolEnrollSchema>;
 export type AmpDispositionRequest = z.infer<typeof ampDispositionSchema>;
+export type SuperNoteFinalizeRequest = z.infer<typeof superNoteFinalizeSchema>;
+export type CohortCreateRequest = z.infer<typeof cohortCreateSchema>;
+export type CohortMessageRequest = z.infer<typeof cohortMessageSchema>;

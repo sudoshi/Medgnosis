@@ -14,6 +14,10 @@ import {
   ListChecks,
   ScanSearch,
   CalendarClock,
+  Activity,
+  ShieldAlert,
+  UsersRound,
+  BadgeDollarSign,
   Bell,
   Settings,
   LogOut,
@@ -41,6 +45,10 @@ const mainNav = [
   { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
   { to: '/close-the-loop', icon: ShieldCheck, label: 'Loops',     end: true },
   { to: '/anticipatory', icon: CalendarClock, label: 'Anticipatory', end: true },
+  { to: '/surveillance', icon: Activity,      label: 'Surveillance', end: true },
+  { to: '/cohorts',   icon: UsersRound,       label: 'Cohorts',   end: true },
+  { to: '/data-quality', icon: ShieldAlert,   label: 'Data Quality', end: true },
+  { to: '/coding',    icon: BadgeDollarSign,  label: 'Coding',    end: true },
   { to: '/alerts',    icon: Bell,             label: 'Alerts',    end: true },
 ] as const;
 

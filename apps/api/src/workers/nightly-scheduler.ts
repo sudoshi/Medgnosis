@@ -15,6 +15,7 @@ import { finderQueue, type FinderJobData } from './population-finder.js';
 import { loopsQueue, riskQueue, type LoopsJobData, type RiskJobData } from './close-the-loop.js';
 import { ampQueue, mtmQueue, autoOrdersQueue, type AnticipatoryJobData } from './anticipatory.js';
 import { recomputeClinicalExclusions } from '../services/exclusionEngine.js';
+import { dqQueue, cohortFlagsQueue, type DqJobData } from './data-quality.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -101,6 +102,11 @@ async function processNightlyJob(): Promise<void> {
     console.info('[nightly] Enqueued monthly Auto-Orders generation');
   }
   console.info('[nightly] Enqueued AMP sweep + MTM scan');
+
+  // 8. Data-quality anomaly scan + cohort high-risk flag computation
+  await dqQueue.add('nightly-dq', { triggeredBy: 'nightly_batch' } satisfies DqJobData);
+  await cohortFlagsQueue.add('nightly-cohort-flags', { triggeredBy: 'nightly_batch' } satisfies DqJobData);
+  console.info('[nightly] Enqueued DQ scan + cohort flags');
 
   console.info('[nightly] Nightly batch complete.');
 }
