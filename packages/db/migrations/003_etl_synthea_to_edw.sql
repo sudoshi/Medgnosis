@@ -2,6 +2,9 @@
 -- Strategy: Full Refresh (Truncate and Load)
 -- Assumes dblink extension is already enabled in the target database (medgnosis) in the phm_edw schema.
 
+-- dblink is required by the Synthea ETL below; fresh environments (CI) need it.
+CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA phm_edw;
+
 BEGIN; -- Start Transaction
 
 -- ----------------------------------------
