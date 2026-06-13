@@ -200,14 +200,13 @@ WITH candidate_encounters AS (
 ),
 inserted_claims AS (
     INSERT INTO phm_edw.billing_claim (
-        patient_id, encounter_id, provider_id, org_id, payer_id,
+        patient_id, encounter_id, provider_id, payer_id,
         submission_date, service_date, claim_status,
         total_charges, allowed_amount, paid_amount, patient_responsibility,
         claim_type, active_ind
     )
     SELECT
         ce.patient_id, ce.encounter_id, 2816,
-        (SELECT org_id FROM phm_edw.organization WHERE organization_name = 'Medgnosis Primary Care Associates' LIMIT 1),
         ce.payer_id,
         ce.encounter_datetime::DATE + INTERVAL '3 days',
         ce.encounter_datetime::DATE,
