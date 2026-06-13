@@ -1,15 +1,22 @@
 // =============================================================================
 // Medgnosis API — VSAC value set service
 // Reads phm_edw.vsac_* reference tables and the measure_value_set bridge.
-// resolveMeasureCodes() is the workhorse: every code of one code system across
-// all value sets bridged to a measure — what evaluators and the population
-// finder consume instead of hand-typed code lists.
+//
+// SAFETY: resolveMeasureCodes() returns the union of ALL bridged value sets
+// REGARDLESS of population role — denominator, exclusion (hospice / advanced
+// illness / frailty / palliative), and supplemental codes together (~82% of
+// CMS122's SNOMEDCT codes are exclusion-family). Treating that union as a
+// denominator would invert eCQM exclusion semantics. Do NOT drive population
+// finding or gap generation from it until the bridge carries population_role.
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
 
 // phm_edw code-column reality (verified 2026-06-12): condition and procedure
 // are SNOMED-coded — the Parthenon handoff's ICD-10/CPT routing does not apply.
+// NB: these are VSAC code_system labels, NOT phm_edw.*.code_system values —
+// the EDW stores 'SNOMED'/'ICD-10' (CHECK-constrained); translate labels
+// before ever joining an EDW code_system column against VSAC's.
 export const EDW_CODE_SYSTEM = {
   condition: 'SNOMEDCT',
   procedure: 'SNOMEDCT',

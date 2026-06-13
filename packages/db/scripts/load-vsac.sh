@@ -61,15 +61,31 @@ WHERE md.measure_code ~ '^CMS' AND md.active_ind = 'Y'
 ON CONFLICT (measure_id, value_set_oid) DO NOTHING;
 SQL
 
-echo "--- Verification ---"
+echo "--- Verification (asserted: source and destination must match exactly) ---"
+verify_count() {  # $1 src table  $2 dst table
+  local src_n dst_n
+  src_n=$("${SRC[@]}" -c "SELECT count(*) FROM $1;")
+  dst_n=$("${DST[@]}" -c "SELECT count(*) FROM $2;")
+  if [[ "$src_n" != "$dst_n" ]]; then
+    echo "FAIL: $2 has $dst_n rows, source $1 has $src_n" >&2
+    exit 1
+  fi
+  echo "OK: $2 = $dst_n rows (matches source)"
+}
+
+verify_count app.vsac_value_sets        phm_edw.vsac_value_set
+verify_count app.vsac_value_set_codes   phm_edw.vsac_value_set_code
+verify_count app.vsac_measures          phm_edw.vsac_measure
+verify_count app.vsac_measure_value_sets phm_edw.vsac_measure_value_set
+
+bridged=$("${DST[@]}" -c "SELECT count(DISTINCT measure_id) FROM phm_edw.measure_value_set;")
+if [[ "$bridged" -lt 1 ]]; then
+  echo "FAIL: bridge seeded 0 measures" >&2
+  exit 1
+fi
+echo "OK: bridge covers $bridged measures"
 "${DST[@]}" <<'SQL'
-SELECT 'vsac_value_set        expect 1545  got ' || count(*) FROM phm_edw.vsac_value_set;
-SELECT 'vsac_value_set_code   expect 225261 got ' || count(*) FROM phm_edw.vsac_value_set_code;
-SELECT 'vsac_measure          expect 72    got ' || count(*) FROM phm_edw.vsac_measure;
-SELECT 'vsac_measure_value_set expect 1597 got ' || count(*) FROM phm_edw.vsac_measure_value_set;
-SELECT 'bridged measures      expect 44    got ' || count(DISTINCT measure_id) FROM phm_edw.measure_value_set;
-SELECT 'unbridged CMS measures (expect CMS249v6 only): '
-       || coalesce(string_agg(measure_code, ', '), '(none)')
+SELECT 'unbridged CMS measures: ' || coalesce(string_agg(measure_code, ', '), '(none)')
 FROM phm_edw.measure_definition md
 WHERE md.measure_code ~ '^CMS' AND md.active_ind = 'Y'
   AND NOT EXISTS (SELECT 1 FROM phm_edw.measure_value_set b WHERE b.measure_id = md.measure_id);
