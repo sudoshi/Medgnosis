@@ -334,7 +334,7 @@ export function MeasuresPage() {
   }, [measures, search]);
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] -m-6 overflow-hidden">
+    <div className="flex h-[calc(100vh-7.5rem)] -m-4 overflow-hidden">
 
       {/* ── Measure list ─────────────────────────────────────────────── */}
       <div className="w-[340px] flex-shrink-0 flex flex-col border-r border-edge/35 bg-s0">

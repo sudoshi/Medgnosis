@@ -18,9 +18,9 @@
     /* color-scheme is set per-theme in tokens-dark.css / tokens-light.css */
 
     /* Spatial tokens */
-    --padding-page:    1.5rem;     /* outer page padding */
-    --padding-panel:   1.25rem;    /* inside panels/cards */
-    --padding-compact: 0.75rem;    /* tight inner padding */
+    --padding-page:    1rem;       /* outer page padding (clinical-compact) */
+    --padding-panel:   1rem;       /* inside panels/cards (clinical-compact) */
+    --padding-compact: 0.625rem;   /* tight inner padding (clinical-compact) */
     --radius-panel:    12px;
     --radius-card:     8px;
     --radius-pill:     999px;
@@ -529,7 +529,7 @@
   }
 
   .stats-strip-cell {
-    @apply px-6 py-2 border-r border-edge/25 last:border-r-0;
+    @apply px-4 py-1.5 border-r border-edge/25 last:border-r-0;
   }
 
   .stats-strip-value {
@@ -567,7 +567,7 @@
   }
 
   .data-table th {
-    @apply data-label px-4 py-3 text-left border-b border-edge/40;
+    @apply data-label px-4 py-2 text-left border-b border-edge/40;
   }
 
   .data-table tbody tr {
@@ -586,7 +586,7 @@
   }
 
   .data-table td {
-    @apply px-4 py-3.5 text-sm text-bright;
+    @apply px-4 py-2 text-sm text-bright;
   }
 
   /* ══════════════════════════════════════════════════════════════════════════

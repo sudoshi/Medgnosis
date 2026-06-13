@@ -448,7 +448,7 @@ export function AppShell() {
 
         {/* ── Page content ────────────────────────────────────────── */}
         <main className="flex-1 overflow-y-auto bg-void scrollbar-thin" id="main-content">
-          <div className="p-6">
+          <div className="p-4">
             <Outlet />
           </div>
         </main>
