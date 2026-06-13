@@ -3,29 +3,18 @@
 -- Phase: Demo Account — ETL Star Schema Refresh + Full Validation
 -- Runs ETL steps 16–27 (migration 014) then validates all data targets
 -- from the Demo Account Prompt (Part 16 validation checks)
+--
+-- NOTE: \echo and \i meta-commands removed — they are psql-only and
+-- break the Node.js postgres migration runner. Migration 014 already
+-- ran the ETL steps. Validation SELECTs are harmless on empty DB.
 -- =====================================================================
 
 -- ─────────────────────────────────────────────────────────────────────
--- ETL: Steps 16–27 — populate star schema from seeded EDW data
--- (Inline to avoid file dependency; mirrors 014_etl_steps_16_27.sql)
--- ─────────────────────────────────────────────────────────────────────
-
-\echo '=== Running ETL Steps 16-27 ==='
-\i '/home/smudoshi/Github/Medgnosis/packages/db/migrations/014_etl_steps_16_27.sql'
-
--- ─────────────────────────────────────────────────────────────────────
 -- VALIDATION: All 16 data integrity checks
+-- (Return counts; on empty/CI DB these all return 0 — that is expected)
 -- ─────────────────────────────────────────────────────────────────────
-
-\echo ''
-\echo '=========================================='
-\echo '  DEMO ACCOUNT VALIDATION REPORT'
-\echo '  Medgnosis Platform — Dr. Udoshi Panel'
-\echo '=========================================='
 
 -- V1: Patient panel size
-\echo ''
-\echo 'V1: Patient Panel (target: 1,288)'
 SELECT
     COUNT(*) AS total_patients,
     COUNT(*) FILTER (WHERE active_ind = 'Y') AS active_patients
@@ -33,12 +22,9 @@ FROM phm_edw.patient
 WHERE pcp_provider_id = 2816;
 
 -- V2: Provider + Organization
-\echo ''
-\echo 'V2: Provider & Organization Setup'
 SELECT
     prov.provider_id,
     prov.display_name,
-    prov.email,
     prov.npi_number,
     org.organization_name,
     org.organization_type
@@ -47,8 +33,6 @@ JOIN phm_edw.organization org ON org.org_id = prov.org_id
 WHERE prov.provider_id = 2816;
 
 -- V3: Clinical data completeness
-\echo ''
-\echo 'V3: Clinical Data Completeness'
 SELECT
     'Encounters (2023+)'            AS data_type,
     COUNT(*)                         AS record_count
@@ -75,8 +59,6 @@ WHERE p.pcp_provider_id = 2816
 ORDER BY 1;
 
 -- V4: Care Gaps
-\echo ''
-\echo 'V4: Care Gap Distribution (target: 25% Closed, ~45% Open, ~10% Excluded)'
 SELECT
     cg.gap_status,
     COUNT(*) AS cnt,
@@ -88,8 +70,6 @@ GROUP BY cg.gap_status
 ORDER BY cnt DESC;
 
 -- V5: Appointments
-\echo ''
-\echo 'V5: Appointment Schedule'
 SELECT
     COUNT(*) FILTER (WHERE a.appointment_date < CURRENT_DATE) AS historical,
     COUNT(*) FILTER (WHERE a.appointment_date = CURRENT_DATE) AS today,
@@ -99,8 +79,6 @@ JOIN phm_edw.patient p ON a.patient_id = p.patient_id
 WHERE p.pcp_provider_id = 2816;
 
 -- V6: Today's schedule detail
-\echo ''
-\echo 'V6: Today Demo Schedule (target: 16 patients)'
 SELECT
     a.start_time,
     a.appointment_type,
@@ -114,8 +92,6 @@ WHERE a.appointment_date = CURRENT_DATE
 ORDER BY a.start_time;
 
 -- V7: Clinical Orders
-\echo ''
-\echo 'V7: Clinical Orders'
 SELECT
     co.order_type,
     co.order_status,
@@ -127,15 +103,11 @@ GROUP BY co.order_type, co.order_status
 ORDER BY co.order_type, co.order_status;
 
 -- V8: Order Basket
-\echo ''
-\echo 'V8: Order Basket (pending unsigned orders)'
 SELECT COUNT(*) AS pending_basket_orders
 FROM phm_edw.order_basket ob
 WHERE ob.provider_id = 2816 AND ob.basket_status = 'Pending';
 
 -- V9: Referrals
-\echo ''
-\echo 'V9: Referrals'
 SELECT
     r.referral_status,
     COUNT(*) AS cnt
@@ -145,8 +117,6 @@ GROUP BY r.referral_status
 ORDER BY cnt DESC;
 
 -- V10: AI & Abigail
-\echo ''
-\echo 'V10: AI/Abigail Data'
 SELECT 'AI Insights' AS entity, COUNT(*) AS cnt FROM phm_edw.ai_insight WHERE provider_id = 2816
 UNION ALL
 SELECT 'Priority Queue (today)', COUNT(*) FROM phm_edw.ai_priority_queue WHERE provider_id = 2816 AND priority_date = CURRENT_DATE
@@ -160,8 +130,6 @@ SELECT 'Notifications (unread)', COUNT(*) FROM phm_edw.notification WHERE provid
 ORDER BY 1;
 
 -- V11: Quality & Billing
-\echo ''
-\echo 'V11: Quality & Billing'
 SELECT 'Quality Scores' AS entity, COUNT(*) AS cnt FROM phm_edw.quality_score WHERE provider_id = 2816
 UNION ALL
 SELECT 'Billing Claims', COUNT(*) FROM phm_edw.billing_claim WHERE provider_id = 2816
@@ -177,8 +145,6 @@ SELECT 'Refill Requests', COUNT(*) FROM phm_edw.refill_request WHERE provider_id
 ORDER BY 1;
 
 -- V12: Oncology Cohort
-\echo ''
-\echo 'V12: Oncology Cohort (target: 5 cancer patients)'
 SELECT
     cs.cancer_type,
     cs.clinical_stage,
@@ -192,8 +158,6 @@ WHERE p.pcp_provider_id = 2816
 ORDER BY cs.staging_id;
 
 -- V13: Research & Clinical Trials
-\echo ''
-\echo 'V13: Clinical Trials'
 SELECT
     ct.nct_number,
     ct.trial_name,
@@ -208,8 +172,6 @@ JOIN phm_edw.patient p ON te.patient_id = p.patient_id
 WHERE p.pcp_provider_id = 2816;
 
 -- V14: Patient Portal
-\echo ''
-\echo 'V14: Patient Portal Activity'
 SELECT 'Portal Messages' AS entity, COUNT(*) AS cnt FROM phm_edw.patient_message WHERE provider_id = 2816
 UNION ALL
 SELECT 'Unread Messages', COUNT(*) FROM phm_edw.patient_message WHERE provider_id = 2816 AND is_read = FALSE
@@ -220,8 +182,6 @@ SELECT 'PHQ-9/GAD-7 Scores', COUNT(*) FROM phm_edw.patient_reported_outcome
 ORDER BY 1;
 
 -- V15: Star Schema Population
-\echo ''
-\echo 'V15: Star Schema (after ETL)'
 SELECT 'fact_patient_bundle'        AS fact_table, COUNT(*) AS rows FROM phm_star.fact_patient_bundle WHERE is_active = TRUE
 UNION ALL
 SELECT 'fact_patient_bundle_detail', COUNT(*) FROM phm_star.fact_patient_bundle_detail
@@ -238,13 +198,11 @@ SELECT 'dim_payer',                  COUNT(*) FROM phm_star.dim_payer
 ORDER BY 1;
 
 -- V16: Materialized Views
-\echo ''
-\echo 'V16: Materialized Views'
 SELECT COUNT(*) AS mv_population_by_condition FROM phm_star.mv_population_by_condition;
 SELECT COUNT(*) AS mv_provider_scorecard FROM phm_star.mv_provider_scorecard;
 SELECT COUNT(*) AS mv_patient_risk_tier FROM phm_star.mv_patient_risk_tier;
 
--- Final summary
+-- Final summary (harmless on empty DB — all counts will be 0)
 DO $$
 DECLARE
     v_gaps  INT;
@@ -258,12 +216,11 @@ BEGIN
     SELECT COUNT(*) INTO v_bundles FROM phm_star.fact_patient_bundle WHERE is_active = TRUE;
 
     RAISE NOTICE '========================================';
-    RAISE NOTICE 'DEMO ACCOUNT FULLY OPERATIONAL';
+    RAISE NOTICE 'DEMO ACCOUNT VALIDATION COMPLETE';
     RAISE NOTICE '========================================';
-    RAISE NOTICE 'Patient panel:      % patients', v_pats;
-    RAISE NOTICE 'Care gaps:          % total records', v_gaps;
-    RAISE NOTICE 'Today schedule:     % appointments', v_apts;
+    RAISE NOTICE 'Patient panel:       % patients', v_pats;
+    RAISE NOTICE 'Care gaps:           % total records', v_gaps;
+    RAISE NOTICE 'Today schedule:      % appointments', v_apts;
     RAISE NOTICE 'Star schema bundles: % patient-bundle rows', v_bundles;
-    RAISE NOTICE 'Login: dr.udoshi@medgnosis.app / password';
     RAISE NOTICE '========================================';
 END $$;
