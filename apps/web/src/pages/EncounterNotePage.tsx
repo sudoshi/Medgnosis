@@ -12,7 +12,6 @@ import {
   Lock,
   Sparkles,
   Loader2,
-  ChevronDown,
   Trash2,
   FileEdit,
 } from 'lucide-react';
@@ -24,6 +23,15 @@ import {
   useAiScribe,
 } from '../hooks/useApi.js';
 import { SOAPSectionEditor } from '../components/encounter/SOAPSectionEditor.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -402,33 +410,31 @@ export function EncounterNotePage() {
           {/* Visit type */}
           <div className="flex-shrink-0">
             <label className="label-text mb-1 block">Visit Type</label>
-            <div className="relative">
-              <select
-                value={visitType}
-                onChange={(e) => {
-                  setVisitType(e.target.value as VisitType);
-                  triggerAutoSave();
-                }}
-                disabled={isReadOnly}
-                className="input-field pr-8 appearance-none cursor-pointer w-40"
-              >
+            <Select
+              value={visitType}
+              onValueChange={(v) => {
+                setVisitType(v as VisitType);
+                triggerAutoSave();
+              }}
+              disabled={isReadOnly}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
                 {VISIT_TYPES.map((vt) => (
-                  <option key={vt.value} value={vt.value}>
+                  <SelectItem key={vt.value} value={vt.value}>
                     {vt.label}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              <ChevronDown
-                size={14}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
-              />
-            </div>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Chief complaint */}
           <div className="flex-1 min-w-[200px]">
             <label className="label-text mb-1 block">Chief Complaint</label>
-            <input
+            <Input
               type="text"
               value={chiefComplaint}
               onChange={(e) => {
@@ -437,24 +443,24 @@ export function EncounterNotePage() {
               }}
               placeholder="Reason for visit..."
               disabled={isReadOnly}
-              className="input-field w-full"
             />
           </div>
 
           {/* AI Scribe All button */}
           {!isReadOnly && (
-            <button
+            <Button
+              size="sm"
               onClick={handleAiScribeAll}
               disabled={isGenerating}
-              className="btn-primary btn-sm gap-1.5 flex-shrink-0"
+              className="gap-1.5 flex-shrink-0"
             >
               {generatingSection === 'all' ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Sparkles size={14} />
+                <Sparkles />
               )}
               AI Scribe All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -486,7 +492,9 @@ export function EncounterNotePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {!isReadOnly && noteId && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   if (confirm('Delete this draft note?')) {
                     api.delete(`/clinical-notes/${noteId}`).then(() => {
@@ -494,33 +502,36 @@ export function EncounterNotePage() {
                     });
                   }
                 }}
-                className="btn-ghost btn-sm gap-1.5 text-crimson hover:text-crimson"
+                className="gap-1.5 text-crimson hover:text-crimson"
               >
-                <Trash2 size={13} />
+                <Trash2 />
                 Delete Draft
-              </button>
+              </Button>
             )}
           </div>
 
           <div className="flex items-center gap-3">
             {!isReadOnly && (
               <>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={handleSave}
                   disabled={updateNote.isPending}
-                  className="btn-secondary btn-sm gap-1.5"
+                  className="gap-1.5"
                 >
-                  <Save size={13} />
+                  <Save />
                   Save Draft
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="sm"
                   onClick={() => setShowFinalizeDialog(true)}
                   disabled={finalizeNote.isPending}
-                  className="btn-primary btn-sm gap-1.5"
+                  className="gap-1.5"
                 >
-                  <Lock size={13} />
+                  <Lock />
                   Finalize & Sign
-                </button>
+                </Button>
               </>
             )}
             {isReadOnly && (
@@ -545,24 +556,22 @@ export function EncounterNotePage() {
               By signing, you attest that this documentation is accurate and complete.
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowFinalizeDialog(false)}
-                className="btn-ghost btn-sm"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowFinalizeDialog(false)}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleFinalize}
                 disabled={finalizeNote.isPending}
-                className="btn-primary btn-sm gap-1.5"
+                className="gap-1.5"
               >
                 {finalizeNote.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <Lock size={13} />
+                  <Lock />
                 )}
                 Finalize & Sign
-              </button>
+              </Button>
             </div>
           </div>
         </div>

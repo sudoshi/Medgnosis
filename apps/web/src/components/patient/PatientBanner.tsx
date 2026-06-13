@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   FileText,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { formatDate, calcAge } from '../../utils/time.js';
 import { PatientAvatar, getInitialsFromParts } from '../PatientAvatar.js';
 
@@ -87,13 +88,10 @@ export function PatientBanner({ patient, onNewNote }: PatientBannerProps) {
                 {patient.last_name}, {patient.first_name}
               </h1>
               {onNewNote && (
-                <button
-                  onClick={onNewNote}
-                  className="btn-secondary btn-sm gap-1.5"
-                >
-                  <FileText size={13} strokeWidth={1.5} />
+                <Button variant="secondary" size="sm" onClick={onNewNote} className="gap-1.5">
+                  <FileText strokeWidth={1.5} />
                   New Note
-                </button>
+                </Button>
               )}
             </div>
 

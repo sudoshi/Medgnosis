@@ -7,6 +7,15 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api.js';
 import { fmtDateTime } from './helpers.js';
 import type { AuditLog } from './types.js';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 const EVENT_TYPES = ['login', 'view', 'create', 'update', 'delete', 'etl_run'];
 
@@ -68,30 +77,30 @@ export function AuditTab() {
       </div>
 
       <div className="surface p-0 overflow-hidden">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Event</th>
-              <th>Actor</th>
-              <th>Target</th>
-              <th>Description</th>
-              <th>Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Event</TableHead>
+              <TableHead>Actor</TableHead>
+              <TableHead>Target</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Timestamp</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {isLoading && (
-              <tr><td colSpan={5} className="text-center py-8 text-ghost">Loading...</td></tr>
+              <TableRow><TableCell colSpan={5} className="py-8 text-center text-ghost">Loading...</TableCell></TableRow>
             )}
             {!isLoading && logs.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-8 text-ghost">No events found</td></tr>
+              <TableRow><TableCell colSpan={5} className="py-8 text-center text-ghost">No events found</TableCell></TableRow>
             )}
             {logs.map((log) => {
               const actorName = log.user_first_name
                 ? `${log.user_first_name} ${log.user_last_name ?? ''}`.trim()
                 : log.user_email ?? 'System';
               return (
-                <tr key={log.audit_id}>
-                  <td>
+                <TableRow key={log.audit_id}>
+                  <TableCell>
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wide ${
                       log.event_type === 'login'         ? 'bg-[var(--primary-bg)] text-[var(--primary)]'
                       : log.event_type === 'phi_access'   ? 'bg-amber/10 text-amber'
@@ -101,16 +110,16 @@ export function AuditTab() {
                     }`}>
                       {log.event_type.replace(/_/g, ' ')}
                     </span>
-                  </td>
-                  <td><span className="text-xs text-dim">{actorName}</span></td>
-                  <td><span className="font-data text-xs text-ghost">{log.target_type ?? '\u2014'}</span></td>
-                  <td><span className="text-xs text-dim truncate max-w-[200px] block">{log.description ?? '\u2014'}</span></td>
-                  <td><span className="font-data text-[11px] text-ghost whitespace-nowrap">{fmtDateTime(log.created_at)}</span></td>
-                </tr>
+                  </TableCell>
+                  <TableCell><span className="text-xs text-dim">{actorName}</span></TableCell>
+                  <TableCell><span className="font-data text-xs text-ghost">{log.target_type ?? '\u2014'}</span></TableCell>
+                  <TableCell><span className="block max-w-[200px] truncate text-xs text-dim">{log.description ?? '\u2014'}</span></TableCell>
+                  <TableCell><span className="font-data text-[11px] text-ghost whitespace-nowrap">{fmtDateTime(log.created_at)}</span></TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Pagination */}
@@ -118,20 +127,22 @@ export function AuditTab() {
         <div className="flex items-center justify-between text-xs text-ghost">
           <span>{offset + 1}\u2013{Math.min(offset + LIMIT, total)} of {total.toLocaleString()}</span>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setOffset(Math.max(0, offset - LIMIT))}
               disabled={offset === 0}
-              className="btn-secondary btn-sm"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setOffset(offset + LIMIT)}
               disabled={offset + LIMIT >= total}
-              className="btn-secondary btn-sm"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

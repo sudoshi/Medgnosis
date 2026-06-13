@@ -6,6 +6,7 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Sparkles, Send } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { api } from '../../services/api.js';
 import { relativeTime } from '../../utils/time.js';
 import {
@@ -83,7 +84,7 @@ function AbbyChat({ greeting }: { greeting: string }) {
 
       {/* Input row */}
       <div className="flex items-end gap-2">
-        <textarea
+        <Textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -95,7 +96,7 @@ function AbbyChat({ greeting }: { greeting: string }) {
           }}
           placeholder="Ask Abigail..."
           rows={2}
-          className="input-field flex-1 resize-none text-xs"
+          className="min-h-0 flex-1 resize-none text-xs"
           aria-label="Message Abigail"
         />
         <button

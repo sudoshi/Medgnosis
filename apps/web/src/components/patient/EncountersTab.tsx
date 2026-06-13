@@ -13,6 +13,7 @@ import {
   Building2,
   User,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface EncountersTabProps {
   patientId: string;
@@ -184,20 +185,22 @@ export function EncountersTab({ patientId }: EncountersTabProps) {
             Page {meta.page} of {meta.total_pages}
           </span>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="btn-ghost btn-sm"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setPage((p) => Math.min(meta.total_pages, p + 1))}
               disabled={page >= meta.total_pages}
-              className="btn-ghost btn-sm"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

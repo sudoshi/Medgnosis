@@ -8,6 +8,15 @@ import { useToast } from '../../stores/ui.js';
 import { api } from '../../services/api.js';
 import { fmtDate, fmtDateTime } from './helpers.js';
 import type { EtlLog, Migration, StarCounts } from './types.js';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 export function EtlTab() {
   const toast = useToast();
@@ -48,34 +57,36 @@ export function EtlTab() {
       <div className="surface p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xs font-semibold text-bright uppercase tracking-wider">Star Schema Health</h3>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => refreshMut.mutate()}
             disabled={refreshMut.isPending}
-            className="btn-secondary btn-sm gap-1.5"
+            className="gap-1.5"
           >
-            <RefreshCw size={12} className={refreshMut.isPending ? 'animate-spin' : ''} />
+            <RefreshCw className={refreshMut.isPending ? 'animate-spin' : ''} />
             Refresh mat views
-          </button>
+          </Button>
         </div>
         {isLoading ? (
           <p className="text-sm text-ghost">Loading...</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Table</th>
-                <th className="text-right">Row count</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Table</TableHead>
+                <TableHead className="text-right">Row count</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {starRows.map(({ table, rows }) => (
-                <tr key={table}>
-                  <td><span className="font-data text-xs text-dim">{table}</span></td>
-                  <td className="text-right"><span className="font-data text-xs text-bright tabular-nums">{Number(rows).toLocaleString()}</span></td>
-                </tr>
+                <TableRow key={table}>
+                  <TableCell><span className="font-data text-xs text-dim">{table}</span></TableCell>
+                  <TableCell className="text-right"><span className="font-data text-xs text-bright tabular-nums">{Number(rows).toLocaleString()}</span></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -85,30 +96,30 @@ export function EtlTab() {
         {etlLogs.length === 0 ? (
           <p className="text-sm text-ghost text-center py-4">No ETL runs recorded</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>System</th>
-                <th>Status</th>
-                <th>Rows inserted</th>
-                <th>Timestamp</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>System</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Rows inserted</TableHead>
+                <TableHead>Timestamp</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {etlLogs.map((log, i) => (
-                <tr key={i}>
-                  <td><span className="text-sm text-dim">{log.source_system}</span></td>
-                  <td>
+                <TableRow key={i}>
+                  <TableCell><span className="text-sm text-dim">{log.source_system}</span></TableCell>
+                  <TableCell>
                     <span className={`text-xs font-medium ${log.load_status === 'success' ? 'text-emerald' : 'text-amber'}`}>
                       {log.load_status}
                     </span>
-                  </td>
-                  <td><span className="font-data text-xs text-bright tabular-nums">{Number(log.rows_inserted).toLocaleString()}</span></td>
-                  <td><span className="font-data text-xs text-ghost">{fmtDateTime(log.created_at)}</span></td>
-                </tr>
+                  </TableCell>
+                  <TableCell><span className="font-data text-xs text-bright tabular-nums">{Number(log.rows_inserted).toLocaleString()}</span></TableCell>
+                  <TableCell><span className="font-data text-xs text-ghost">{fmtDateTime(log.created_at)}</span></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
 

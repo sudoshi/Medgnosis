@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 export function NotFoundPage() {
   return (
@@ -13,12 +14,9 @@ export function NotFoundPage() {
         <p className="mt-2 text-dim">
           The page you&apos;re looking for doesn&apos;t exist.
         </p>
-        <Link
-          to="/dashboard"
-          className="mt-6 inline-block btn btn-primary"
-        >
-          Go to Dashboard
-        </Link>
+        <Button asChild className="mt-6">
+          <Link to="/dashboard">Go to Dashboard</Link>
+        </Button>
       </div>
     </div>
   );

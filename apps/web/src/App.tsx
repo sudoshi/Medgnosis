@@ -20,6 +20,7 @@ import { AlertsPage } from './pages/AlertsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { AdminPage } from './pages/AdminPage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
+import { Toaster } from './components/ui/sonner.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
 import { CommandPalette } from './components/CommandPalette.js';
@@ -40,6 +41,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <AppProviders>
+      <Toaster />
       <CommandPalette />
       <ErrorBoundary>
       <Routes>

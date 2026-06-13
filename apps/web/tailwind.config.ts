@@ -4,6 +4,7 @@
 // =============================================================================
 
 import type { Config } from 'tailwindcss';
+import animate from 'tailwindcss-animate';
 
 const config: Config = {
   // Dark-first design — always dark, no light mode switching
@@ -54,6 +55,45 @@ const config: Config = {
         // Caution/watch tier — between emerald (good) and amber (warning)
         gold:    'rgb(var(--gold) / <alpha-value>)',
 
+        // ─── shadcn/ui semantic bridge → Clinical Obsidian tokens ───────────
+        // shadcn components reference these names (bg-background, border-border,
+        // text-muted-foreground, …). They alias onto our channel tokens so the
+        // entire shadcn surface themes in light/dark for free. `primary`/`ring`
+        // point at the palette-engine vars (--primary) so palette switching also
+        // drives shadcn components. NOTE: shadcn's `accent` (a hover surface) is
+        // intentionally NOT mapped — it would collide with our legacy `accent`
+        // brand object; components use `muted`/`secondary` for hover instead.
+        background: 'rgb(var(--s0) / <alpha-value>)',
+        foreground: 'rgb(var(--bright) / <alpha-value>)',
+        border:     'rgb(var(--edge) / <alpha-value>)',
+        input:      'rgb(var(--edge) / <alpha-value>)',
+        ring:       'var(--primary)',
+        primary: {
+          DEFAULT:    'var(--primary)',
+          dark:       'var(--primary-dark)',
+          foreground: 'rgb(var(--accent-fg) / <alpha-value>)',
+        },
+        secondary: {
+          DEFAULT:    'rgb(var(--s1) / <alpha-value>)',
+          foreground: 'rgb(var(--bright) / <alpha-value>)',
+        },
+        muted: {
+          DEFAULT:    'rgb(var(--s2) / <alpha-value>)',
+          foreground: 'rgb(var(--dim) / <alpha-value>)',
+        },
+        card: {
+          DEFAULT:    'rgb(var(--s1) / <alpha-value>)',
+          foreground: 'rgb(var(--bright) / <alpha-value>)',
+        },
+        popover: {
+          DEFAULT:    'rgb(var(--s0) / <alpha-value>)',
+          foreground: 'rgb(var(--bright) / <alpha-value>)',
+        },
+        destructive: {
+          DEFAULT:    'rgb(var(--crimson) / <alpha-value>)',
+          foreground: 'rgb(var(--accent-fg) / <alpha-value>)',
+        },
+
         // ─── Legacy aliases — now token-backed so they theme too ────────────
         dark: {
           primary:   'rgb(var(--s0) / <alpha-value>)',
@@ -75,11 +115,11 @@ const config: Config = {
             secondary: 'rgb(var(--dim) / <alpha-value>)',
           },
         },
+        // shadcn hover surface (NOT a brand accent). Replaces the old legacy
+        // `accent` brand object, which had 0 class usages (grep-confirmed).
         accent: {
-          primary: 'rgb(var(--teal) / <alpha-value>)',
-          success: 'rgb(var(--emerald) / <alpha-value>)',
-          warning: 'rgb(var(--amber) / <alpha-value>)',
-          error:   'rgb(var(--crimson) / <alpha-value>)',
+          DEFAULT:    'rgb(var(--s2) / <alpha-value>)',
+          foreground: 'rgb(var(--bright) / <alpha-value>)',
         },
         // Legacy gray references (AppShell uses raw gray-* until migrated)
         gray: {
@@ -257,7 +297,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [animate],
 };
 
 export default config;

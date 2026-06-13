@@ -16,6 +16,7 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import {
   useBundlePopulation,
   useBundlePatients,
@@ -731,12 +732,12 @@ export function BundlesPage() {
               className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost pointer-events-none"
               aria-hidden="true"
             />
-            <input
+            <Input
               type="text"
               placeholder="Search bundles..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-field pl-8 w-full text-sm"
+              className="pl-8 text-sm"
               autoComplete="off"
               spellCheck={false}
               aria-label="Search bundles"

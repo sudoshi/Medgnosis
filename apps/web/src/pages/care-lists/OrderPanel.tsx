@@ -8,6 +8,7 @@ import {
   Send,
   FileCode2,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { ItemTypeBadge } from './helpers.js';
 import type { OrderItem, WorklistMeasure } from './types.js';
 
@@ -141,12 +142,12 @@ export function OrderPanel({
           {/* Instructions */}
           <div className="space-y-2">
             <h3 className="text-xs font-ui font-semibold uppercase tracking-wider text-ghost">Instructions (Optional)</h3>
-            <textarea
+            <Textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="Additional instructions for the order..."
               rows={2}
-              className="input-field w-full text-xs resize-none"
+              className="min-h-0 w-full resize-none text-xs"
             />
           </div>
 
