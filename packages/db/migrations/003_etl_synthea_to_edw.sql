@@ -42,7 +42,7 @@ COMMIT; -- Commit truncates before the guarded ETL block
 -- (expected on CI and any fresh environment without the Synthea database)
 -- skips the data load gracefully instead of failing the migration.
 -- ----------------------------------------
-DO $$
+DO $etl$
 BEGIN
 
 -- ----------------------------------------
@@ -50,29 +50,23 @@ BEGIN
 -- ----------------------------------------
 
 -- 1. Address (Combine addresses from patients, organizations, providers, payers in 'ohdsi' db)
-WITH distinct_addresses AS (
-    SELECT address_line1, address_line2, city, state, zip, county, lat, lon FROM phm_edw.dblink('dbname=ohdsi user=postgres password=acumenus'::text, $$
-        SELECT DISTINCT address AS address_line1, NULL AS address_line2, city, state, zip, county, lat, lon FROM population.patients WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL
-        UNION
-        SELECT DISTINCT address AS address_line1, NULL AS address_line2, city, state, zip, NULL AS county, lat, lon FROM population.organizations WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL
-        UNION
-        SELECT DISTINCT address AS address_line1, NULL AS address_line2, city, state, zip, NULL AS county, lat, lon FROM population.providers WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL
-        UNION
-        SELECT DISTINCT address AS address_line1, NULL AS address_line2, city, state_headquartered AS state, zip, NULL AS county, NULL AS lat, NULL AS lon FROM population.payers WHERE address IS NOT NULL AND city IS NOT NULL AND state_headquartered IS NOT NULL AND zip IS NOT NULL
-    $$::text) AS t(address_line1 text, address_line2 text, city text, state text, zip text, county text, lat text, lon text)
-)
+-- NOTE: WITH...INSERT (data-modifying CTE) is not valid PL/pgSQL; rewritten as
+-- INSERT INTO...SELECT with the dblink subquery inlined directly.
 INSERT INTO phm_edw.address (address_line1, address_line2, city, state, zip, county, latitude, longitude, created_date)
-SELECT
-    address_line1,
-    address_line2,
-    city,
-    state,
-    zip,
-    county,
-    CASE WHEN lat ~ '^-?[0-9]+(\.[0-9]+)?$' THEN lat::NUMERIC(9, 6) ELSE NULL END, -- Direct cast with check
-    CASE WHEN lon ~ '^-?[0-9]+(\.[0-9]+)?$' THEN lon::NUMERIC(9, 6) ELSE NULL END, -- Direct cast with check
+SELECT DISTINCT
+    t.address_line1, t.address_line2, t.city, t.state, t.zip, t.county,
+    CASE WHEN t.lat ~ '^-?[0-9]+(\.[0-9]+)?$' THEN t.lat::NUMERIC(9, 6) ELSE NULL END,
+    CASE WHEN t.lon ~ '^-?[0-9]+(\.[0-9]+)?$' THEN t.lon::NUMERIC(9, 6) ELSE NULL END,
     NOW()
-FROM distinct_addresses;
+FROM phm_edw.dblink('dbname=ohdsi user=postgres password=acumenus'::text,
+    'SELECT DISTINCT address AS address_line1, NULL AS address_line2, city, state, zip, county, lat::text, lon::text FROM population.patients WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL'
+    || ' UNION '
+    || 'SELECT DISTINCT address, NULL, city, state, zip, NULL, lat::text, lon::text FROM population.organizations WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL'
+    || ' UNION '
+    || 'SELECT DISTINCT address, NULL, city, state, zip, NULL, lat::text, lon::text FROM population.providers WHERE address IS NOT NULL AND city IS NOT NULL AND state IS NOT NULL AND zip IS NOT NULL'
+    || ' UNION '
+    || 'SELECT DISTINCT address, NULL, city, state_headquartered, zip, NULL, NULL, NULL FROM population.payers WHERE address IS NOT NULL AND city IS NOT NULL AND state_headquartered IS NOT NULL AND zip IS NOT NULL'
+) AS t(address_line1 text, address_line2 text, city text, state text, zip text, county text, lat text, lon text);
 
 -- 2. Organization
 INSERT INTO phm_edw.organization (organization_name, primary_phone, address_id, created_date)
@@ -347,6 +341,6 @@ WHERE pat.patient_id IS NOT NULL AND o.code IS NOT NULL;
 
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'synthea source unreachable — skipping ETL load (expected outside the dev host): %', SQLERRM;
-END $$;
+END $etl$;
 
 -- Note: Removed dblink_disconnect as we removed dblink_connect
