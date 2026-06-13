@@ -97,12 +97,17 @@ export async function getValueSetCodes(
   oid: string,
   codeSystem?: string,
 ): Promise<ValueSetCode[]> {
+  // LIMIT 12000: the largest loaded expansion (verified 2026-06-12) is 11,539
+  // codes. The limit is set above that ceiling to guard against unbounded
+  // responses without silently truncating any current value set. Pagination
+  // (offset/cursor) is deferred as future work if expansions grow further.
   return sql<ValueSetCode[]>`
     SELECT vc.code, vc.description, vc.code_system
     FROM phm_edw.vsac_value_set_code vc
     WHERE vc.value_set_oid = ${oid}
       AND (${codeSystem ?? null}::text IS NULL OR vc.code_system = ${codeSystem ?? null}::text)
     ORDER BY vc.code_system, vc.code
+    LIMIT 12000
   `;
 }
 

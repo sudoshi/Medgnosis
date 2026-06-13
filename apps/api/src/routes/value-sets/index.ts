@@ -8,6 +8,7 @@ import {
   listValueSets,
   getValueSetCodes,
   getMeasureValueSets,
+  getMeasureBridgeStatus,
 } from '../../services/vsacService.js';
 
 export default async function valueSetRoutes(fastify: FastifyInstance): Promise<void> {
@@ -21,11 +22,17 @@ export default async function valueSetRoutes(fastify: FastifyInstance): Promise<
 
   // GET /value-sets/measure/:measureCode — value sets bridged to a measure
   // (registered before /:oid so "measure" is not swallowed as an OID)
+  // Response includes bridge status (version_drift, unclassified_count, role
+  // distribution) alongside the value set list. 404 when the measure has no
+  // bridge rows (status === null).
   fastify.get<{ Params: { measureCode: string } }>(
     '/measure/:measureCode',
     async (request, reply) => {
-      const valueSets = await getMeasureValueSets(request.params.measureCode);
-      if (valueSets.length === 0) {
+      const [status, value_sets] = await Promise.all([
+        getMeasureBridgeStatus(request.params.measureCode),
+        getMeasureValueSets(request.params.measureCode),
+      ]);
+      if (status === null) {
         return reply.status(404).send({
           success: false,
           error: {
@@ -34,7 +41,7 @@ export default async function valueSetRoutes(fastify: FastifyInstance): Promise<
           },
         });
       }
-      return reply.send({ success: true, data: valueSets });
+      return reply.send({ success: true, data: { status, value_sets } });
     },
   );
 

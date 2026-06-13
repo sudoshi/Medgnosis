@@ -103,8 +103,12 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
     }
 
     const data = rows.map((row) => {
+      // small_cell: display guidance for wide-CI / small-n strata (denominator
+      // 1–10). NOT suppression — this is an internal clinical tool; raw n stays
+      // visible. Consumers may render a warning indicator alongside the rate.
+      const small_cell = row.denominator > 0 && row.denominator < 11;
       if (row.denominator <= 0) {
-        return { ...row, rate: null, ci_lower: null, ci_upper: null };
+        return { ...row, rate: null, ci_lower: null, ci_upper: null, small_cell };
       }
       const ci = wilsonCI(row.numerator, row.denominator);
       return {
@@ -112,6 +116,7 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
         rate: Math.round((row.numerator / row.denominator) * 1000) / 10,
         ci_lower: Math.round(ci.lower * 1000) / 10,
         ci_upper: Math.round(ci.upper * 1000) / 10,
+        small_cell,
       };
     });
 
