@@ -1,0 +1,55 @@
+/* =============================================================================
+   Medgnosis — Light theme: "Soft Clinical" (cool off-white / navy ink)
+   Overrides the dark baseline (tokens-dark.css) under [data-theme="light"].
+   Only the values that change are listed; everything else inherits from :root.
+   Channels are space-separated RGB so Tailwind alpha modifiers keep working.
+   Accents are deepened so they stay WCAG-AA as text on white AND as solid fills
+   (paired with --accent-fg: white).
+   ============================================================================= */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── Surfaces (page canvas → elevated tint) ─────────────────────────────── */
+  --void: 244 246 251;   /* #F4F6FB  page canvas */
+  --s0:   255 255 255;   /* #FFFFFF  cards / inputs / table header */
+  --s1:   237 241 247;   /* #EDF1F7  hover rows / raised tint */
+  --s2:   224 230 240;   /* #E0E6F0  chips / toggles-off / elevated hover */
+  --edge: 211 220 232;   /* #D3DCE8  borders */
+
+  /* ── Text (AA on white) ─────────────────────────────────────────────────── */
+  --bright: 22 36 59;    /* #16243B  ink ~12:1 */
+  --dim:    74 98 126;   /* #4A627E  ~6:1 */
+  --ghost:  118 132 156; /* #76849C  ~3.6:1 — chrome only */
+
+  /* ── Semantic accents — deepened for AA on white ────────────────────────── */
+  --teal: 11 122 122;  --teal-dark: 9 104 104;  /* #0B7A7A */
+  --amber:   181 121 15;  /* #B5790F */
+  --crimson: 196 40 58;   /* #C4283A */
+  --emerald: 10 125 84;   /* #0A7D54 */
+  --violet:  109 63 212;  /* #6D3FD4 */
+  --info:    45 111 168;  /* #2D6FA8 */
+  --gold:    154 110 18;  /* #9A6E12 */
+
+  /* Text/icons on a solid accent fill — white reads cleanly on the deep accents */
+  --accent-fg: 255 255 255;
+
+  /* ── Surface aliases ────────────────────────────────────────────────────── */
+  --surface-darkest: rgb(231 235 242);
+  --sidebar-bg:       rgb(var(--s0));
+  --sidebar-bg-light: rgb(var(--void));
+
+  /* ── Effects — soft grey depth instead of dark glow ─────────────────────── */
+  --shadow-panel:       0 1px 2px rgb(15 23 42 / 0.06), 0 2px 8px rgb(15 23 42 / 0.08);
+  --shadow-panel-hover: 0 4px 12px rgb(15 23 42 / 0.10), 0 8px 24px rgb(15 23 42 / 0.12);
+  --gradient-panel:        none;
+  --gradient-panel-raised: none;
+  --gradient-panel-inset:  linear-gradient(135deg, rgb(15 23 42 / 0.04) 0%, transparent 100%);
+  --skeleton-base:  rgb(var(--s1));
+  --skeleton-mid:   rgb(var(--s2));
+  --skeleton-flash: rgb(var(--teal) / 0.10);
+  --scrollbar-thumb:       rgb(15 23 42 / 0.20);
+  --scrollbar-thumb-hover: rgb(15 23 42 / 0.35);
+  --selection-bg:    rgb(var(--teal) / 0.18);
+  --overlay-backdrop: rgb(15 23 42 / 0.35);
+}
