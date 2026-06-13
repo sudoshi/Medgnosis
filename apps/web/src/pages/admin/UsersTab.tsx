@@ -9,12 +9,34 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
-  X,
 } from 'lucide-react';
 import { useToast } from '../../stores/ui.js';
 import { api } from '../../services/api.js';
 import { RoleBadge, fmtDate } from './helpers.js';
 import type { AdminUser } from './types.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 // ─── Modal: Invite User ───────────────────────────────────────────────────────
 
@@ -42,49 +64,52 @@ function InviteUserModal({ onClose, onSuccess }: { onClose(): void; onSuccess():
   };
 
   return (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center">
-      <div className="fixed inset-0 bg-void/85 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-s0 border border-[var(--border-default)] rounded-panel p-6 w-full max-w-md shadow-2xl animate-fade-up">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-bright">Invite User</h3>
-          <button onClick={onClose} className="text-ghost hover:text-bright transition-colors">
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Invite User</DialogTitle>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-dim mb-1.5">First name *</label>
-              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="input-field" required />
+              <Input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
             </div>
             <div>
               <label className="block text-xs text-dim mb-1.5">Last name</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className="input-field" />
+              <Input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} />
             </div>
           </div>
           <div>
             <label className="block text-xs text-dim mb-1.5">Email address *</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" required />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div>
             <label className="block text-xs text-dim mb-1.5">Role</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} className="select-field">
-              <option value="provider">Provider</option>
-              <option value="analyst">Analyst</option>
-              <option value="care_coordinator">Care Coordinator</option>
-              <option value="admin">Admin</option>
-            </select>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="provider">Provider</SelectItem>
+                <SelectItem value="analyst">Analyst</SelectItem>
+                <SelectItem value="care_coordinator">Care Coordinator</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary btn-sm">Cancel</button>
-            <button type="submit" className="btn-primary btn-sm" disabled={create.isPending}>
-              <UserPlus size={13} />
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={create.isPending}>
+              <UserPlus />
               {create.isPending ? 'Inviting...' : 'Invite user'}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -119,58 +144,58 @@ export function UsersTab() {
           <h2 className="text-base font-semibold text-bright">Users</h2>
           <p className="text-xs text-ghost mt-0.5">{users.length} registered accounts</p>
         </div>
-        <button onClick={() => setShowInvite(true)} className="btn-primary btn-sm">
-          <UserPlus size={13} />
+        <Button size="sm" onClick={() => setShowInvite(true)}>
+          <UserPlus />
           Invite user
-        </button>
+        </Button>
       </div>
 
       <div className="surface p-0 overflow-hidden">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Last login</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Last login</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {isLoading && (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-ghost">Loading users...</td>
-              </tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center text-ghost">Loading users...</TableCell>
+              </TableRow>
             )}
             {!isLoading && users.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-ghost">No users found</td>
-              </tr>
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center text-ghost">No users found</TableCell>
+              </TableRow>
             )}
             {users.map((u) => {
               const initials = `${u.first_name[0] ?? ''}${u.last_name?.[0] ?? ''}`.toUpperCase();
               const fullName = `${u.first_name} ${u.last_name ?? ''}`.trim();
               return (
-                <tr key={u.id} className={!u.is_active ? 'opacity-45' : ''}>
-                  <td>
+                <TableRow key={u.id} className={!u.is_active ? 'opacity-45' : ''}>
+                  <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-full bg-[var(--primary-bg)] text-[var(--primary)] text-xs font-semibold flex items-center justify-center flex-shrink-0">
                         {initials}
                       </div>
                       <span className="text-sm text-bright">{fullName}</span>
                     </div>
-                  </td>
-                  <td><span className="font-data text-xs text-dim">{u.email}</span></td>
-                  <td><RoleBadge role={u.role} /></td>
-                  <td><span className="font-data text-xs text-ghost">{fmtDate(u.last_login_at)}</span></td>
-                  <td>
+                  </TableCell>
+                  <TableCell><span className="font-data text-xs text-dim">{u.email}</span></TableCell>
+                  <TableCell><RoleBadge role={u.role} /></TableCell>
+                  <TableCell><span className="font-data text-xs text-ghost">{fmtDate(u.last_login_at)}</span></TableCell>
+                  <TableCell>
                     <span className={`inline-flex items-center gap-1 text-xs ${u.is_active ? 'text-emerald' : 'text-ghost'}`}>
                       {u.is_active ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                       {u.is_active ? 'Active' : 'Inactive'}
                     </span>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {u.is_active && (
                       <button
                         onClick={() => deactivate.mutate(u.id)}
@@ -180,12 +205,12 @@ export function UsersTab() {
                         <Trash2 size={14} />
                       </button>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {showInvite && (

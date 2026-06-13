@@ -12,13 +12,28 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  X,
   Check,
 } from 'lucide-react';
 import { useToast } from '../../stores/ui.js';
 import { api } from '../../services/api.js';
 import { StatusBadge, fmtDateTime } from './helpers.js';
 import type { FhirEndpoint } from './types.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ─── Modal: Add / Edit FHIR Endpoint ─────────────────────────────────────────
 
@@ -58,68 +73,81 @@ function FhirEndpointModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center">
-      <div className="fixed inset-0 bg-void/85 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-s0 border border-[var(--border-default)] rounded-panel p-6 w-full max-w-lg shadow-2xl animate-fade-up">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-bright">{endpoint ? 'Edit Endpoint' : 'Add FHIR Endpoint'}</h3>
-          <button onClick={onClose} className="text-ghost hover:text-bright transition-colors">
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{endpoint ? 'Edit Endpoint' : 'Add FHIR Endpoint'}</DialogTitle>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-dim mb-1.5">Name *</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-field" required />
+              <Input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
             <div>
               <label className="block text-xs text-dim mb-1.5">EHR Type</label>
-              <select value={ehrType} onChange={(e) => setEhrType(e.target.value)} className="select-field">
-                <option value="epic">Epic</option>
-                <option value="oracle">Oracle Health</option>
-                <option value="cerner">Cerner</option>
-                <option value="custom">Custom</option>
-              </select>
+              <Select value={ehrType} onValueChange={setEhrType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="epic">Epic</SelectItem>
+                  <SelectItem value="oracle">Oracle Health</SelectItem>
+                  <SelectItem value="cerner">Cerner</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
             <label className="block text-xs text-dim mb-1.5">Base URL *</label>
-            <input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="input-field" required placeholder="https://..." />
+            <Input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-dim mb-1.5">Auth type</label>
-              <select value={authType} onChange={(e) => setAuthType(e.target.value)} className="select-field">
-                <option value="oauth2">OAuth 2.0</option>
-                <option value="smart">SMART on FHIR</option>
-                <option value="apikey">API Key</option>
-                <option value="none">None</option>
-              </select>
+              <Select value={authType} onValueChange={setAuthType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="oauth2">OAuth 2.0</SelectItem>
+                  <SelectItem value="smart">SMART on FHIR</SelectItem>
+                  <SelectItem value="apikey">API Key</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-xs text-dim mb-1.5">FHIR version</label>
-              <select value={version} onChange={(e) => setVersion(e.target.value)} className="select-field">
-                <option value="R4">R4</option>
-                <option value="R4B">R4B</option>
-                <option value="STU3">STU3</option>
-              </select>
+              <Select value={version} onValueChange={setVersion}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="R4">R4</SelectItem>
+                  <SelectItem value="R4B">R4B</SelectItem>
+                  <SelectItem value="STU3">STU3</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
             <label className="block text-xs text-dim mb-1.5">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field resize-none" rows={2} />
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="resize-none" rows={2} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary btn-sm">Cancel</button>
-            <button type="submit" className="btn-primary btn-sm" disabled={save.isPending}>
-              <Check size={13} />
-              {save.isPending ? 'Saving...' : (endpoint ? 'Update' : 'Add endpoint')}
-            </button>
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={save.isPending}>
+              <Check />
+              {save.isPending ? 'Saving...' : endpoint ? 'Update' : 'Add endpoint'}
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -169,10 +197,10 @@ export function FhirTab() {
           <h2 className="text-base font-semibold text-bright">FHIR Endpoints</h2>
           <p className="text-xs text-ghost mt-0.5">Connected EHR systems via FHIR R4</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="btn-primary btn-sm">
-          <Plus size={13} />
+        <Button size="sm" onClick={() => setShowAdd(true)}>
+          <Plus />
           Add endpoint
-        </button>
+        </Button>
       </div>
 
       {isLoading && (
