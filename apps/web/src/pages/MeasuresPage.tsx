@@ -14,8 +14,20 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
+  FileText,
 } from 'lucide-react';
 import { api } from '../services/api.js';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,12 +178,63 @@ function MeasureDetailPanel({ measureId }: { measureId: number }) {
     <div className="space-y-5 animate-fade-up">
 
       {/* Measure header */}
-      <div>
-        <p className="font-data text-xs text-teal tabular-nums mb-1">{detail.code}</p>
-        <h2 className="text-xl font-semibold text-bright leading-tight">{detail.title}</h2>
-        {detail.description && (
-          <p className="text-sm text-dim mt-2 leading-relaxed">{detail.description}</p>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="font-data text-xs text-teal tabular-nums mb-1">{detail.code}</p>
+          <h2 className="text-xl font-semibold text-bright leading-tight">{detail.title}</h2>
+          {detail.description && (
+            <p className="text-sm text-dim mt-2 leading-relaxed">{detail.description}</p>
+          )}
+        </div>
+
+        {/* ShadCN Dialog — measure definition (spike integration) */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="flex-shrink-0">
+              <FileText />
+              Definition
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{detail.title}</DialogTitle>
+              <DialogDescription className="font-data text-teal">{detail.code}</DialogDescription>
+            </DialogHeader>
+            <p className="text-sm leading-relaxed text-dim">
+              {detail.description || 'No definition text available for this measure.'}
+            </p>
+            <div className="grid grid-cols-3 gap-3 pt-1">
+              <div className="rounded-card border border-edge/40 bg-s1 p-3">
+                <p className="data-label">Eligible</p>
+                <p className="font-data text-data-md tabular-nums text-bright">
+                  {eligible.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-card border border-edge/40 bg-s1 p-3">
+                <p className="data-label">Compliant</p>
+                <p className="font-data text-data-md tabular-nums text-emerald">
+                  {compliant.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-card border border-edge/40 bg-s1 p-3">
+                <p className="data-label">Rate</p>
+                <p className={`font-data text-data-md tabular-nums ${rateClass}`}>{rate}%</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost" size="sm">
+                  Close
+                </Button>
+              </DialogClose>
+              <Button asChild size="sm">
+                <Link to={`/patients?measure=${detail.code}&cohort=eligible`}>
+                  View eligible patients
+                </Link>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats strip */}
