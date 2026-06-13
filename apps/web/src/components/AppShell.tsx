@@ -26,10 +26,13 @@ import {
   ChevronRight,
   WifiOff,
   ShieldCheck,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { useUiStore } from '../stores/ui.js';
 import { useWsStore } from '../stores/ws.js';
+import { useThemeStore } from '../stores/theme.js';
 import { api } from '../services/api.js';
 import { ConfirmModal } from './ConfirmModal.js';
 import { ToastContainer } from './Toast.js';
@@ -160,6 +163,8 @@ export function AppShell() {
   const navigate = useNavigate();
   const { user, clearAuth } = useAuthStore();
   const { sidebarOpen, toggleSidebar, toggleSearch } = useUiStore();
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [confirmLogout, setConfirmLogout] = useState(false);
 
   // ── Unread alert count for badge ──────────────────────────────────────────
@@ -404,6 +409,18 @@ export function AppShell() {
 
           {/* Live WebSocket indicator */}
           <WsIndicator />
+
+          {/* Theme quick-toggle (dark ⇄ light) */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-card text-dim hover:text-bright hover:bg-s1 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+            aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={resolvedTheme === 'dark' ? 'Light theme' : 'Dark theme'}
+          >
+            {resolvedTheme === 'dark'
+              ? <Sun size={18} strokeWidth={1.5} />
+              : <Moon size={18} strokeWidth={1.5} />}
+          </button>
 
           {/* Alerts shortcut + badge */}
           <Link

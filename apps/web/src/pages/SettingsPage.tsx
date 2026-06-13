@@ -729,6 +729,8 @@ function PaletteSection() {
   const toast = useToast();
   const paletteId = useThemeStore((s) => s.paletteId);
   const setPalette = useThemeStore((s) => s.setPalette);
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   const handleSelect = (id: string) => {
     if (id === paletteId) return;
@@ -741,7 +743,35 @@ function PaletteSection() {
     <div className="space-y-5 animate-fade-up">
       <div>
         <h2 className="text-base font-semibold text-bright">Appearance</h2>
-        <p className="text-xs text-ghost mt-0.5">Choose a color palette for the interface</p>
+        <p className="text-xs text-ghost mt-0.5">Choose a theme and color palette for the interface</p>
+      </div>
+
+      {/* ── Theme mode (Auto / Dark / Light) ─────────────────────────────── */}
+      <div className="surface p-5">
+        <h3 className="text-xs font-semibold text-bright uppercase tracking-widest mb-4">Theme</h3>
+        <div
+          className="inline-flex rounded-card border border-edge/35 overflow-hidden"
+          role="group"
+          aria-label="Theme mode"
+        >
+          {(['auto', 'dark', 'light'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setTheme(m)}
+              aria-pressed={theme === m}
+              className={[
+                'px-4 py-2 text-sm font-ui capitalize transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 focus-visible:relative',
+                theme === m ? 'bg-teal/10 text-teal' : 'text-dim hover:bg-s2 hover:text-bright',
+              ].join(' ')}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-ghost mt-3">
+          Auto follows your operating system. Saved locally and persists across sessions.
+        </p>
       </div>
 
       <div className="surface p-5">
