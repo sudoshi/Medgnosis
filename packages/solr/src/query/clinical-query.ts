@@ -58,3 +58,62 @@ export function buildClinicalCoreQuery(
     rows: opts.limit,
   };
 }
+
+// =============================================================================
+// Cohort / denominator observation query (population-scoped, NOT patient-scoped)
+// Answers "which patients have an observation in {codes} with value in {range}
+// during {period}" — e.g. the CMS122 numerator "most recent HbA1c > 9%". Served
+// by the clinical core (value_numeric is pdouble, observation_datetime is pdate)
+// so it never scans the ~1B-row phm_edw.observation. Returns matching observation
+// docs (each carries patient_id); the caller dedupes patient_id for the cohort.
+// =============================================================================
+
+export interface ObservationCohortQueryOptions {
+  /** observation_code values, e.g. a value set's HbA1c LOINCs. */
+  codes: string[];
+  /** Inclusive value_numeric bounds (omit a side for open-ended). */
+  valueRange?: { min?: number; max?: number };
+  /** observation_datetime window (ISO instants). */
+  period?: { start: string; end: string };
+  limit: number;
+  offset: number;
+  /** Newest-first by default (supports "most recent" logic downstream). */
+  sort?: string;
+}
+
+// Escape Solr query-syntax specials in code tokens (LOINC has '-', which is fine,
+// but be defensive about ':' and whitespace).
+function solrTerm(v: string): string {
+  return /[\s:"]/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
+}
+
+function rangeClause(min?: number, max?: number): string {
+  const lo = min ?? '*';
+  const hi = max ?? '*';
+  return `value_numeric:[${lo} TO ${hi}]`;
+}
+
+export function buildObservationCohortQuery(
+  opts: ObservationCohortQueryOptions,
+): SolrQueryParams {
+  const fq: string[] = ['doc_type:observation'];
+
+  if (opts.codes.length > 0) {
+    fq.push(`observation_code:(${opts.codes.map(solrTerm).join(' OR ')})`);
+  }
+  if (opts.valueRange && (opts.valueRange.min !== undefined || opts.valueRange.max !== undefined)) {
+    fq.push(rangeClause(opts.valueRange.min, opts.valueRange.max));
+  }
+  if (opts.period) {
+    fq.push(`observation_datetime:[${opts.period.start} TO ${opts.period.end}]`);
+  }
+
+  return {
+    q: '*:*',
+    fq,
+    fl: FIELD_MAP.observation,
+    sort: opts.sort ?? DEFAULT_SORT.observation,
+    start: opts.offset,
+    rows: opts.limit,
+  };
+}

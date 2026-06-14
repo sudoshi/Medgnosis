@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildClinicalCoreQuery } from '../clinical-query.js';
+import { buildClinicalCoreQuery, buildObservationCohortQuery } from '../clinical-query.js';
 
 describe('buildClinicalCoreQuery', () => {
   it('builds conditions query for a patient', () => {
@@ -66,5 +66,36 @@ describe('buildClinicalCoreQuery', () => {
     });
     expect(obsResult.fl).toContain('observation_code');
     expect(obsResult.fl).toContain('value_numeric');
+  });
+});
+
+describe('buildObservationCohortQuery', () => {
+  it('filters by codes, value range, and period (population-scoped, not patient)', () => {
+    const r = buildObservationCohortQuery({
+      codes: ['4548-4', '17856-6'],
+      valueRange: { min: 9 },
+      period: { start: '2024-01-01T00:00:00Z', end: '2024-12-31T23:59:59Z' },
+      limit: 1000,
+      offset: 0,
+    });
+    expect(r.fq).toContain('doc_type:observation');
+    expect(r.fq).toContain('observation_code:(4548-4 OR 17856-6)');
+    expect(r.fq).toContain('value_numeric:[9 TO *]');
+    expect(r.fq).toContain('observation_datetime:[2024-01-01T00:00:00Z TO 2024-12-31T23:59:59Z]');
+    // NOT patient-scoped — this is a cohort query
+    expect((r.fq as string[]).some((f) => f.startsWith('patient_id:'))).toBe(false);
+    expect(r.rows).toBe(1000);
+  });
+
+  it('supports open-ended and bounded value ranges', () => {
+    const upper = buildObservationCohortQuery({ codes: ['4548-4'], valueRange: { max: 9 }, limit: 10, offset: 0 });
+    expect(upper.fq).toContain('value_numeric:[* TO 9]');
+    const both = buildObservationCohortQuery({ codes: ['4548-4'], valueRange: { min: 7, max: 9 }, limit: 10, offset: 0 });
+    expect(both.fq).toContain('value_numeric:[7 TO 9]');
+  });
+
+  it('omits the value-range filter when no bounds are given', () => {
+    const r = buildObservationCohortQuery({ codes: ['4548-4'], limit: 10, offset: 0 });
+    expect((r.fq as string[]).some((f) => f.startsWith('value_numeric:'))).toBe(false);
   });
 });
