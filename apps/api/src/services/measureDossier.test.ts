@@ -4,16 +4,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockSql, mockValueSets, mockBridge } = vi.hoisted(() => ({
+const { mockSql, mockValueSets, mockBridge, mockLatest } = vi.hoisted(() => ({
   mockSql: vi.fn(),
   mockValueSets: vi.fn(),
   mockBridge: vi.fn(),
+  mockLatest: vi.fn(),
 }));
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 vi.mock('./vsacService.js', () => ({
   getMeasureValueSets: mockValueSets,
   getMeasureBridgeStatus: mockBridge,
 }));
+vi.mock('./measureReportStore.js', () => ({ latestMeasureReport: mockLatest }));
 
 import { getMeasureDossier } from './measureDossier.js';
 
@@ -35,6 +37,18 @@ describe('getMeasureDossier', () => {
     ]);
     mockBridge.mockResolvedValue({ measure_code: 'CMS122v13', version_drift: false, roles: {}, unclassified_count: 0 });
     mockValueSets.mockResolvedValue([{ value_set_oid: 'x', name: 'Diabetes', code_count: 10 }]);
+    mockLatest.mockResolvedValue({
+      report_type: 'population',
+      period_start: '2024-01-01',
+      period_end: '2024-12-31',
+      initial_population: 52,
+      denominator: 52,
+      numerator: 32,
+      denominator_exclusion: 19,
+      measure_score: 0.97,
+      source: 'cql',
+      computed_at: '2026-06-14T00:00:00Z',
+    });
 
     const d = await getMeasureDossier('CMS122v13');
     expect(d.measureCode).toBe('CMS122v13');
@@ -42,15 +56,19 @@ describe('getMeasureDossier', () => {
     expect(d.components.fhirLibraryUrl).toBe('https://madie.cms.gov/Library/CMS122');
     expect(d.valueSets).toHaveLength(1);
     expect(d.bridgeStatus?.version_drift).toBe(false);
+    expect(d.components.measureReport?.numerator).toBe(32);
+    expect(d.components.measureReport?.measureScore).toBe(0.97);
   });
 
   it('returns a null binding when no artifact is bound yet (value sets still served)', async () => {
     mockSql.mockResolvedValueOnce([]);
     mockBridge.mockResolvedValue(null);
     mockValueSets.mockResolvedValue([]);
+    mockLatest.mockResolvedValue(null);
     const d = await getMeasureDossier('CMS999v1');
     expect(d.binding).toBeNull();
     expect(d.components.fhirLibraryUrl).toBeNull();
     expect(d.valueSets).toEqual([]);
+    expect(d.components.measureReport).toBeNull();
   });
 });

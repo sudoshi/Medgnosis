@@ -14,8 +14,12 @@ import {
 } from '../../services/fhir/mappers.js';
 import { expandValueSet, validateCode } from '../../services/fhir/terminology.js';
 import { buildCapabilityStatement } from '../../services/fhir/capabilityStatement.js';
+import measureOps from './measureOps.js';
 
 export default async function fhirRoutes(app: FastifyInstance) {
+  // Medgnosis-facing Clinical Reasoning operations ($evaluate-measure, $care-gaps)
+  await app.register(measureOps);
+
   // FHIR capability statement (conventionally unauthenticated)
   app.get('/metadata', async () => buildCapabilityStatement(config.fhirBaseUrl));
 
