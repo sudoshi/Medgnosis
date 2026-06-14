@@ -161,6 +161,30 @@ services:
     networks:
       - medgnosis
 
+  # ── cql-engine: HAPI FHIR clinical-reasoning sidecar (Measure/$evaluate-measure) ──
+  # Opt-in (profile 'cql'): `docker compose --profile cql up -d cql-engine`.
+  # Internal only (no published port) — the api reaches it at
+  # http://cql-engine:8080/fhir via the medgnosis network (CQL_ENGINE_URL).
+  # Distroless image (no shell/curl) → no container healthcheck; readiness is
+  # polled by callers (scripts/cql-engine-smoke.sh) and the cql MeasureEvaluator
+  # retries on connect. The api does NOT depend on it (MEASURE_EVALUATOR=sql default).
+  cql-engine:
+    container_name: medgnosis-cql-engine
+    image: hapiproject/hapi:latest
+    environment:
+      hapi.fhir.cr.enabled: "true"
+      JAVA_OPTS: "-Xmx1300m -Xms512m"
+    restart: unless-stopped
+    profiles:
+      - cql
+    deploy:
+      resources:
+        limits:
+          memory: 1800M
+          cpus: "2"
+    networks:
+      - medgnosis
+
 volumes:
   redis_data:
   solr_data:

@@ -29,6 +29,9 @@ export const config = {
   corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
   // Canonical base URL for FHIR Bundle fullUrl construction (no trailing slash)
   fhirBaseUrl: optional('FHIR_BASE_URL', 'http://localhost:3000/api/fhir'),
+  // CQL clinical-reasoning sidecar (internal Docker network)
+  cqlEngineUrl: optional('CQL_ENGINE_URL', 'http://cql-engine:8080/fhir'),
+  cqlSampleCohortLimit: Number(optional('CQL_SAMPLE_COHORT_LIMIT', '2000')),
 
   // Database
   databaseUrl: required('DATABASE_URL'),
