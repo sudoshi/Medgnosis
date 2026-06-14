@@ -12,6 +12,23 @@ export const US_CORE = {
     'http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result',
   medicationRequest:
     'http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest',
+  encounter: 'http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter',
+} as const;
+
+// HL7 ActCode — FHIR Encounter.class (AMB, EMER, IMP, ...).
+export const ENCOUNTER_CLASS_SYSTEM = 'http://terminology.hl7.org/CodeSystem/v3-ActCode';
+
+// QI-Core 7.0.2 profiles. eCQM CQL retrieves are profile-typed: e.g. CMS122
+// uses [ConditionEncounterDiagnosis] which the engine resolves by this profile
+// URL on meta.profile (category alone is insufficient).
+export const QICORE = {
+  patient: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-patient',
+  encounter: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-encounter',
+  conditionEncounterDiagnosis:
+    'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-condition-encounter-diagnosis',
+  observationLab: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-observation-lab',
+  medicationRequest:
+    'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-medicationrequest',
 } as const;
 
 export const US_CORE_EXT = {

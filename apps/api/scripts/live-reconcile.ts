@@ -31,6 +31,22 @@ const COHORT_LIMIT = Number(process.env['COHORT_LIMIT'] ?? '200');
 // HbA1c LOINC codes (CMS122 numerator lab).
 const HBA1C_LOINC = ['4548-4', '4549-2', '17855-8', '17856-6', '41995-2', '59261-8', '62388-4', '71875-9'];
 
+// CMS122 "Diabetes" value set OID. The cohort is defined by the ENGINE's own
+// expansion of this value set (fetched below) — NOT the local VSAC load, whose
+// expansion differs for the same OID. Selecting by the engine's codes is what
+// makes the exported conditions recognizable to the measure's CQL.
+const DIABETES_VS_OID = '2.16.840.1.113883.3.464.1003.103.12.1001';
+
+// Fetch a value set's expanded codes from the engine (single source of truth).
+async function fetchValueSetCodes(oid: string): Promise<string[]> {
+  const res = await fetch(`${ENGINE_URL}/ValueSet/${encodeURIComponent(oid)}`, {
+    headers: { accept: 'application/fhir+json' },
+  });
+  if (!res.ok) throw new Error(`engine ValueSet/${oid} fetch failed: HTTP ${res.status}`);
+  const vs = (await res.json()) as { expansion?: { contains?: Array<{ code?: string }> } };
+  return (vs.expansion?.contains ?? []).map((c) => c.code).filter((c): c is string => !!c);
+}
+
 type Db = Awaited<ReturnType<typeof sql.reserve>>;
 
 interface CohortResult {
@@ -63,19 +79,20 @@ async function runCohort(db: Db): Promise<CohortResult> {
   console.info(`[reconcile] measure_code=${MEASURE_CODE} -> engine Measure/${engineMeasureId}`);
   console.info(`[reconcile] period ${period.start}..${period.end}; engine ${ENGINE_URL}`);
 
-  // 2. Bounded diabetes cohort: patients with a condition in the CMS122 diabetes
-  //    value set, capped at COHORT_LIMIT.
+  // 1b. Define the cohort by the ENGINE's Diabetes expansion (so the exported
+  //     conditions match the measure's CQL). The local VSAC expansion of the same
+  //     OID differs and would select patients the engine doesn't see as diabetic.
+  const diabetesCodes = await fetchValueSetCodes(DIABETES_VS_OID);
+  console.info(`[reconcile] engine Diabetes value set: ${diabetesCodes.length} codes`);
+  if (diabetesCodes.length === 0) throw new Error('Engine returned no Diabetes codes — is the measure bundle loaded?');
+
+  // 2. Bounded diabetes cohort: patients with a condition coded in the engine's
+  //    Diabetes value set, capped at COHORT_LIMIT.
   const patientIdRows = await db<{ patient_id: number }[]>`
     SELECT DISTINCT cd.patient_id
     FROM phm_edw.condition_diagnosis cd
     JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
-    WHERE c.condition_code IN (
-      SELECT vc.code
-      FROM phm_edw.measure_value_set mv
-      JOIN phm_edw.measure_definition md ON md.measure_id = mv.measure_id
-      JOIN phm_edw.vsac_value_set_code vc ON vc.value_set_oid = mv.value_set_oid
-      WHERE md.measure_code = ${MEASURE_CODE} AND vc.code_system = 'SNOMEDCT'
-    )
+    WHERE c.condition_code = ANY(${diabetesCodes})
     ORDER BY cd.patient_id
     LIMIT ${COHORT_LIMIT}
   `;
@@ -89,21 +106,16 @@ async function runCohort(db: Db): Promise<CohortResult> {
       SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
       FROM phm_edw.patient WHERE patient_id = ANY(${ids}) AND active_ind = 'Y'
     `,
-    // Only the diabetes-relevant diagnoses (the CMS122 value set) — CMS122 needs
-    // the diabetes Condition, not every problem on the chart. Keeps the bundle lean.
+    // Only the engine-recognized diabetes diagnoses — CMS122 needs the diabetes
+    // Condition, not every problem on the chart, and the codes must be in the
+    // engine's value-set expansion. Keeps the bundle lean + matchable.
     db`
       SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
              cd.onset_date, cd.diagnosis_status, cd.patient_id
       FROM phm_edw.condition_diagnosis cd
       JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
       WHERE cd.patient_id = ANY(${ids})
-        AND c.condition_code IN (
-          SELECT vc.code
-          FROM phm_edw.measure_value_set mv
-          JOIN phm_edw.measure_definition md ON md.measure_id = mv.measure_id
-          JOIN phm_edw.vsac_value_set_code vc ON vc.value_set_oid = mv.value_set_oid
-          WHERE md.measure_code = ${MEASURE_CODE} AND vc.code_system = 'SNOMEDCT'
-        )
+        AND c.condition_code = ANY(${diabetesCodes})
     `,
   ]);
 
@@ -131,14 +143,33 @@ async function runCohort(db: Db): Promise<CohortResult> {
       LIMIT 50
     ) o ON true
   `;
+  // 3c. Qualifying encounters during the period (same indexed-lateral pattern,
+  //     riding the partial index idx_encounter_patient_datetime). encounter_type
+  //     is crosswalked to a CMS122 visit code by the mapper so CQL counts them.
+  const encounters = await db`
+    SELECT e.encounter_id, e.encounter_type, e.encounter_datetime, e.discharge_datetime, e.status, e.patient_id
+    FROM unnest(${ids}::int[]) AS c(patient_id)
+    JOIN LATERAL (
+      SELECT enc.encounter_id, enc.encounter_type, enc.encounter_datetime,
+             enc.discharge_datetime, enc.status, enc.patient_id
+      FROM phm_edw.encounter enc
+      WHERE enc.patient_id = c.patient_id
+        AND enc.active_ind = 'Y'
+        AND enc.encounter_datetime >= ${period.start}::date
+        AND enc.encounter_datetime <  (${period.end}::date + 1)
+      ORDER BY enc.encounter_datetime DESC
+      LIMIT 20
+    ) e ON true
+  `;
   console.info(
-    `[reconcile] resources: ${patients.length} Patient, ${conditions.length} Condition, ${observations.length} HbA1c Observation`,
+    `[reconcile] resources: ${patients.length} Patient, ${conditions.length} Condition, ` +
+      `${observations.length} HbA1c Observation, ${encounters.length} Encounter`,
   );
 
   return {
     engineMeasureId,
     period,
-    cohort: { patients, conditions, observations, medications: [] },
+    cohort: { patients, conditions, observations, medications: [], encounters },
   };
 }
 

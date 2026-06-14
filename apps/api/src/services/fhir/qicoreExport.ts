@@ -13,14 +13,17 @@ import {
   mapConditionToFHIR,
   mapObservationToFHIR,
   mapMedicationToFHIR,
+  mapEncounterToFHIR,
   type FHIRResource,
 } from './mappers.js';
+import { QICORE } from './profiles.js';
 
 export interface CohortRows {
   patients: Row[];
   conditions: Row[];
   observations: Row[];
   medications: Row[];
+  encounters?: Row[];
 }
 
 export interface TransactionBundleEntry {
@@ -47,6 +50,7 @@ const ID = {
   condition: (id: unknown): string => `mgc-${id}`,
   observation: (id: unknown): string => `mgo-${id}`,
   medication: (id: unknown): string => `mgm-${id}`,
+  encounter: (id: unknown): string => `mge-${id}`,
 };
 
 // PUT-by-id makes the load idempotent: a second export of the same patient
@@ -57,27 +61,45 @@ function putEntry(resource: FHIRResource): TransactionBundleEntry {
   return { fullUrl: ref, resource, request: { method: 'PUT', url: ref } };
 }
 
+// eCQM CQL retrieves are QI-Core-profile-typed: the clinical-reasoning engine
+// matches resources by meta.profile (e.g. [Encounter: "Office Visit"] only sees
+// qicore-encounter, [ConditionEncounterDiagnosis] only sees the qicore encounter-
+// diagnosis profile). The US-Core mappers don't assert these, so the export tags
+// each resource with its QI-Core profile (QI-Core derives from US Core, so both
+// are asserted and remain US-Core-valid).
+function withProfile(r: FHIRResource, profile: string): FHIRResource {
+  const profiles = (r.meta?.profile ?? []).slice();
+  if (!profiles.includes(profile)) profiles.push(profile);
+  r.meta = { lastUpdated: r.meta?.lastUpdated ?? new Date().toISOString(), profile: profiles };
+  return r;
+}
+
 export function buildCohortBundle(rows: CohortRows): TransactionBundle {
   const resources: FHIRResource[] = [];
 
   for (const p of rows.patients) {
-    const r = mapPatientToFHIR(p);
+    const r = withProfile(mapPatientToFHIR(p), QICORE.patient);
     r.id = ID.patient(p['patient_id']);
     resources.push(r);
   }
   for (const c of rows.conditions) {
-    const r = mapConditionToFHIR(c, ID.patient(c['patient_id']));
+    const r = withProfile(mapConditionToFHIR(c, ID.patient(c['patient_id'])), QICORE.conditionEncounterDiagnosis);
     r.id = ID.condition(c['condition_diagnosis_id']);
     resources.push(r);
   }
   for (const o of rows.observations) {
-    const r = mapObservationToFHIR(o, ID.patient(o['patient_id']));
+    const r = withProfile(mapObservationToFHIR(o, ID.patient(o['patient_id'])), QICORE.observationLab);
     r.id = ID.observation(o['observation_id']);
     resources.push(r);
   }
   for (const m of rows.medications) {
-    const r = mapMedicationToFHIR(m, ID.patient(m['patient_id']));
+    const r = withProfile(mapMedicationToFHIR(m, ID.patient(m['patient_id'])), QICORE.medicationRequest);
     r.id = ID.medication(m['medication_order_id']);
+    resources.push(r);
+  }
+  for (const e of rows.encounters ?? []) {
+    const r = withProfile(mapEncounterToFHIR(e, ID.patient(e['patient_id'])), QICORE.encounter);
+    r.id = ID.encounter(e['encounter_id']);
     resources.push(r);
   }
 

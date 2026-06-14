@@ -58,6 +58,24 @@ describe('buildCohortBundle', () => {
     expect((med?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/mgp-5');
   });
 
+  it('exports qualifying Encounters with a namespaced id and crosswalked visit code', () => {
+    const b = buildCohortBundle({
+      patients: [{ patient_id: 5, first_name: 'C', last_name: 'D', gender: 'female', date_of_birth: '1960-01-01' }],
+      conditions: [],
+      observations: [],
+      medications: [],
+      encounters: [
+        { encounter_id: 11, patient_id: 5, encounter_type: 'ambulatory', encounter_datetime: '2024-03-01T00:00:00Z', status: 'finished' },
+      ],
+    });
+    const enc = b.entry.find((e) => e.resource.resourceType === 'Encounter');
+    expect(enc?.resource.id).toBe('mge-11');
+    expect(enc?.request.url).toBe('Encounter/mge-11');
+    const coding = (enc?.resource as Record<string, Array<{ coding: Array<{ code: string }> }>>).type[0].coding;
+    expect(coding[0]?.code).toBe('99213'); // crosswalked Office Visit
+    expect((enc?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/mgp-5');
+  });
+
   it('produces an empty-entry transaction Bundle for an empty cohort', () => {
     const b = buildCohortBundle({ patients: [], conditions: [], observations: [], medications: [] });
     expect(b.type).toBe('transaction');
