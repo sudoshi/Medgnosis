@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { measureFilterSchema } from '@medgnosis/shared';
 import { wilsonCI } from '../../services/wilsonCI.js';
+import { getMeasureDossier } from '../../services/measureDossier.js';
 
 export default async function measureRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -121,5 +122,12 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
     });
 
     return reply.send({ success: true, data });
+  });
+
+  // GET /measures/:code/dossier — per-measure transparency package:
+  // FHIR artifact binding + VSAC value sets (version-pinned) + bridge status.
+  fastify.get<{ Params: { code: string } }>('/:code/dossier', async (request, reply) => {
+    const dossier = await getMeasureDossier(request.params.code);
+    return reply.send({ success: true, data: dossier });
   });
 }
