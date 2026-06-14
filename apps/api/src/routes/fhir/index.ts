@@ -12,8 +12,55 @@ import {
   mapMedicationToFHIR,
   buildBundle,
 } from '../../services/fhir/mappers.js';
+import { expandValueSet, validateCode } from '../../services/fhir/terminology.js';
+import { buildCapabilityStatement } from '../../services/fhir/capabilityStatement.js';
 
 export default async function fhirRoutes(app: FastifyInstance) {
+  // FHIR capability statement (conventionally unauthenticated)
+  app.get('/metadata', async () => buildCapabilityStatement(config.fhirBaseUrl));
+
+  // ValueSet/$expand?url=<canonical-or-oid>[&measurementPeriod=YYYY]
+  app.get('/ValueSet/$expand', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { url, measurementPeriod } = req.query as {
+      url?: string;
+      measurementPeriod?: string;
+    };
+    if (!url) {
+      return reply.status(400).send({
+        resourceType: 'OperationOutcome',
+        issue: [{ severity: 'error', code: 'required', diagnostics: 'url parameter required' }],
+      });
+    }
+    const vs = await expandValueSet(url, { measurementPeriod });
+    if (!vs) {
+      return reply.status(404).send({
+        resourceType: 'OperationOutcome',
+        issue: [{ severity: 'error', code: 'not-found', diagnostics: `Unknown value set ${url}` }],
+      });
+    }
+    return vs;
+  });
+
+  // ValueSet/$validate-code?url=...&system=...&code=...
+  app.get(
+    '/ValueSet/$validate-code',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { url, system, code } = req.query as {
+        url?: string;
+        system?: string;
+        code?: string;
+      };
+      if (!url || !system || !code) {
+        return reply.status(400).send({
+          resourceType: 'OperationOutcome',
+          issue: [{ severity: 'error', code: 'required', diagnostics: 'url, system, code required' }],
+        });
+      }
+      return validateCode(url, system, code);
+    },
+  );
+
   // FHIR Patient endpoint
   app.get('/Patient', { preHandler: [app.authenticate] }, async (_req) => {
     const patients = await sql`
