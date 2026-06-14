@@ -55,7 +55,7 @@ describe('buildGapsInCareBundle', () => {
     const b = buildGapsInCareBundle('Patient/1', [{ measureCode: 'CMS122v13', gapStatus: 'open', prospective: false }]);
     const di = b.entry.map((e) => e.resource).find((r) => r.resourceType === 'DetectedIssue') as Record<string, unknown>;
     const codeText = JSON.stringify(di['code']);
-    expect(codeText).toContain('care-gap');
+    expect(codeText).toContain('CAREGAP'); // DEQM fixes DetectedIssue.code to v3-ActCode CAREGAP
     // links to the gap's MeasureReport
     expect(JSON.stringify(di['evidence'] ?? di['implicated'])).toContain('MeasureReport/');
   });

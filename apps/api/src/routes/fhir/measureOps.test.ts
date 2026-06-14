@@ -109,7 +109,7 @@ describe('GET /Measure/$care-gaps', () => {
     const statuses = (bundle.entry as Array<{ resource: Record<string, unknown> }>)
       .filter((e) => e.resource.resourceType === 'DetectedIssue')
       .flatMap((e) =>
-        (e.resource.extension as Array<{ valueCodeableConcept?: { coding?: Array<{ code: string }> } }>).flatMap(
+        (e.resource.modifierExtension as Array<{ valueCodeableConcept?: { coding?: Array<{ code: string }> } }>).flatMap(
           (x) => x.valueCodeableConcept?.coding?.map((c) => c.code) ?? [],
         ),
       );

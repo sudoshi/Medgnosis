@@ -1,0 +1,211 @@
+{
+  "resourceType": "Bundle",
+  "type": "document",
+  "identifier": {
+    "system": "https://medgnosis.acumenus.net/fhir/gaps-report",
+    "value": "example-2026-06-14T00:00:00Z"
+  },
+  "timestamp": "2026-06-14T00:00:00Z",
+  "entry": [
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/Composition/gaps-example",
+      "resource": {
+        "resourceType": "Composition",
+        "id": "gaps-example",
+        "status": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "96315-7",
+              "display": "Gaps in care report"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/example"
+        },
+        "date": "2026-06-14T00:00:00Z",
+        "author": [
+          {
+            "display": "Medgnosis"
+          }
+        ],
+        "title": "Gaps in Care Report",
+        "section": [
+          {
+            "title": "Gap in care — CMS122v13",
+            "code": {
+              "text": "https://madie.cms.gov/Measure/CMS122"
+            },
+            "entry": [
+              {
+                "reference": "DetectedIssue/di-CMS122v13-0"
+              },
+              {
+                "reference": "MeasureReport/mr-CMS122v13-0"
+              }
+            ]
+          },
+          {
+            "title": "Gap in care — CMS165v12",
+            "code": {
+              "text": "https://madie.cms.gov/Measure/CMS165"
+            },
+            "entry": [
+              {
+                "reference": "DetectedIssue/di-CMS165v12-1"
+              },
+              {
+                "reference": "MeasureReport/mr-CMS165v12-1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/Patient/example",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "example"
+      }
+    },
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/MeasureReport/mr-CMS122v13-0",
+      "resource": {
+        "resourceType": "MeasureReport",
+        "id": "mr-CMS122v13-0",
+        "status": "complete",
+        "type": "individual",
+        "measure": "https://madie.cms.gov/Measure/CMS122",
+        "subject": {
+          "reference": "Patient/example"
+        },
+        "period": {
+          "start": "2024-01-01",
+          "end": "2024-12-31"
+        },
+        "improvementNotation": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/measure-improvement-notation",
+              "code": "increase"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/MeasureReport/mr-CMS165v12-1",
+      "resource": {
+        "resourceType": "MeasureReport",
+        "id": "mr-CMS165v12-1",
+        "status": "complete",
+        "type": "individual",
+        "measure": "https://madie.cms.gov/Measure/CMS165",
+        "subject": {
+          "reference": "Patient/example"
+        },
+        "period": {
+          "start": "2024-01-01",
+          "end": "2024-12-31"
+        },
+        "improvementNotation": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/measure-improvement-notation",
+              "code": "increase"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/DetectedIssue/di-CMS122v13-0",
+      "resource": {
+        "resourceType": "DetectedIssue",
+        "id": "di-CMS122v13-0",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+              "code": "CAREGAP",
+              "display": "Caregap"
+            }
+          ]
+        },
+        "modifierExtension": [
+          {
+            "url": "http://hl7.org/fhir/us/davinci-deqm/StructureDefinition/extension-gapStatus",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-deqm/CodeSystem/gaps-status",
+                  "code": "open-gap",
+                  "display": "Open Gap"
+                }
+              ]
+            }
+          }
+        ],
+        "patient": {
+          "reference": "Patient/example"
+        },
+        "evidence": [
+          {
+            "detail": [
+              {
+                "reference": "MeasureReport/mr-CMS122v13-0"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://medgnosis.acumenus.net/fhir/DetectedIssue/di-CMS165v12-1",
+      "resource": {
+        "resourceType": "DetectedIssue",
+        "id": "di-CMS165v12-1",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+              "code": "CAREGAP",
+              "display": "Caregap"
+            }
+          ]
+        },
+        "modifierExtension": [
+          {
+            "url": "http://hl7.org/fhir/us/davinci-deqm/StructureDefinition/extension-gapStatus",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-deqm/CodeSystem/gaps-status",
+                  "code": "prospective-gap",
+                  "display": "Prospective Gap"
+                }
+              ]
+            }
+          }
+        ],
+        "patient": {
+          "reference": "Patient/example"
+        },
+        "evidence": [
+          {
+            "detail": [
+              {
+                "reference": "MeasureReport/mr-CMS165v12-1"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

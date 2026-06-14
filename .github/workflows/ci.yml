@@ -102,11 +102,13 @@ jobs:
           path: |
             validator_cli.jar
             ~/.fhir
-          key: fhir-validator-uscore700-qicore702-v1
+          key: fhir-validator-uscore700-qicore702-deqm500-v1
       - name: Download HL7 validator
         run: test -f validator_cli.jar || curl -fsSL -o validator_cli.jar https://github.com/hapifhir/org.hl7.fhir.core/releases/latest/download/validator_cli.jar
       - name: Validate FHIR fixtures (errors fail the build)
         run: ./scripts/fhir-validate.sh
+      - name: Validate DEQM Gaps-in-Care sample against DEQM 5.0.0 (errors fail the build)
+        run: ./scripts/deqm-validate.sh
 
   build:
     name: Build

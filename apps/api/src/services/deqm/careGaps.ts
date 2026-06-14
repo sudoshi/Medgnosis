@@ -3,20 +3,21 @@
 // Re-expresses Medgnosis care gaps as a payer-exchangeable DEQM 5.0.0
 // "Gaps in Care" document Bundle: a Composition (LOINC 96315-7) whose sections,
 // one per measure, reference an individual gaps-in-care MeasureReport and a
-// DetectedIssue (code=care-gap) carrying the gap status (open / closed /
-// prospective — "prospective" = an open gap the patient can still close before
-// the period ends).
+// DetectedIssue (code=CAREGAP) carrying the gap status as a modifierExtension
+// (open / closed / prospective — "prospective" = an open gap the patient can
+// still close before the period ends).
 //
-// Structurally conformant; full DEQM 5.0.0 conformance is finalized against
-// validator_cli.jar in CI (Epic C2/C3), which surfaces any remaining
-// profile/extension-url gaps.
+// Validated against Da Vinci DEQM 5.0.0 with validator_cli.jar (scripts/
+// deqm-validate.sh, CI): codes/extension/identifier/fullUrl/subject conform.
+// Per-resource meta.profile binding (full MustSupport) is the closing gate.
 // =============================================================================
 
 const DEQM = 'http://hl7.org/fhir/us/davinci-deqm';
-const CARE_GAP_CS = `${DEQM}/CodeSystem/care-gap`;
-const GAP_STATUS_CS = `${DEQM}/CodeSystem/care-gap-status`;
+const GAP_STATUS_CS = `${DEQM}/CodeSystem/gaps-status`;
 const GAP_STATUS_EXT = `${DEQM}/StructureDefinition/extension-gapStatus`;
+const V3_ACTCODE = 'http://terminology.hl7.org/CodeSystem/v3-ActCode';
 const IMPROVEMENT_NOTATION_CS = 'http://terminology.hl7.org/CodeSystem/measure-improvement-notation';
+const DEFAULT_BASE = 'https://medgnosis.acumenus.net/fhir';
 
 export type GapStatus = 'open' | 'closed' | 'prospective';
 
@@ -33,6 +34,8 @@ export interface CareGapInput {
 export interface GapsInCareOptions {
   period?: { start: string; end: string };
   reporterName?: string;
+  /** Absolute base URL for entry fullUrls (DEQM requires absolute fullUrls). */
+  baseUrl?: string;
   /** Document timestamp (ISO); defaults to now. */
   timestamp?: string;
 }
@@ -45,10 +48,12 @@ interface GapEntry {
 export interface GapsInCareBundle {
   resourceType: 'Bundle';
   type: 'document';
+  identifier: { system: string; value: string };
   timestamp: string;
   entry: GapEntry[];
 }
 
+// DEQM gaps-status CodeSystem (.../CodeSystem/gaps-status).
 const GAP_STATUS_CODE: Record<GapStatus, { code: string; display: string }> = {
   open: { code: 'open-gap', display: 'Open Gap' },
   closed: { code: 'closed-gap', display: 'Closed Gap' },
@@ -68,6 +73,10 @@ export function buildGapsInCareBundle(
   const timestamp = opts.timestamp ?? new Date().toISOString();
   const period = opts.period ?? { start: '2026-01-01', end: '2026-12-31' };
   const reporter = opts.reporterName ?? 'Medgnosis';
+  const base = (opts.baseUrl ?? DEFAULT_BASE).replace(/\/$/, '');
+  const url = (type: string, id: string): string => `${base}/${type}/${id}`;
+
+  const patientId = subject.replace(/^Patient\//, '');
 
   const measureReports: GapEntry[] = [];
   const detectedIssues: GapEntry[] = [];
@@ -82,7 +91,7 @@ export function buildGapsInCareBundle(
 
     // Individual gaps-in-care MeasureReport for this measure.
     measureReports.push({
-      fullUrl: `MeasureReport/${mrId}`,
+      fullUrl: url('MeasureReport', mrId),
       resource: {
         resourceType: 'MeasureReport',
         id: mrId,
@@ -97,17 +106,16 @@ export function buildGapsInCareBundle(
       },
     });
 
-    // DetectedIssue describing the gap (code=care-gap, gap status in an extension).
+    // DetectedIssue describing the gap. DEQM fixes code to CAREGAP (v3-ActCode)
+    // and carries the gap status as a REQUIRED modifierExtension (gaps-status).
     detectedIssues.push({
-      fullUrl: `DetectedIssue/${diId}`,
+      fullUrl: url('DetectedIssue', diId),
       resource: {
         resourceType: 'DetectedIssue',
         id: diId,
         status: 'final',
-        code: {
-          coding: [{ system: CARE_GAP_CS, code: 'care-gap', display: 'Care Gap' }],
-        },
-        extension: [
+        code: { coding: [{ system: V3_ACTCODE, code: 'CAREGAP', display: 'Caregap' }] },
+        modifierExtension: [
           {
             url: GAP_STATUS_EXT,
             valueCodeableConcept: {
@@ -127,11 +135,17 @@ export function buildGapsInCareBundle(
     });
   });
 
+  // Minimal Patient so the document Composition.subject resolves in-bundle.
+  const patient: GapEntry = {
+    fullUrl: url('Patient', patientId),
+    resource: { resourceType: 'Patient', id: patientId },
+  };
+
   const composition: GapEntry = {
-    fullUrl: `Composition/gaps-${fhirId(subject.replace('/', '-'))}`,
+    fullUrl: url('Composition', `gaps-${fhirId(patientId)}`),
     resource: {
       resourceType: 'Composition',
-      id: `gaps-${fhirId(subject.replace('/', '-'))}`,
+      id: `gaps-${fhirId(patientId)}`,
       status: 'final',
       type: {
         coding: [{ system: 'http://loinc.org', code: '96315-7', display: 'Gaps in care report' }],
@@ -147,7 +161,8 @@ export function buildGapsInCareBundle(
   return {
     resourceType: 'Bundle',
     type: 'document',
+    identifier: { system: `${base}/gaps-report`, value: `${fhirId(patientId)}-${timestamp}` },
     timestamp,
-    entry: [composition, ...measureReports, ...detectedIssues],
+    entry: [composition, patient, ...measureReports, ...detectedIssues],
   };
 }
