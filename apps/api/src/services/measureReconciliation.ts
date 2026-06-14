@@ -27,11 +27,14 @@ export interface ReconcileResult {
 export async function reconcile(
   measureCode: string,
   period: { start: string; end: string },
-  opts: { engineUrl?: string; tolerance?: number } = {},
+  opts: { engineUrl?: string; tolerance?: number; engineMeasureId?: string } = {},
 ): Promise<ReconcileResult> {
   const tolerance = opts.tolerance ?? 0;
   const engineUrl =
     opts.engineUrl ?? process.env['CQL_ENGINE_URL'] ?? 'http://cql-engine:8080/fhir';
+  // The engine knows the measure by its FHIR Measure id (measure_artifact.ecqm_id),
+  // which differs from the EDW measure_code (e.g. CMS122v12 vs CMS122FHIR...).
+  const engineMeasureId = opts.engineMeasureId ?? measureCode;
 
   const sqlRows = await sql<PopulationCounts[]>`
     SELECT
@@ -48,7 +51,7 @@ export async function reconcile(
     exclusion: sqlRows[0]?.exclusion ?? 0,
   };
 
-  const report = await evaluateMeasure(engineUrl, measureCode, {
+  const report = await evaluateMeasure(engineUrl, engineMeasureId, {
     periodStart: period.start,
     periodEnd: period.end,
     reportType: 'population',

@@ -35,21 +35,52 @@ export interface TransactionBundle {
   entry: TransactionBundleEntry[];
 }
 
+// HAPI (and FHIR servers in general) reject purely-numeric client-assigned ids
+// on PUT — only the server may mint numeric ids (HAPI-0960). EDW primary keys are
+// integers, so we namespace every exported id with a stable resource-type prefix
+// (mgp-/mgc-/mgo-/mgm-). Subject references are rewritten to match so the bundle
+// loads on any conformant server (also makes the export portable to payer DEQM
+// endpoints in Epic C). The mappers set their own numeric id internally; we
+// override it here and pass the prefixed Patient id in as the subject reference.
+const ID = {
+  patient: (id: unknown): string => `mgp-${id}`,
+  condition: (id: unknown): string => `mgc-${id}`,
+  observation: (id: unknown): string => `mgo-${id}`,
+  medication: (id: unknown): string => `mgm-${id}`,
+};
+
 // PUT-by-id makes the load idempotent: a second export of the same patient
 // overwrites rather than duplicating. fullUrl mirrors the relative reference so
-// intra-bundle references (Patient/5) resolve regardless of server base.
+// intra-bundle references (Patient/mgp-5) resolve regardless of server base.
 function putEntry(resource: FHIRResource): TransactionBundleEntry {
   const ref = `${resource.resourceType}/${resource.id}`;
   return { fullUrl: ref, resource, request: { method: 'PUT', url: ref } };
 }
 
 export function buildCohortBundle(rows: CohortRows): TransactionBundle {
-  const resources: FHIRResource[] = [
-    ...rows.patients.map((p) => mapPatientToFHIR(p)),
-    ...rows.conditions.map((c) => mapConditionToFHIR(c, String(c['patient_id']))),
-    ...rows.observations.map((o) => mapObservationToFHIR(o, String(o['patient_id']))),
-    ...rows.medications.map((m) => mapMedicationToFHIR(m, String(m['patient_id']))),
-  ];
+  const resources: FHIRResource[] = [];
+
+  for (const p of rows.patients) {
+    const r = mapPatientToFHIR(p);
+    r.id = ID.patient(p['patient_id']);
+    resources.push(r);
+  }
+  for (const c of rows.conditions) {
+    const r = mapConditionToFHIR(c, ID.patient(c['patient_id']));
+    r.id = ID.condition(c['condition_diagnosis_id']);
+    resources.push(r);
+  }
+  for (const o of rows.observations) {
+    const r = mapObservationToFHIR(o, ID.patient(o['patient_id']));
+    r.id = ID.observation(o['observation_id']);
+    resources.push(r);
+  }
+  for (const m of rows.medications) {
+    const r = mapMedicationToFHIR(m, ID.patient(m['patient_id']));
+    r.id = ID.medication(m['medication_order_id']);
+    resources.push(r);
+  }
+
   return {
     resourceType: 'Bundle',
     type: 'transaction',

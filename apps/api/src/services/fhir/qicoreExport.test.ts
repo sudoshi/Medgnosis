@@ -26,7 +26,7 @@ describe('buildCohortBundle', () => {
     expect(b.entry.every((e) => e.request.method === 'PUT')).toBe(true);
   });
 
-  it('keys each PUT request and fullUrl by ResourceType/id (idempotent upsert)', () => {
+  it('namespaces numeric EDW ids (FHIR servers reject purely-numeric client ids)', () => {
     const b = buildCohortBundle({
       patients: [{ patient_id: 42, first_name: 'A', last_name: 'B', gender: 'male', date_of_birth: '1980-05-05' }],
       conditions: [],
@@ -34,12 +34,14 @@ describe('buildCohortBundle', () => {
       medications: [],
     });
     const [patient] = b.entry;
-    expect(patient?.request.url).toBe('Patient/42');
-    expect(patient?.fullUrl).toBe('Patient/42');
-    expect(patient?.resource.id).toBe('42');
+    expect(patient?.request.url).toBe('Patient/mgp-42');
+    expect(patient?.fullUrl).toBe('Patient/mgp-42');
+    expect(patient?.resource.id).toBe('mgp-42');
+    // every id carries a non-numeric prefix
+    expect(b.entry.every((e) => /[a-z]/.test(e.resource.id))).toBe(true);
   });
 
-  it('wires child resources back to their patient subject reference', () => {
+  it('wires child resources back to their (prefixed) patient subject reference', () => {
     const b = buildCohortBundle({
       patients: [{ patient_id: 5, first_name: 'C', last_name: 'D', gender: 'female', date_of_birth: '1960-01-01' }],
       conditions: [{ condition_diagnosis_id: 3, patient_id: 5, condition_code: '44054006', condition_name: 'DM2', diagnosis_status: 'active' }],
@@ -50,8 +52,10 @@ describe('buildCohortBundle', () => {
     });
     const cond = b.entry.find((e) => e.resource.resourceType === 'Condition');
     const med = b.entry.find((e) => e.resource.resourceType === 'MedicationRequest');
-    expect((cond?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/5');
-    expect((med?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/5');
+    expect(cond?.resource.id).toBe('mgc-3');
+    expect(med?.resource.id).toBe('mgm-2');
+    expect((cond?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/mgp-5');
+    expect((med?.resource as Record<string, { reference: string }>).subject.reference).toBe('Patient/mgp-5');
   });
 
   it('produces an empty-entry transaction Bundle for an empty cohort', () => {

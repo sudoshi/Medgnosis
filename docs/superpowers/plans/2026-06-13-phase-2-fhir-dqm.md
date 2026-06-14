@@ -106,6 +106,28 @@ describe('buildCohortBundle', () => {
 
 > **CHECKPOINT after Epic A** — review the real-data deltas before building MeasureReport persistence on top.
 
+### Epic A Notes (run 2026-06-14)
+
+**Result: the export → load → evaluate → reconcile loop is proven on real Medgnosis data.** A bounded cohort of 100 diabetes patients exported to 354 QI-Core resources (100 Patient + 254 diabetes Condition; 0 in-period HbA1c) loaded into the HAPI CR sidecar with **0 failures**, `$evaluate-measure population` returned a `MeasureReport`, and `reconcile()` printed both sides:
+
+```
+CQL population: ip=0 denom=0 num=0 excl=0 (score undefined)
+SQL : { denominator: 0, numerator: 0, exclusion: 0 }
+CQL : { denominator: 0, numerator: 0, exclusion: 0 }
+deltas: 0/0/0 | agree: true (trivially — both sides zero)
+```
+
+**Why all-zero (the convergence backlog, in priority order):**
+1. **No `Encounter` resources.** CMS122's initial-population/denominator require a qualifying encounter during the period. The A1 export emits only Patient/Condition/Observation/MedicationRequest, so IP collapses to 0. **#1 increment: add `mapEncounterToFHIR` + encounter export** (an encounter value-set–filtered, period-bounded, indexed query like the observation one).
+2. **Data-year mismatch.** 0 HbA1c observations fall in the 2026 reporting period for these patients — Medgnosis demo data sits in other years. Either retarget the period to the data's year or seed in-period labs. (CMS122's MADiE deck matched in Phase 1 precisely because its test patients carry 2026 data.)
+3. **Empty SQL baseline.** `phm_star.fact_measure_result` has no `CMS122v12` rows — `measureCalculatorV2` doesn't compute this measure into the star schema, so the SQL side is 0. Reconciliation needs either the SQL evaluator to run CMS122v12 or a mapping of the existing `care_gap.gap_status` into the comparison.
+
+**Two infrastructure findings — surfaced live and FIXED in the export path:**
+- **Billion-row `phm_edw.observation` seq-scan hazard.** The naive `WHERE patient_id = ANY(ids) AND observation_code = ANY(...)` query triggered a 5-worker parallel sequential scan over ~1.0B rows that ran 58 min in `IO/DataFileRead` (saturating the shared NVMe, threatening Parthenon prod) before being killed. Root cause: `idx_observation_patient_datetime` is a **partial** index (`WHERE active_ind='Y'`) and the query omitted that predicate. **Fix:** per-patient `LATERAL` join + `active_ind='Y'` + **measurement-period datetime bound** (rides the partial index as a tight range seek: 335 ms for 100 patients) + a hard `statement_timeout=30s` on a reserved connection. **Architectural rule for all engine-export queries: bounded, indexed, period-scoped, timeout-guarded — never table-wide `ANY()`.**
+- **HAPI rejects purely-numeric client-assigned ids** (`HAPI-0960`). EDW integer PKs (`Patient/3`) were refused on PUT. **Fix:** `qicoreExport` now namespaces ids (`mgp-`/`mgc-`/`mgo-`/`mgm-`) and rewrites subject references — also makes the export portable to payer DEQM endpoints (Epic C).
+
+**Engine note:** the compose `cql-engine` service is internal-only (no published port); the smoke runs an ephemeral port-published mirror (`medgnosis-cql-engine-smoke`, `docker run -p 18080:8080`) and loads the CMS122 **executable artifacts only** (Measure + Libraries + ValueSets; MADiE test patients stripped) so the population evaluation reflects only the exported Medgnosis cohort.
+
 ---
 
 ## EPIC B — FHIR MeasureReport + QRDA Cat I + nightly batch
