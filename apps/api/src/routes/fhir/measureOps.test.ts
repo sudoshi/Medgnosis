@@ -87,3 +87,56 @@ describe('GET /Measure/:id/$evaluate-measure', () => {
     await app.close();
   });
 });
+
+describe('GET /Measure/$care-gaps', () => {
+  it('builds a DEQM Gaps-in-Care Bundle from the patient care_gap rows', async () => {
+    const future = '2099-12-31';
+    mockSql.mockResolvedValueOnce([
+      { gap_status: 'open', due_date: '2020-01-01', measure_code: 'CMS122v12', fhir_measure_url: 'https://madie.cms.gov/Measure/CMS122' },
+      { gap_status: 'open', due_date: future, measure_code: 'CMS165v12', fhir_measure_url: null },
+      { gap_status: 'closed', due_date: null, measure_code: 'CMS130v12', fhir_measure_url: null },
+    ]);
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/Measure/$care-gaps?subject=Patient/42' });
+
+    expect(res.statusCode).toBe(200);
+    const bundle = res.json();
+    expect(bundle).toMatchObject({ resourceType: 'Bundle', type: 'document' });
+    const types = (bundle.entry as Array<{ resource: { resourceType: string } }>).map((e) => e.resource.resourceType);
+    expect(types.filter((t) => t === 'DetectedIssue')).toHaveLength(3);
+    // open (overdue), prospective (future due), closed — one each
+    const statuses = (bundle.entry as Array<{ resource: Record<string, unknown> }>)
+      .filter((e) => e.resource.resourceType === 'DetectedIssue')
+      .flatMap((e) =>
+        (e.resource.extension as Array<{ valueCodeableConcept?: { coding?: Array<{ code: string }> } }>).flatMap(
+          (x) => x.valueCodeableConcept?.coding?.map((c) => c.code) ?? [],
+        ),
+      );
+    expect(statuses.sort()).toEqual(['closed-gap', 'open-gap', 'prospective-gap']);
+    await app.close();
+  });
+
+  it('filters by status when requested', async () => {
+    mockSql.mockResolvedValueOnce([
+      { gap_status: 'open', due_date: '2099-12-31', measure_code: 'CMS165v12', fhir_measure_url: null },
+      { gap_status: 'open', due_date: '2020-01-01', measure_code: 'CMS122v12', fhir_measure_url: null },
+    ]);
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/Measure/$care-gaps?subject=Patient/42&status=prospective' });
+
+    expect(res.statusCode).toBe(200);
+    const types = (res.json().entry as Array<{ resource: { resourceType: string } }>).map((e) => e.resource.resourceType);
+    expect(types.filter((t) => t === 'DetectedIssue')).toHaveLength(1); // only the prospective gap
+    await app.close();
+  });
+
+  it('400s when subject is missing', async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/Measure/$care-gaps' });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ resourceType: 'OperationOutcome' });
+    await app.close();
+  });
+});
