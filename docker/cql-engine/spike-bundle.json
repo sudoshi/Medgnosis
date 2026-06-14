@@ -1,0 +1,121 @@
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "spike-pt-1",
+        "gender": "female",
+        "birthDate": "1980-01-01"
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Patient/spike-pt-1"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Library",
+        "id": "SpikeTest",
+        "url": "http://medgnosis/Library/SpikeTest",
+        "name": "SpikeTest",
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/library-type",
+              "code": "logic-library"
+            }
+          ]
+        },
+        "content": [
+          {
+            "contentType": "text/cql",
+            "data": "bGlicmFyeSBTcGlrZVRlc3QKdXNpbmcgRkhJUiB2ZXJzaW9uICc0LjAuMScKY29udGV4dCBQYXRpZW50CmRlZmluZSAiSW5pdGlhbCBQb3B1bGF0aW9uIjogdHJ1ZQpkZWZpbmUgIkRlbm9taW5hdG9yIjogdHJ1ZQpkZWZpbmUgIk51bWVyYXRvciI6IHRydWUK"
+          }
+        ]
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Library/SpikeTest"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Measure",
+        "id": "SpikeMeasure",
+        "url": "http://medgnosis/Measure/SpikeMeasure",
+        "name": "SpikeMeasure",
+        "status": "active",
+        "library": [
+          "http://medgnosis/Library/SpikeTest"
+        ],
+        "scoring": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/measure-scoring",
+              "code": "proportion"
+            }
+          ]
+        },
+        "group": [
+          {
+            "id": "group-1",
+            "population": [
+              {
+                "id": "ip",
+                "code": {
+                  "coding": [
+                    {
+                      "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                      "code": "initial-population"
+                    }
+                  ]
+                },
+                "criteria": {
+                  "language": "text/cql-identifier",
+                  "expression": "Initial Population"
+                }
+              },
+              {
+                "id": "denom",
+                "code": {
+                  "coding": [
+                    {
+                      "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                      "code": "denominator"
+                    }
+                  ]
+                },
+                "criteria": {
+                  "language": "text/cql-identifier",
+                  "expression": "Denominator"
+                }
+              },
+              {
+                "id": "num",
+                "code": {
+                  "coding": [
+                    {
+                      "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                      "code": "numerator"
+                    }
+                  ]
+                },
+                "criteria": {
+                  "language": "text/cql-identifier",
+                  "expression": "Numerator"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Measure/SpikeMeasure"
+      }
+    }
+  ]
+}
