@@ -173,6 +173,10 @@ services:
     image: hapiproject/hapi:latest
     environment:
       hapi.fhir.cr.enabled: "true"
+      # CMS measure/test bundles carry example references (e.g. Practitioner/example);
+      # relax referential integrity so dQM test decks load.
+      hapi.fhir.enforce_referential_integrity_on_write: "false"
+      hapi.fhir.allow_external_references: "true"
       JAVA_OPTS: "-Xmx1300m -Xms512m"
     restart: unless-stopped
     profiles:

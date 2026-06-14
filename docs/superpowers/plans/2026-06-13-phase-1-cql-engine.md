@@ -133,6 +133,29 @@ CQL_SAMPLE_COHORT_LIMIT=2000
 
 - [ ] **Step 5: Commit** `feat(cql): ingest CMS QI-Core eCQM content + pinned CQL→ELM compile in CI`.
 
+### Task 3 Notes (2026-06-13 — ✅ INGEST + EVAL PROVEN on real CMS122)
+
+- **Source confirmed:** `cqframework/ecqm-content-qicore-2025`,
+  `bundles/measure/CMS122FHIRDiabetesAssessGreaterThan9Percent/...-bundle.json` is
+  **self-contained**: Measure + 9 Libraries (with `application/elm+json` ELM) + 26
+  ValueSets + 56 MADiE test patients + expected MeasureReports (312 resources, 11 MB).
+- **Proven end-to-end:** loaded into the sidecar (312× 201) and
+  `$evaluate-measure` returned, for test-deck patient `090ad2fc…`,
+  `ip=1/denom=1/denom-exclusion=0/num=1` — **exact match to the published expected
+  MeasureReport**. Population-level: `ip=52/denom=52/excl=19/num=32`, score `0.97`.
+  Reproduce: `scripts/cql-realmeasure-smoke.sh` (exit 0).
+- **Plan refinement:** CMS content **ships ELM**, so the standalone CQL→ELM translator
+  (`cql-to-elm-cli` 3.29.0 on Maven Central; no GitHub release distribution) is **NOT
+  on the Phase 1 critical path** — it's only needed for *net-new Medgnosis-authored*
+  measures (a later phase). For Phase 1 we ingest published ELM directly. The CI `cql`
+  job therefore runs `cql-realmeasure-smoke.sh` (load + evaluate + assert vs test deck)
+  rather than a standalone compile step.
+- **Engine config learned:** CMS test bundles carry `Practitioner/example` etc.; the
+  sidecar needs `hapi.fhir.enforce_referential_integrity_on_write=false` +
+  `hapi.fhir.allow_external_references=true` (now in `docker-compose.yml`).
+- **This also de-risks Task 6** (reconciliation/test decks): the test-deck assertion
+  mechanism is proven on a real measure.
+
 ---
 
 ## Task 4: Implement `cqlEngineClient` (typed `$evaluate-measure` HTTP client)
