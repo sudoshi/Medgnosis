@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { refreshMeasureResults, type RefreshResult } from './measureCalculatorV2.js';
+import { refreshCqlMeasureResults } from './cqlMeasureEvaluator.js';
 
 export type MeasureEvaluatorKind = 'sql' | 'cql';
 
@@ -22,13 +23,7 @@ export const sqlMeasureEvaluator: MeasureEvaluator = {
 
 export const cqlMeasureEvaluator: MeasureEvaluator = {
   kind: 'cql',
-  refresh: async () => {
-    // Intentional placeholder: fails at evaluation time with a pointer, not at boot.
-    throw new Error(
-      'CQL evaluator not implemented. Set MEASURE_EVALUATOR=sql, or implement the ' +
-        'cqf-ruler bridge per docs/superpowers/specs/2026-06-12-parthenon-ecqm-handoff.md §6.3.',
-    );
-  },
+  refresh: refreshCqlMeasureResults,
 };
 
 export function getMeasureEvaluator(): MeasureEvaluator {

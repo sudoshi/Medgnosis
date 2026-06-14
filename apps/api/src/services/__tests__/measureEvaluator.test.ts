@@ -4,12 +4,17 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockRefresh } = vi.hoisted(() => ({
+const { mockRefresh, mockCqlRefresh } = vi.hoisted(() => ({
   mockRefresh: vi.fn(async () => ({ rowCount: 42, durationMs: 5 })),
+  mockCqlRefresh: vi.fn(async () => ({ rowCount: 7, durationMs: 3 })),
 }));
 
 vi.mock('../measureCalculatorV2.js', () => ({
   refreshMeasureResults: mockRefresh,
+}));
+
+vi.mock('../cqlMeasureEvaluator.js', () => ({
+  refreshCqlMeasureResults: mockCqlRefresh,
 }));
 
 import { getMeasureEvaluator, sqlMeasureEvaluator, cqlMeasureEvaluator } from '../measureEvaluator.js';
@@ -38,8 +43,10 @@ describe('sqlMeasureEvaluator', () => {
 });
 
 describe('cqlMeasureEvaluator', () => {
-  it('throws an actionable not-implemented error at refresh time', async () => {
-    await expect(cqlMeasureEvaluator.refresh()).rejects.toThrow(/CQL evaluator not implemented/);
+  it('delegates to refreshCqlMeasureResults', async () => {
+    const result = await cqlMeasureEvaluator.refresh();
+    expect(mockCqlRefresh).toHaveBeenCalledOnce();
+    expect(result).toEqual({ rowCount: 7, durationMs: 3 });
   });
 });
 
