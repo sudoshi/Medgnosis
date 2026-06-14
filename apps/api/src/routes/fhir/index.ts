@@ -4,6 +4,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
+import { config } from '../../config.js';
 import {
   mapPatientToFHIR,
   mapConditionToFHIR,
@@ -16,18 +17,18 @@ export default async function fhirRoutes(app: FastifyInstance) {
   // FHIR Patient endpoint
   app.get('/Patient', { preHandler: [app.authenticate] }, async (_req) => {
     const patients = await sql`
-      SELECT patient_id, first_name, last_name, date_of_birth, gender, mrn
+      SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
       FROM phm_edw.patient
       LIMIT 100
     `;
     const resources = patients.map(mapPatientToFHIR);
-    return buildBundle(resources);
+    return buildBundle(resources, 'searchset', config.fhirBaseUrl);
   });
 
   app.get('/Patient/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const [patient] = await sql`
-      SELECT patient_id, first_name, last_name, date_of_birth, gender, mrn
+      SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
       FROM phm_edw.patient
       WHERE patient_id = ${id}
     `;
@@ -56,7 +57,7 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const resources = conditions.map((c) =>
       mapConditionToFHIR(c, String(c.patient_id)),
     );
-    return buildBundle(resources);
+    return buildBundle(resources, 'searchset', config.fhirBaseUrl);
   });
 
   // FHIR Observation endpoint
@@ -79,7 +80,7 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const resources = obs.map((o) =>
       mapObservationToFHIR(o, String(o.patient_id)),
     );
-    return buildBundle(resources);
+    return buildBundle(resources, 'searchset', config.fhirBaseUrl);
   });
 
   // FHIR MedicationRequest endpoint
@@ -103,7 +104,7 @@ export default async function fhirRoutes(app: FastifyInstance) {
     const resources = meds.map((m) =>
       mapMedicationToFHIR(m, String(m.patient_id)),
     );
-    return buildBundle(resources);
+    return buildBundle(resources, 'searchset', config.fhirBaseUrl);
   });
 
   // Patient $everything operation
@@ -114,7 +115,7 @@ export default async function fhirRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string };
 
       const [patient] = await sql`
-        SELECT patient_id, first_name, last_name, date_of_birth, gender, mrn
+        SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
         FROM phm_edw.patient WHERE patient_id = ${id}
       `;
       if (!patient) return reply.status(404).send({ error: 'Patient not found' });
@@ -150,7 +151,7 @@ export default async function fhirRoutes(app: FastifyInstance) {
         ...medications.map((m) => mapMedicationToFHIR(m, id)),
       ];
 
-      return buildBundle(resources, 'collection');
+      return buildBundle(resources, 'collection', config.fhirBaseUrl);
     },
   );
 }

@@ -54,3 +54,6 @@ docker-compose.override.yml
 # Installer
 installer/config.json
 installer/output/
+
+# HL7 FHIR validator (downloaded in CI; do not commit)
+validator_cli.jar

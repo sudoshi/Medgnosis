@@ -3,6 +3,82 @@
 // =============================================================================
 
 import type { Row } from 'postgres';
+import {
+  US_CORE,
+  US_CORE_EXT,
+  CDC_RACE_SYSTEM,
+  RACE_OMB,
+  ETHNICITY_OMB,
+  CONDITION_CATEGORY_SYSTEM,
+  CONDITION_VER_STATUS_SYSTEM,
+  OBSERVATION_CATEGORY_SYSTEM,
+} from './profiles.js';
+
+export type FhirGender = 'male' | 'female' | 'other' | 'unknown';
+
+/**
+ * Map free-text EDW gender (M/F/Male/Female/Non-binary/...) to the FHIR
+ * AdministrativeGender value set WITHOUT data loss. Anything non-empty that is
+ * not clearly male/female maps to 'other'; null/empty maps to 'unknown'.
+ * (Regression guard: the prior implementation collapsed everything non-male
+ * to 'female'.)
+ */
+export function toFhirGender(raw: unknown): FhirGender {
+  if (raw == null) return 'unknown';
+  const v = String(raw).trim().toLowerCase();
+  if (v === '') return 'unknown';
+  if (v === 'male' || v === 'm') return 'male';
+  if (v === 'female' || v === 'f') return 'female';
+  return 'other';
+}
+
+interface UsCoreOmbExtension {
+  url: string;
+  extension: Array<{
+    url: 'ombCategory' | 'text';
+    valueCoding?: { system: string; code: string; display: string };
+    valueString?: string;
+  }>;
+}
+
+export function usCoreRaceExtension(race: unknown): UsCoreOmbExtension | undefined {
+  if (race == null) return undefined;
+  const key = String(race).trim().toLowerCase();
+  const omb = RACE_OMB[key];
+  if (!omb) return undefined;
+  return {
+    url: US_CORE_EXT.race,
+    extension: [
+      {
+        url: 'ombCategory',
+        valueCoding: { system: CDC_RACE_SYSTEM, code: omb.code, display: omb.display },
+      },
+      { url: 'text', valueString: omb.display },
+    ],
+  };
+}
+
+export function usCoreEthnicityExtension(
+  ethnicity: unknown,
+): UsCoreOmbExtension | undefined {
+  if (ethnicity == null) return undefined;
+  const v = String(ethnicity).trim().toLowerCase();
+  if (v === '') return undefined;
+  const omb =
+    v.includes('hispanic') && !v.includes('not')
+      ? ETHNICITY_OMB.hispanic
+      : ETHNICITY_OMB.nonHispanic;
+  return {
+    url: US_CORE_EXT.ethnicity,
+    extension: [
+      {
+        url: 'ombCategory',
+        valueCoding: { system: CDC_RACE_SYSTEM, code: omb.code, display: omb.display },
+      },
+      { url: 'text', valueString: omb.display },
+    ],
+  };
+}
 
 export interface FHIRResource {
   resourceType: string;
@@ -22,7 +98,7 @@ export function mapPatientToFHIR(row: Row): FHIRResource {
   return {
     resourceType: 'Patient',
     id: String(row.patient_id),
-    meta: { lastUpdated: new Date().toISOString() },
+    meta: { lastUpdated: new Date().toISOString(), profile: [US_CORE.patient] },
     identifier: [
       {
         system: 'urn:medgnosis:mrn',
@@ -36,11 +112,15 @@ export function mapPatientToFHIR(row: Row): FHIRResource {
         use: 'official',
       },
     ],
-    gender: row.gender?.toLowerCase() === 'male' ? 'male' : 'female',
+    gender: toFhirGender(row.gender),
     birthDate: row.date_of_birth
       ? new Date(row.date_of_birth as string).toISOString().split('T')[0]
       : undefined,
     active: true,
+    extension: [
+      usCoreRaceExtension(row.race),
+      usCoreEthnicityExtension(row.ethnicity),
+    ].filter((e): e is UsCoreOmbExtension => e !== undefined),
   };
 }
 
@@ -51,7 +131,10 @@ export function mapConditionToFHIR(
   return {
     resourceType: 'Condition',
     id: String(row.condition_diagnosis_id),
-    meta: { lastUpdated: new Date().toISOString() },
+    meta: {
+      lastUpdated: new Date().toISOString(),
+      profile: [US_CORE.conditionProblems],
+    },
     clinicalStatus: {
       coding: [
         {
@@ -60,6 +143,20 @@ export function mapConditionToFHIR(
         },
       ],
     },
+    verificationStatus: {
+      coding: [{ system: CONDITION_VER_STATUS_SYSTEM, code: 'confirmed' }],
+    },
+    category: [
+      {
+        coding: [
+          {
+            system: CONDITION_CATEGORY_SYSTEM,
+            code: 'problem-list-item',
+            display: 'Problem List Item',
+          },
+        ],
+      },
+    ],
     code: {
       coding: [
         {
@@ -84,8 +181,22 @@ export function mapObservationToFHIR(
   const resource: FHIRResource = {
     resourceType: 'Observation',
     id: String(row.observation_id),
-    meta: { lastUpdated: new Date().toISOString() },
+    meta: {
+      lastUpdated: new Date().toISOString(),
+      profile: [US_CORE.observationClinicalResult],
+    },
     status: 'final',
+    category: [
+      {
+        coding: [
+          {
+            system: OBSERVATION_CATEGORY_SYSTEM,
+            code: 'laboratory',
+            display: 'Laboratory',
+          },
+        ],
+      },
+    ],
     code: {
       coding: [
         {
@@ -122,9 +233,13 @@ export function mapMedicationToFHIR(
   return {
     resourceType: 'MedicationRequest',
     id: String(row.medication_order_id),
-    meta: { lastUpdated: new Date().toISOString() },
+    meta: {
+      lastUpdated: new Date().toISOString(),
+      profile: [US_CORE.medicationRequest],
+    },
     status: row.prescription_status === 'active' ? 'active' : 'stopped',
     intent: 'order',
+    reportedBoolean: false,
     medicationCodeableConcept: {
       coding: [
         {
@@ -145,7 +260,7 @@ export function mapMedicationToFHIR(
 export function buildBundle(
   resources: FHIRResource[],
   type: FHIRBundle['type'] = 'searchset',
-  baseUrl = 'https://medgnosis.example.com/fhir',
+  baseUrl = 'http://localhost:3000/api/fhir',
 ): FHIRBundle {
   return {
     resourceType: 'Bundle',

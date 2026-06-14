@@ -86,6 +86,28 @@ jobs:
       - run: npx turbo run db:migrate
       - run: npx turbo run test
 
+  fhir-conformance:
+    name: FHIR Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Cache FHIR validator + IG packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            validator_cli.jar
+            ~/.fhir
+          key: fhir-validator-uscore700-qicore702-v1
+      - name: Download HL7 validator
+        run: test -f validator_cli.jar || curl -fsSL -o validator_cli.jar https://github.com/hapifhir/org.hl7.fhir.core/releases/latest/download/validator_cli.jar
+      - name: Validate FHIR fixtures (errors fail the build)
+        run: ./scripts/fhir-validate.sh
+
   build:
     name: Build
     runs-on: ubuntu-latest

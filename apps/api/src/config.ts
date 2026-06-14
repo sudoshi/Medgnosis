@@ -27,6 +27,8 @@ export const config = {
   host: optional('API_HOST', '0.0.0.0'),
   nodeEnv: optional('NODE_ENV', 'development'),
   corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
+  // Canonical base URL for FHIR Bundle fullUrl construction (no trailing slash)
+  fhirBaseUrl: optional('FHIR_BASE_URL', 'http://localhost:3000/api/fhir'),
 
   // Database
   databaseUrl: required('DATABASE_URL'),
