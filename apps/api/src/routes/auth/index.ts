@@ -156,104 +156,153 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       .update(body.refresh_token)
       .digest('hex');
 
-    const [token] = await sql<{
-      id: string;
-      user_id: string;
-      expires_at: string;
-      revoked: boolean;
-    }[]>`
-      SELECT id, user_id, expires_at, revoked
-      FROM refresh_tokens
-      WHERE token_hash = ${tokenHash}
-    `;
+    const result = await sql.begin(async (tx) => {
+      const tokenRows = await tx.unsafe(
+        `
+        SELECT id, user_id, expires_at, revoked
+        FROM refresh_tokens
+        WHERE token_hash = $1
+        FOR UPDATE
+        `,
+        [tokenHash],
+      ) as {
+        id: string;
+        user_id: string;
+        expires_at: string;
+        revoked: boolean;
+      }[];
+      const [token] = tokenRows;
 
-    if (!token) {
-      return reply.status(401).send({
-        success: false,
-        error: { code: 'INVALID_TOKEN', message: 'Invalid or expired refresh token' },
-      });
-    }
+      if (!token) {
+        return {
+          status: 401,
+          body: {
+            success: false,
+            error: { code: 'INVALID_TOKEN', message: 'Invalid or expired refresh token' },
+          },
+        };
+      }
 
-    // Replay detection: a revoked token being reused indicates potential theft.
-    // Revoke ALL tokens for the user as a precaution.
-    if (token.revoked) {
-      await sql`
-        UPDATE refresh_tokens SET revoked = TRUE
-        WHERE user_id = ${token.user_id}::UUID AND revoked = FALSE
-      `;
-      fastify.log.warn({ userId: token.user_id }, 'Refresh token replay detected — all tokens revoked');
-      return reply.status(401).send({
-        success: false,
-        error: { code: 'TOKEN_REUSE', message: 'Token reuse detected. All sessions have been revoked.' },
-      });
-    }
+      // Replay detection: a revoked token being reused indicates potential theft.
+      // Revoke ALL tokens for the user as a precaution.
+      if (token.revoked) {
+        await tx.unsafe(
+          `
+          UPDATE refresh_tokens SET revoked = TRUE
+          WHERE user_id = $1::UUID AND revoked = FALSE
+          `,
+          [token.user_id],
+        );
+        fastify.log.warn({ userId: token.user_id }, 'Refresh token replay detected - all tokens revoked');
+        return {
+          status: 401,
+          body: {
+            success: false,
+            error: { code: 'TOKEN_REUSE', message: 'Token reuse detected. All sessions have been revoked.' },
+          },
+        };
+      }
 
-    if (new Date(token.expires_at) < new Date()) {
-      return reply.status(401).send({
-        success: false,
-        error: { code: 'TOKEN_EXPIRED', message: 'Refresh token has expired' },
-      });
-    }
+      if (new Date(token.expires_at) < new Date()) {
+        await tx.unsafe(
+          `UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1::UUID`,
+          [token.id],
+        );
+        return {
+          status: 401,
+          body: {
+            success: false,
+            error: { code: 'TOKEN_EXPIRED', message: 'Refresh token has expired' },
+          },
+        };
+      }
 
-    // Look up user
-    const [user] = await sql<{
-      id: string;
-      email: string;
-      role: string;
-      org_id: number | null;
-    }[]>`
-      SELECT id, email, role, org_id FROM app_users WHERE id = ${token.user_id}::UUID AND is_active = TRUE
-    `;
+      // Look up user
+      const userRows = await tx.unsafe(
+        `
+        SELECT id, email, role, org_id, must_change_password
+        FROM app_users
+        WHERE id = $1::UUID AND is_active = TRUE
+        `,
+        [token.user_id],
+      ) as {
+        id: string;
+        email: string;
+        role: string;
+        org_id: number | null;
+        must_change_password: boolean;
+      }[];
+      const [user] = userRows;
 
-    if (!user) {
-      return reply.status(401).send({
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: 'User account not found or disabled' },
-      });
-    }
+      if (!user) {
+        return {
+          status: 401,
+          body: {
+            success: false,
+            error: { code: 'USER_NOT_FOUND', message: 'User account not found or disabled' },
+          },
+        };
+      }
 
-    // Revoke old token and issue new pair
-    await sql`UPDATE refresh_tokens SET revoked = TRUE WHERE id = ${token.id}::UUID`;
+      // Revoke old token and issue new pair atomically.
+      await tx.unsafe(
+        `UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1::UUID`,
+        [token.id],
+      );
 
-    // Re-resolve provider_id for refreshed JWT
-    let refreshProviderId: number | undefined;
-    if (user.org_id) {
-      const [prov] = await sql<{ provider_id: number }[]>`
-        SELECT provider_id FROM phm_edw.provider
-        WHERE org_id = ${user.org_id} AND active_ind = 'Y'
-        LIMIT 1
-      `.catch(() => []);
-      refreshProviderId = prov?.provider_id;
-    }
+      // Re-resolve provider_id for refreshed JWT
+      let refreshProviderId: number | undefined;
+      if (user.org_id) {
+        const providerRows = await tx.unsafe(
+          `
+          SELECT provider_id FROM phm_edw.provider
+          WHERE org_id = $1 AND active_ind = 'Y'
+          LIMIT 1
+          `,
+          [user.org_id],
+        ).catch(() => []) as { provider_id: number }[];
+        const [prov] = providerRows;
+        refreshProviderId = prov?.provider_id;
+      }
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role as UserRole,
-      org_id: String(user.org_id ?? ''),
-      ...(refreshProviderId !== undefined ? { provider_id: refreshProviderId } : {}),
-    };
+      const payload = {
+        sub: user.id,
+        email: user.email,
+        role: user.role as UserRole,
+        org_id: String(user.org_id ?? ''),
+        ...(refreshProviderId !== undefined ? { provider_id: refreshProviderId } : {}),
+        ...(user.must_change_password ? { must_change_password: true } : {}),
+      };
 
-    const accessToken = fastify.jwt.sign(payload);
-    const newRefreshToken = crypto.randomUUID();
-    const newRefreshHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
-    const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const accessToken = fastify.jwt.sign(payload);
+      const newRefreshToken = crypto.randomUUID();
+      const newRefreshHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+      const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await sql`
-      INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-      VALUES (${user.id}::UUID, ${newRefreshHash}, ${refreshExpiry.toISOString()})
-    `;
+      await tx.unsafe(
+        `
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+        VALUES ($1::UUID, $2, $3)
+        `,
+        [user.id, newRefreshHash, refreshExpiry.toISOString()],
+      );
 
-    return reply.send({
-      success: true,
-      data: {
-        tokens: {
-          access_token: accessToken,
-          refresh_token: newRefreshToken,
-          expires_in: 900,
+      return {
+        status: 200,
+        body: {
+          success: true,
+          data: {
+            tokens: {
+              access_token: accessToken,
+              refresh_token: newRefreshToken,
+              expires_in: 900,
+            },
+          },
         },
-      },
+      };
     });
+
+    return reply.status(result.status).send(result.body);
   });
 
   // POST /auth/register
@@ -265,6 +314,16 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       },
     },
     async (request, reply) => {
+      if (!config.publicRegistrationEnabled) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'REGISTRATION_DISABLED',
+            message: 'Registration is invite-only. Contact an administrator for access.',
+          },
+        });
+      }
+
       const parseResult = registerRequestSchema.safeParse(request.body);
       if (!parseResult.success) {
         return reply.status(400).send({
@@ -289,7 +348,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         // Return success to prevent email enumeration
         return reply.send({
           success: true,
-          data: { message: 'If this email is not already registered, a temporary password has been sent to your inbox.' },
+          data: { message: 'If this email is eligible for access, account instructions have been sent to your inbox.' },
         });
       }
 
@@ -297,10 +356,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       const tempPassword = generateTempPassword(12);
       const passwordHash = await hashPassword(tempPassword);
 
-      // Insert new user with 'analyst' as default role (matches CHECK constraint)
+      // Insert inactive pending user with 'analyst' as default role. Admin
+      // activation is required before the account can access PHI.
       await sql`
         INSERT INTO app_users (email, password_hash, first_name, last_name, role, must_change_password, is_active)
-        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName.trim()}, ${lastName.trim()}, 'analyst', TRUE, TRUE)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName.trim()}, ${lastName.trim()}, 'analyst', TRUE, FALSE)
       `;
 
       // Send temp password via Resend API
@@ -312,7 +372,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       return reply.send({
         success: true,
-        data: { message: 'If this email is not already registered, a temporary password has been sent to your inbox.' },
+        data: { message: 'If this email is eligible for access, account instructions have been sent to your inbox.' },
       });
     },
   );
@@ -748,7 +808,7 @@ async function sendWelcomeEmail(
         Hi ${firstName},
       </p>
       <p style="font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
-        Your Medgnosis account has been created. Use the temporary password below to sign in:
+        Your Medgnosis account request has been created. An administrator must activate the account before you can sign in. After activation, use the temporary password below:
       </p>
 
       <div style="background: rgba(13, 217, 217, 0.06); border: 1px solid rgba(13, 217, 217, 0.2); border-radius: 8px; padding: 16px 20px; margin: 0 0 24px; text-align: center;">
@@ -757,7 +817,7 @@ async function sendWelcomeEmail(
       </div>
 
       <p style="font-size: 14px; line-height: 1.6; color: #4E5D6C; margin: 0 0 28px;">
-        You will be asked to change this password on your first login.
+        You will be asked to change this password on your first login after activation.
       </p>
 
       <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />

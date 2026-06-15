@@ -15,6 +15,12 @@ import {
 import { expandValueSet, validateCode } from '../../services/fhir/terminology.js';
 import { buildCapabilityStatement } from '../../services/fhir/capabilityStatement.js';
 import measureOps from './measureOps.js';
+import { getActorScope, requirePatientAccess } from '../../utils/authz.js';
+
+function patientIdFromReference(patient: string | undefined): string | undefined {
+  if (!patient) return undefined;
+  return patient.startsWith('Patient/') ? patient.slice('Patient/'.length) : patient;
+}
 
 export default async function fhirRoutes(app: FastifyInstance) {
   // Medgnosis-facing Clinical Reasoning operations ($evaluate-measure, $care-gaps)
@@ -66,10 +72,13 @@ export default async function fhirRoutes(app: FastifyInstance) {
   );
 
   // FHIR Patient endpoint
-  app.get('/Patient', { preHandler: [app.authenticate] }, async (_req) => {
+  app.get('/Patient', { preHandler: [app.authenticate] }, async (req) => {
+    const scope = getActorScope(req);
     const patients = await sql`
       SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
-      FROM phm_edw.patient
+      FROM phm_edw.patient p
+      WHERE p.active_ind = 'Y'
+        ${scope.scoped ? sql`AND p.pcp_provider_id = ${scope.providerId!}` : sql``}
       LIMIT 100
     `;
     const resources = patients.map(mapPatientToFHIR);
@@ -78,33 +87,39 @@ export default async function fhirRoutes(app: FastifyInstance) {
 
   app.get('/Patient/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    if (!(await requirePatientAccess(req, reply, id, 'fhir'))) return undefined;
+
     const [patient] = await sql`
       SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
       FROM phm_edw.patient
-      WHERE patient_id = ${id}
+      WHERE patient_id = ${id}::int
+        AND active_ind = 'Y'
     `;
-    if (!patient) return reply.status(404).send({ error: 'Patient not found' });
+    if (!patient) return reply.status(404).send({
+      resourceType: 'OperationOutcome',
+      issue: [{ severity: 'error', code: 'not-found', diagnostics: 'Patient not found' }],
+    });
     return mapPatientToFHIR(patient);
   });
 
   // FHIR Condition endpoint
-  app.get('/Condition', { preHandler: [app.authenticate] }, async (req) => {
+  app.get('/Condition', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { patient } = req.query as { patient?: string };
-    const conditions = patient
-      ? await sql`
-          SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
-                 cd.onset_date, cd.diagnosis_status, cd.patient_id
-          FROM phm_edw.condition_diagnosis cd
-          JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
-          WHERE cd.patient_id = ${patient}
-        `
-      : await sql`
-          SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
-                 cd.onset_date, cd.diagnosis_status, cd.patient_id
-          FROM phm_edw.condition_diagnosis cd
-          JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
-          LIMIT 100
-        `;
+    const patientId = patientIdFromReference(patient);
+    if (patientId && !(await requirePatientAccess(req, reply, patientId, 'fhir'))) return undefined;
+
+    const scope = getActorScope(req);
+    const conditions = await sql`
+      SELECT cd.condition_diagnosis_id, c.condition_name, c.condition_code,
+             cd.onset_date, cd.diagnosis_status, cd.patient_id
+      FROM phm_edw.condition_diagnosis cd
+      JOIN phm_edw.condition c ON c.condition_id = cd.condition_id
+      JOIN phm_edw.patient p ON p.patient_id = cd.patient_id
+      WHERE p.active_ind = 'Y'
+        ${patientId ? sql`AND cd.patient_id = ${patientId}::int` : sql``}
+        ${scope.scoped ? sql`AND p.pcp_provider_id = ${scope.providerId!}` : sql``}
+      LIMIT ${patientId ? 500 : 100}
+    `;
     const resources = conditions.map((c) =>
       mapConditionToFHIR(c, String(c.patient_id)),
     );
@@ -112,22 +127,23 @@ export default async function fhirRoutes(app: FastifyInstance) {
   });
 
   // FHIR Observation endpoint
-  app.get('/Observation', { preHandler: [app.authenticate] }, async (req) => {
+  app.get('/Observation', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { patient } = req.query as { patient?: string };
-    const obs = patient
-      ? await sql`
-          SELECT o.observation_id, o.observation_desc, o.observation_code,
-                 o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
-          FROM phm_edw.observation o
-          WHERE o.patient_id = ${patient}
-          ORDER BY o.observation_datetime DESC LIMIT 50
-        `
-      : await sql`
-          SELECT o.observation_id, o.observation_desc, o.observation_code,
-                 o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
-          FROM phm_edw.observation o
-          ORDER BY o.observation_datetime DESC LIMIT 100
-        `;
+    const patientId = patientIdFromReference(patient);
+    if (patientId && !(await requirePatientAccess(req, reply, patientId, 'fhir'))) return undefined;
+
+    const scope = getActorScope(req);
+    const obs = await sql`
+      SELECT o.observation_id, o.observation_desc, o.observation_code,
+             o.value_numeric, o.value_text, o.units, o.observation_datetime, o.patient_id
+      FROM phm_edw.observation o
+      JOIN phm_edw.patient p ON p.patient_id = o.patient_id
+      WHERE p.active_ind = 'Y'
+        ${patientId ? sql`AND o.patient_id = ${patientId}::int` : sql``}
+        ${scope.scoped ? sql`AND p.pcp_provider_id = ${scope.providerId!}` : sql``}
+      ORDER BY o.observation_datetime DESC
+      LIMIT ${patientId ? 50 : 100}
+    `;
     const resources = obs.map((o) =>
       mapObservationToFHIR(o, String(o.patient_id)),
     );
@@ -135,23 +151,23 @@ export default async function fhirRoutes(app: FastifyInstance) {
   });
 
   // FHIR MedicationRequest endpoint
-  app.get('/MedicationRequest', { preHandler: [app.authenticate] }, async (req) => {
+  app.get('/MedicationRequest', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { patient } = req.query as { patient?: string };
-    const meds = patient
-      ? await sql`
-          SELECT mo.medication_order_id, m.medication_name, m.medication_code,
-                 mo.start_datetime, mo.prescription_status, mo.patient_id
-          FROM phm_edw.medication_order mo
-          JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
-          WHERE mo.patient_id = ${patient}
-        `
-      : await sql`
-          SELECT mo.medication_order_id, m.medication_name, m.medication_code,
-                 mo.start_datetime, mo.prescription_status, mo.patient_id
-          FROM phm_edw.medication_order mo
-          JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
-          LIMIT 100
-        `;
+    const patientId = patientIdFromReference(patient);
+    if (patientId && !(await requirePatientAccess(req, reply, patientId, 'fhir'))) return undefined;
+
+    const scope = getActorScope(req);
+    const meds = await sql`
+      SELECT mo.medication_order_id, m.medication_name, m.medication_code,
+             mo.start_datetime, mo.prescription_status, mo.patient_id
+      FROM phm_edw.medication_order mo
+      JOIN phm_edw.medication m ON m.medication_id = mo.medication_id
+      JOIN phm_edw.patient p ON p.patient_id = mo.patient_id
+      WHERE p.active_ind = 'Y'
+        ${patientId ? sql`AND mo.patient_id = ${patientId}::int` : sql``}
+        ${scope.scoped ? sql`AND p.pcp_provider_id = ${scope.providerId!}` : sql``}
+      LIMIT ${patientId ? 500 : 100}
+    `;
     const resources = meds.map((m) =>
       mapMedicationToFHIR(m, String(m.patient_id)),
     );
@@ -164,12 +180,18 @@ export default async function fhirRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate] },
     async (req, reply) => {
       const { id } = req.params as { id: string };
+      if (!(await requirePatientAccess(req, reply, id, 'fhir'))) return undefined;
 
       const [patient] = await sql`
         SELECT patient_id, first_name, last_name, date_of_birth, gender, race, ethnicity, mrn
-        FROM phm_edw.patient WHERE patient_id = ${id}
+        FROM phm_edw.patient
+        WHERE patient_id = ${id}::int
+          AND active_ind = 'Y'
       `;
-      if (!patient) return reply.status(404).send({ error: 'Patient not found' });
+      if (!patient) return reply.status(404).send({
+        resourceType: 'OperationOutcome',
+        issue: [{ severity: 'error', code: 'not-found', diagnostics: 'Patient not found' }],
+      });
 
       const [conditions, observations, medications] = await Promise.all([
         sql`

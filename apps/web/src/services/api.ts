@@ -8,6 +8,19 @@ import type { ApiResponse } from '@medgnosis/shared';
 
 const BASE_URL = '/api/v1';
 
+async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  if (response.status === 204) {
+    return { success: response.ok } as ApiResponse<T>;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return { success: response.ok } as ApiResponse<T>;
+  }
+
+  return JSON.parse(text) as ApiResponse<T>;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -37,9 +50,9 @@ async function request<T>(
     });
 
     if (refreshResponse.ok) {
-      const refreshData = (await refreshResponse.json()) as ApiResponse<{
+      const refreshData = await readApiResponse<{
         tokens: { access_token: string; refresh_token: string; expires_in: number };
-      }>;
+      }>(refreshResponse);
       if (refreshData.data?.tokens) {
         updateTokens(refreshData.data.tokens);
         headers['Authorization'] = `Bearer ${refreshData.data.tokens.access_token}`;
@@ -51,7 +64,7 @@ async function request<T>(
     }
   }
 
-  return response.json() as Promise<ApiResponse<T>>;
+  return readApiResponse<T>(response);
 }
 
 export const api = {

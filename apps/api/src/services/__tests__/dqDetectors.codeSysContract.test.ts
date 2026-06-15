@@ -5,7 +5,7 @@
 // (upserts, overlap queries) and sql.unsafe calls (table scans).
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // ── Mock setup ────────────────────────────────────────────────────────────────
 // sql is called as a tagged template (sql`...`) AND as sql.unsafe('raw SQL').

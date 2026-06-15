@@ -18,9 +18,17 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     },
     "db:migrate": {
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "db:migrate:dry-run": {
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "db:migrate:list": {
       "cache": false,
       "passThroughEnv": ["DATABASE_URL"]
     },

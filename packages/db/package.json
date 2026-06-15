@@ -15,6 +15,8 @@
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "db:migrate": "node --import tsx/esm src/migrate.ts",
+    "db:migrate:dry-run": "node --import tsx/esm src/migrate.ts --dry-run",
+    "db:migrate:list": "node --import tsx/esm src/migrate.ts --list",
     "db:seed": "node --import tsx/esm src/seed.ts",
     "db:seed-demo": "node --import tsx/esm src/seed-demo.ts"
   },
@@ -25,7 +27,7 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
-    "tsx": "^4.19.2",
+    "tsx": "^4.22.4",
     "typescript": "^5.7.2"
   }
 }

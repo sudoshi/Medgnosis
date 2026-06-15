@@ -5,9 +5,9 @@
 //   - POST /cds-services/medgnosis-care-gaps → order-sign hook handler
 // =============================================================================
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql } from '@medgnosis/db';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { config } from '../../config.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -42,6 +42,37 @@ interface CdsCard {
     }[];
   }[];
   links?: { label: string; url: string; type: 'absolute' | 'smart' }[];
+}
+
+function safeSecretEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function verifyCdsHookAuth(request: FastifyRequest, reply: FastifyReply): boolean {
+  if (!config.isProd && !config.cdsHooksSecret) {
+    return true;
+  }
+
+  if (!config.cdsHooksSecret) {
+    reply.status(503).send({ cards: [], _error: 'CDS Hooks secret is not configured' });
+    return false;
+  }
+
+  const authorization = request.headers.authorization;
+  const bearer = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : '';
+  const secretHeader = request.headers['x-medgnosis-cds-secret'];
+  const supplied = bearer || (Array.isArray(secretHeader) ? secretHeader[0] : secretHeader) || '';
+
+  if (!safeSecretEqual(supplied, config.cdsHooksSecret)) {
+    reply.status(401).send({ cards: [], _error: 'Unauthorized' });
+    return false;
+  }
+
+  return true;
 }
 
 // ─── Route registration ──────────────────────────────────────────────────────
@@ -83,6 +114,8 @@ export default async function cdsHooksRoutes(fastify: FastifyInstance): Promise<
   // POST /cds-services/medgnosis-care-gaps — order-sign hook handler
   // =========================================================================
   fastify.post('/medgnosis-care-gaps', async (request, reply) => {
+    if (!verifyCdsHookAuth(request, reply)) return reply;
+
     const body = request.body as CdsHookRequest;
 
     if (body.hook !== 'order-sign') {
@@ -215,6 +248,8 @@ export default async function cdsHooksRoutes(fastify: FastifyInstance): Promise<
   // via the linked Population Finder.
   // =========================================================================
   fastify.post('/medgnosis-problem-list', async (request, reply) => {
+    if (!verifyCdsHookAuth(request, reply)) return reply;
+
     const body = request.body as CdsHookRequest;
     if (body.hook !== 'patient-view') {
       return reply.status(400).send({ cards: [], _error: 'Only patient-view hook is supported' });

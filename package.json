@@ -13,6 +13,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "db:migrate": "turbo run db:migrate --filter=@medgnosis/db",
+    "db:migrate:dry-run": "turbo run db:migrate:dry-run --filter=@medgnosis/db",
+    "db:migrate:list": "turbo run db:migrate:list --filter=@medgnosis/db",
     "db:seed": "turbo run db:seed --filter=@medgnosis/db",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,sql}\"",
     "demo:infra": "docker compose -f docker-compose.demo.yml up -d",
@@ -25,10 +27,13 @@
     "demo:web": "npm run dev --workspace=apps/web"
   },
   "devDependencies": {
-    "turbo": "^2.3.3",
-    "typescript": "^5.7.2",
+    "@types/node": "^22.10.5",
     "prettier": "^3.4.2",
-    "@types/node": "^22.10.5"
+    "turbo": "^2.9.18",
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "fast-jwt": "^6.2.4"
   },
   "engines": {
     "node": ">=20.0.0",

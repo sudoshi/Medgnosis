@@ -7,8 +7,9 @@
 // =============================================================================
 
 import fp from 'fastify-plugin';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fastifyWebSocket from '@fastify/websocket';
+import type { RawData, WebSocket } from 'ws';
 import { Redis } from 'ioredis';
 import { config } from '../config.js';
 import { WS_EVENTS } from '@medgnosis/shared';
@@ -102,10 +103,16 @@ export async function publishCareGapClosed(
 // ---------------------------------------------------------------------------
 
 type WsConnection = {
-  socket: import('ws').WebSocket;
+  socket: WebSocket;
   userId: string;
   orgId: string;
 };
+
+type WebSocketRoute = (
+  path: string,
+  opts: { websocket: true; preHandler: unknown[] },
+  handler: (socket: WebSocket, request: FastifyRequest) => void,
+) => FastifyInstance;
 
 const connections = new Map<string, Set<WsConnection>>();
 
@@ -172,7 +179,8 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
   }
 
   // GET /ws — WebSocket upgrade endpoint (authenticated users only)
-  fastify.get(
+  const websocketGet = fastify.get as unknown as WebSocketRoute;
+  websocketGet(
     '/ws',
     { websocket: true, preHandler: [fastify.authenticate] },
     (socket, request) => {
@@ -190,7 +198,7 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
         JSON.stringify({ type: WS_EVENTS.PONG, data: { ts: Date.now() } }),
       );
 
-      socket.on('message', (raw) => {
+      socket.on('message', (raw: RawData) => {
         try {
           const msg = JSON.parse(raw.toString()) as { type: string };
           if (msg.type === WS_EVENTS.PING) {
@@ -208,7 +216,7 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
         fastify.log.info(`[ws] User ${user.sub} disconnected`);
       });
 
-      socket.on('error', (err) => {
+      socket.on('error', (err: Error) => {
         fastify.log.warn({ err }, '[ws] Socket error');
         removeConnection(conn);
       });

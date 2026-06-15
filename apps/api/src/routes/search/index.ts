@@ -23,6 +23,8 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
     const startedAt = process.hrtime.bigint();
     const solr = getSolrClient();
     let source: 'solr' | 'pg' = 'pg';
+    const providerId = request.user.provider_id;
+    const scoped = providerId !== undefined;
 
     let patients: Record<string, unknown>[];
 
@@ -31,7 +33,7 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
         const solrQuery = buildSearchCoreQuery({
           searchTerm,
           docType: 'patient',
-          providerId: request.user.provider_id,
+          providerId,
           limit,
           offset: 0,
         });
@@ -56,10 +58,10 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
         source = 'solr';
       } catch (err) {
         request.log.warn({ err }, '[search] Solr query failed — falling back to PG');
-        patients = await pgSearch(searchTerm, limit);
+        patients = await pgSearch(searchTerm, scoped, providerId, limit);
       }
     } else {
-      patients = await pgSearch(searchTerm, limit);
+      patients = await pgSearch(searchTerm, scoped, providerId, limit);
     }
 
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
@@ -75,6 +77,8 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
 
 async function pgSearch(
   searchTerm: string,
+  scoped: boolean,
+  providerId: number | undefined,
   limit: number,
 ): Promise<Record<string, unknown>[]> {
   return sql`
@@ -87,6 +91,7 @@ async function pgSearch(
       similarity(p.first_name || ' ' || p.last_name, ${searchTerm}) AS relevance
     FROM phm_edw.patient p
     WHERE p.active_ind = 'Y'
+      ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
       AND (
         (p.first_name || ' ' || p.last_name) ILIKE ${`%${searchTerm}%`}
         OR p.mrn ILIKE ${`%${searchTerm}%`}

@@ -3,9 +3,8 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import fastifyJwt from '@fastify/jwt';
-import crypto from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Mock @medgnosis/db
@@ -13,10 +12,17 @@ import crypto from 'node:crypto';
 
 type SqlRow = Record<string, unknown>;
 const mockSql = vi.fn<(strings: TemplateStringsArray, ...values: unknown[]) => Promise<SqlRow[]>>();
+const mockUnsafe = vi.fn().mockResolvedValue([]);
+const mockBegin = vi.fn(
+  async (callback: (tx: { unsafe: typeof mockUnsafe }) => Promise<unknown>) => (
+    callback({ unsafe: mockUnsafe })
+  ),
+);
 
 vi.mock('@medgnosis/db', () => ({
   sql: Object.assign(mockSql, {
-    unsafe: vi.fn().mockResolvedValue([]),
+    unsafe: mockUnsafe,
+    begin: mockBegin,
   }),
 }));
 
@@ -30,15 +36,16 @@ vi.mock('bcrypt', () => ({
   },
 }));
 
+const mockConfig = {
+  jwtSecret: 'test-secret-key-for-testing-only',
+  jwtAccessExpiry: '15m',
+  resendApiKey: '',
+  emailFrom: 'test@example.com',
+  publicRegistrationEnabled: true,
+};
+
 // Mock config (avoid requiring real env vars)
-vi.mock('../../../config.js', () => ({
-  config: {
-    jwtSecret: 'test-secret-key-for-testing-only',
-    jwtAccessExpiry: '15m',
-    resendApiKey: '',
-    emailFrom: 'test@example.com',
-  },
-}));
+vi.mock('../../../config.js', () => ({ config: mockConfig }));
 
 // ---------------------------------------------------------------------------
 // Build test app
@@ -71,7 +78,7 @@ beforeAll(async () => {
   // Decorate authenticate
   app.decorate(
     'authenticate',
-    async (request: any, reply: any) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify();
       } catch {
@@ -99,6 +106,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUnsafe.mockResolvedValue([]);
+  mockConfig.publicRegistrationEnabled = true;
 });
 
 // ---------------------------------------------------------------------------
@@ -257,6 +266,20 @@ describe('POST /auth/login', () => {
 });
 
 describe('POST /auth/register', () => {
+  it('returns 403 when public registration is disabled', async () => {
+    mockConfig.publicRegistrationEnabled = false;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'new@example.com', firstName: 'Jane', lastName: 'Doe' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    const body = response.json();
+    expect(body.error.code).toBe('REGISTRATION_DISABLED');
+  });
+
   it('returns 400 for missing required fields', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -295,7 +318,7 @@ describe('POST /auth/register', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.success).toBe(true);
-    expect(body.data.message).toContain('temporary password');
+    expect(body.data.message).toContain('account instructions');
   });
 
   it('returns success for new user registration', async () => {

@@ -121,15 +121,21 @@ export default async function careGapRoutes(fastify: FastifyInstance): Promise<v
     const { status, notes } = parseResult.data;
     const dbStatus = status === 'resolved' ? 'closed' : status;
     const shouldResolve = status === 'closed' || status === 'resolved';
+    const providerId = request.user.provider_id;
+    const scoped = providerId !== undefined;
 
     const [updated] = await sql`
-      UPDATE phm_edw.care_gap
+      UPDATE phm_edw.care_gap cg
       SET gap_status = ${dbStatus},
           resolved_date = ${shouldResolve ? new Date().toISOString() : null},
           comments = COALESCE(${notes ?? null}, comments),
           updated_date = NOW()
-      WHERE care_gap_id = ${id}::int AND active_ind = 'Y'
-      RETURNING care_gap_id AS id, gap_status AS status
+      FROM phm_edw.patient p
+      WHERE cg.care_gap_id = ${id}::int
+        AND cg.active_ind = 'Y'
+        AND p.patient_id = cg.patient_id
+        ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
+      RETURNING cg.care_gap_id AS id, cg.gap_status AS status
     `;
 
     if (!updated) {

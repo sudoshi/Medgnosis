@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Sheet, SheetContent, SheetTitle } from './sheet.js';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from './sheet.js';
 
 describe('Sheet', () => {
   it('renders an open sheet with a title', () => {
@@ -8,6 +8,7 @@ describe('Sheet', () => {
       <Sheet defaultOpen>
         <SheetContent>
           <SheetTitle>Order panel</SheetTitle>
+          <SheetDescription>Review and submit the order.</SheetDescription>
         </SheetContent>
       </Sheet>,
     );

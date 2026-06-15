@@ -52,6 +52,43 @@ describe('buildSearchCoreQuery', () => {
     expect(result.fq?.find((f) => f.startsWith('provider_id:'))).toBeUndefined();
   });
 
+  it('keeps providerId zero as a scoped filter', () => {
+    const result = buildSearchCoreQuery({
+      searchTerm: 'smith',
+      docType: 'patient',
+      providerId: 0,
+      limit: 25,
+      offset: 0,
+    });
+    expect(result.fq).toContain('provider_id:0');
+  });
+
+  it('escapes Solr special characters in the search term', () => {
+    const result = buildSearchCoreQuery({
+      searchTerm: 'smith:(john) && active',
+      docType: 'patient',
+      limit: 25,
+      offset: 0,
+    });
+    expect(result.q).toBe('smith\\:\\(john\\) \\&& active');
+  });
+
+  it('escapes allowed filter values and ignores unknown filter fields', () => {
+    const result = buildSearchCoreQuery({
+      searchTerm: '*:*',
+      docType: 'care_gap',
+      filters: {
+        gap_status: 'open OR *:*',
+        unknown_field: 'patient_id:*',
+      },
+      limit: 25,
+      offset: 0,
+    });
+    expect(result.q).toBe('*:*');
+    expect(result.fq).toContain('gap_status:open OR \\*\\:\\*');
+    expect(result.fq?.some((f) => f.startsWith('unknown_field:'))).toBe(false);
+  });
+
   it('returns correct sort for patients by name', () => {
     const result = buildSearchCoreQuery({
       searchTerm: 'john',

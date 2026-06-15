@@ -2,7 +2,10 @@
 // Medgnosis Web — Vitest setup
 // =============================================================================
 
-import '@testing-library/jest-dom/vitest';
+import { expect } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+
+expect.extend(matchers);
 
 // jsdom lacks browser APIs that Radix/cmdk reference on mount. Stub them so
 // component tests can render without ReferenceErrors.

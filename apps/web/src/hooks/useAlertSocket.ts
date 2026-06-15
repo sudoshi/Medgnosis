@@ -14,12 +14,20 @@ type AlertMessage = {
 
 export function useAlertSocket() {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef(false);
   const queryClient = useQueryClient();
   const { tokens, isAuthenticated } = useAuthStore();
   const setStatus = useWsStore((s) => s.setStatus);
 
   const connect = useCallback(() => {
     if (!isAuthenticated || !tokens?.access_token) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -54,9 +62,13 @@ export function useAlertSocket() {
     };
 
     ws.onclose = () => {
+      wsRef.current = null;
+      if (!shouldReconnectRef.current) {
+        setStatus('disconnected');
+        return;
+      }
       setStatus('reconnecting');
-      // Reconnect after 5 seconds
-      setTimeout(connect, 5000);
+      reconnectTimerRef.current = setTimeout(connect, 5000);
     };
 
     ws.onerror = () => {
@@ -66,10 +78,16 @@ export function useAlertSocket() {
   }, [isAuthenticated, tokens?.access_token, queryClient, setStatus]);
 
   useEffect(() => {
+    shouldReconnectRef.current = isAuthenticated && Boolean(tokens?.access_token);
     connect();
     return () => {
+      shouldReconnectRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       wsRef.current?.close();
       setStatus('disconnected');
     };
-  }, [connect, setStatus]);
+  }, [connect, isAuthenticated, setStatus, tokens?.access_token]);
 }

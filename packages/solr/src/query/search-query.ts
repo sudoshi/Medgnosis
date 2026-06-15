@@ -22,6 +22,23 @@ const PATIENT_FIELDS =
 const CARE_GAP_FIELDS =
   'id,care_gap_id,patient_id,patient_name,measure_name,measure_code,gap_status,gap_priority,due_date,identified_date,resolved_date,doc_type';
 const ALL_FIELDS = `${PATIENT_FIELDS},${CARE_GAP_FIELDS}`;
+const ALLOWED_FILTER_FIELDS = new Set([
+  'gap_status',
+  'gap_priority',
+  'patient_id',
+  'measure_code',
+  'risk_tier',
+  'gender',
+]);
+
+function escapeQueryValue(value: string): string {
+  if (value === '*:*') return value;
+  return value.replace(/(\|\||&&|[+\-!(){}\[\]^"~*?:\\/])/g, '\\$1');
+}
+
+function escapeFilterValue(value: string): string {
+  return escapeQueryValue(value.trim());
+}
 
 function buildSort(
   docType?: string,
@@ -41,12 +58,14 @@ export function buildSearchCoreQuery(
   const fq: string[] = [];
 
   if (opts.docType) fq.push(`doc_type:${opts.docType}`);
-  if (opts.providerId) fq.push(`provider_id:${opts.providerId}`);
+  if (opts.providerId !== undefined) fq.push(`provider_id:${opts.providerId}`);
   if (opts.docType === 'patient') fq.push('active_ind:Y');
 
   if (opts.filters) {
     for (const [key, value] of Object.entries(opts.filters)) {
-      if (value) fq.push(`${key}:${value}`);
+      if (value && ALLOWED_FILTER_FIELDS.has(key)) {
+        fq.push(`${key}:${escapeFilterValue(value)}`);
+      }
     }
   }
 
@@ -59,7 +78,7 @@ export function buildSearchCoreQuery(
         : ALL_FIELDS);
 
   return {
-    q: opts.searchTerm,
+    q: escapeQueryValue(opts.searchTerm),
     fq: fq.length > 0 ? fq : undefined,
     fl,
     sort: buildSort(opts.docType, opts.sortBy, opts.sortOrder),

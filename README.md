@@ -137,9 +137,15 @@ npm run format            # Prettier formatting
 ### Database
 
 ```bash
-npm run db:migrate        # Run pending migrations
-npm run db:seed           # Seed base data (users, orgs)
+npm run db:migrate:list     # Print applied/pending migration status
+npm run db:migrate:dry-run  # Validate migration metadata without applying SQL
+npm run db:migrate          # Run pending migrations
+npm run db:seed             # Seed base data (users, orgs)
 ```
+
+Migrations are serialized with a PostgreSQL advisory lock and recorded with
+SHA-256 checksums. Once a migration is applied, edit-forward with a new migration
+instead of changing the original file.
 
 ### Package-specific commands
 
@@ -168,6 +174,27 @@ Copy `.env.example` to `.env`. Key settings:
 | `SENTRY_DSN` | — | Error tracking (optional) |
 
 See [.env.example](.env.example) for the full list.
+
+### Production Environment Checklist
+
+Before deploying, replace every demo credential or localhost-only value from
+`.env.example`:
+
+- `DATABASE_URL` must point at the intended production PostgreSQL database; do
+  not use `postgres:demosecret`.
+- `JWT_SECRET` must be a high-entropy secret unique to the environment.
+- `NODE_ENV=production`, `CORS_ORIGIN`, `WEB_APP_URL`, and `FHIR_BASE_URL`
+  must match the public origin users and FHIR clients will call.
+- `PUBLIC_REGISTRATION_ENABLED=false` should stay disabled unless an admin
+  activation workflow is intentionally open.
+- `SWAGGER_ENABLED=false` should be used for production unless API docs are
+  deliberately exposed behind a separate control.
+- `CDS_HOOKS_SECRET` is required before production POST hook handlers are used;
+  unauthenticated discovery remains public.
+- In production Docker, Redis and Solr are internal-only services. Use
+  `REDIS_URL=redis://redis:6379` and `SOLR_URL=http://solr:8983/solr` for
+  containers, and use `docker-compose.demo.yml` when local host-published ports
+  are needed.
 
 ## AI Integration
 

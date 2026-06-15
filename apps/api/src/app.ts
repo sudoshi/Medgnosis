@@ -61,7 +61,16 @@ export async function buildApp() {
     noSniff: true,
     frameguard: { action: 'deny' },
     hidePoweredBy: true,
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: config.isProd
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            baseUri: ["'self'"],
+            frameAncestors: ["'none'"],
+            objectSrc: ["'none'"],
+          },
+        }
+      : false,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
@@ -81,7 +90,7 @@ export async function buildApp() {
     timeWindow: '1 minute',
     allowList: (request: FastifyRequest, _key: string) =>
       request.headers['upgrade'] === 'websocket',
-    errorResponseBuilder: (_request, context) => ({
+    errorResponseBuilder: (_request: FastifyRequest, context: { after: string }) => ({
       success: false,
       error: {
         code: 'RATE_LIMITED',
@@ -93,33 +102,35 @@ export async function buildApp() {
   // ------------------------------------------------------------------
   // OpenAPI / Swagger documentation
   // ------------------------------------------------------------------
-  await fastify.register(fastifySwagger, {
-    openapi: {
-      info: {
-        title: 'Medgnosis API',
-        description: 'Population Health Management API',
-        version: '1.0.0',
-      },
-      servers: [{ url: '/' }],
-      components: {
-        securitySchemes: {
-          bearerAuth: {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
+  if (config.swaggerEnabled) {
+    await fastify.register(fastifySwagger, {
+      openapi: {
+        info: {
+          title: 'Medgnosis API',
+          description: 'Population Health Management API',
+          version: '1.0.0',
+        },
+        servers: [{ url: '/' }],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+            },
           },
         },
       },
-    },
-  });
+    });
 
-  await fastify.register(fastifySwaggerUi, {
-    routePrefix: '/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: true,
-    },
-  });
+    await fastify.register(fastifySwaggerUi, {
+      routePrefix: '/docs',
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: true,
+      },
+    });
+  }
 
   // ------------------------------------------------------------------
   // Plugins

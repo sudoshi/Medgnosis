@@ -377,7 +377,7 @@ export function MeasuresPage() {
     queryFn: () => api.get<MeasureRow[]>('/measures'),
   });
 
-  const measures = data?.data ?? [];
+  const measures = useMemo(() => data?.data ?? [], [data]);
 
   // Auto-select the first measure when the list loads
   useEffect(() => {

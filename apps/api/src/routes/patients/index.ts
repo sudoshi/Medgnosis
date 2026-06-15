@@ -9,10 +9,18 @@ import { sql } from '@medgnosis/db';
 import { patientSearchSchema, patientCreateSchema } from '@medgnosis/shared';
 import { getSolrClient } from '../../plugins/solr.js';
 import { buildSearchCoreQuery } from '@medgnosis/solr';
+import { requirePatientAccess } from '../../utils/authz.js';
 
 export default async function patientRoutes(fastify: FastifyInstance): Promise<void> {
   // All patient routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook('preHandler', async (request, reply) => {
+    const params = request.params as { id?: string } | undefined;
+    if (params?.id && !(await requirePatientAccess(request, reply, params.id))) {
+      return reply;
+    }
+    return undefined;
+  });
 
   // GET /patients — List patients with search and pagination
   fastify.get('/', async (request, reply) => {

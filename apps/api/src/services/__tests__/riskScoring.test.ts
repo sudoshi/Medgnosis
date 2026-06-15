@@ -25,7 +25,7 @@ vi.mock('@medgnosis/db', () => ({
 }));
 
 // Import AFTER mocking
-import { computeRiskScore, type RiskScoreResult } from '../riskScoring.js';
+import { computeRiskScore } from '../riskScoring.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

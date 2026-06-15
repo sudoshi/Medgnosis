@@ -40,6 +40,7 @@ export const config = {
   jwtSecret: required('JWT_SECRET'),
   jwtAccessExpiry: optional('JWT_ACCESS_EXPIRY', '15m'),
   jwtRefreshExpiry: optional('JWT_REFRESH_EXPIRY', '7d'),
+  publicRegistrationEnabled: optionalBool('PUBLIC_REGISTRATION_ENABLED', false),
 
   // Redis
   redisUrl: optional('REDIS_URL', 'redis://localhost:6379'),
@@ -74,6 +75,10 @@ export const config = {
 
   // Observability
   sentryDsn: process.env['SENTRY_DSN'] ?? '',
+
+  // External integrations / API documentation
+  cdsHooksSecret: process.env['CDS_HOOKS_SECRET'] ?? '',
+  swaggerEnabled: optionalBool('SWAGGER_ENABLED', optional('NODE_ENV', 'development') !== 'production'),
 
   get isDev(): boolean {
     return this.nodeEnv === 'development';

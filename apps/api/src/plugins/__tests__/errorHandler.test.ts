@@ -2,7 +2,7 @@
 // Unit tests — Error handler plugin
 // =============================================================================
 
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import errorHandlerPlugin from '../error-handler.js';
 
@@ -18,7 +18,7 @@ beforeAll(async () => {
   });
 
   // Route that throws a client error with statusCode
-  app.get('/throw-400', async (_req, reply) => {
+  app.get('/throw-400', async (_req, _reply) => {
     const err: Error & { statusCode?: number; code?: string } = new Error('Bad input');
     err.statusCode = 400;
     err.code = 'BAD_REQUEST';

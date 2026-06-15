@@ -97,8 +97,8 @@ services:
     container_name: medgnosis-redis
     image: redis:7-alpine
     command: redis-server --appendonly yes
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -126,8 +126,8 @@ services:
         precreate-core clinical /opt/solr/server/solr/configsets/clinical;
         exec solr-foreground
       "
-    ports:
-      - "${SOLR_PORT:-8984}:8983"
+    expose:
+      - "8983"
     environment:
       SOLR_JAVA_MEM: "-Xms2g -Xmx4g"
     volumes:

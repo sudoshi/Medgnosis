@@ -655,7 +655,10 @@ export function BundlesPage() {
 
   const { data, isLoading } = useBundlePopulation();
 
-  const bundles: PopulationBundle[] = (data as { data?: { bundles?: PopulationBundle[] } })?.data?.bundles ?? [];
+  const bundles: PopulationBundle[] = useMemo(
+    () => (data as { data?: { bundles?: PopulationBundle[] } })?.data?.bundles ?? [],
+    [data],
+  );
   const summary = (data as { data?: { summary?: { total_bundles: number; total_patients: number; avg_compliance: number; total_open_gaps: number; total_closed_gaps: number } } })?.data?.summary;
 
   // Group bundles by disease_category

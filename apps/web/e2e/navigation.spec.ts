@@ -11,7 +11,7 @@ test.describe('Navigation', () => {
   test('login page renders with branding', async ({ page }) => {
     await page.goto('/login');
     await expect(page.getByText('Medgnosis')).toBeVisible();
-    await expect(page.getByText('Population Health Management')).toBeVisible();
+    await expect(page.getByText('Welcome back')).toBeVisible();
   });
 
   test('404 page renders for unknown routes', async ({ page }) => {
