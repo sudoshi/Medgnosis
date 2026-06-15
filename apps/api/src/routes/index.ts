@@ -19,6 +19,8 @@ import bundleRoutes from './bundles/index.js';
 import clinicalNoteRoutes from './clinical-notes/index.js';
 import orderRoutes from './orders/index.js';
 import cdsHooksRoutes from './cds-hooks/index.js';
+import cdsFeedbackRoutes from './cds-hooks/feedback.js';
+import cdsBurdenRoutes from './cds/burden.js';
 import rulesRoutes from './rules/index.js';
 import valueSetRoutes from './value-sets/index.js';
 import problemListRoutes from './problem-list/index.js';
@@ -41,6 +43,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // CDS Hooks — mounted at root (no API prefix, no auth per HL7 spec)
   await fastify.register(cdsHooksRoutes, { prefix: '/cds-services' });
+  // CDS Hooks 2.0.1 feedback loop — same prefix, separate plugin
+  await fastify.register(cdsFeedbackRoutes, { prefix: '/cds-services' });
 
   // Versioned API routes
   await fastify.register(
@@ -51,6 +55,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(measureRoutes, { prefix: '/measures' });
       await api.register(careGapRoutes, { prefix: '/care-gaps' });
       await api.register(alertRoutes, { prefix: '/alerts' });
+      await api.register(cdsBurdenRoutes, { prefix: '/cds' });
       await api.register(insightsRoutes, { prefix: '/insights' });
       await api.register(searchRoutes, { prefix: '/search' });
       await api.register(fhirRoutes, { prefix: '/fhir' });
