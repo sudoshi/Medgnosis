@@ -178,8 +178,10 @@ async function websocketPlugin(fastify: FastifyInstance): Promise<void> {
     );
   }
 
-  // GET /ws — WebSocket upgrade endpoint (authenticated users only)
-  const websocketGet = fastify.get as unknown as WebSocketRoute;
+  // GET /ws — WebSocket upgrade endpoint (authenticated users only).
+  // NB: must .bind(fastify) — a bare `fastify.get` reference loses its `this`,
+  // crashing route registration (this[kSupportedHTTPMethods] undefined) at boot.
+  const websocketGet = fastify.get.bind(fastify) as unknown as WebSocketRoute;
   websocketGet(
     '/ws',
     { websocket: true, preHandler: [fastify.authenticate] },
