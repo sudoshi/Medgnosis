@@ -28,7 +28,7 @@ export function ItemTypeBadge({ type }: { type: string }) {
     lab: 'bg-teal/10 text-teal border-teal/20',
     imaging: 'bg-violet/10 text-violet border-violet/20',
     medication: 'bg-amber/10 text-amber border-amber/20',
-    referral: 'bg-cyan/10 text-cyan border-cyan/20',
+    referral: 'bg-info/10 text-info border-info/20',
     procedure: 'bg-dim/10 text-dim border-dim/20',
   };
   return (

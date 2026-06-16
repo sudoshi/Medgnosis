@@ -62,7 +62,7 @@ function MeasureRow({
       {/* Status / Action */}
       <div className="flex-shrink-0 w-[110px] flex justify-end">
         {isOrdered ? (
-          <span className="badge bg-blue/10 text-blue border-blue/20">Ordered</span>
+          <span className="badge-info">Ordered</span>
         ) : order ? (
           <button
             onClick={() => onPlaceOrder(order, measure, patientId)}

@@ -441,7 +441,7 @@ export function EncounterNotePage() {
         <div className="flex items-end gap-4 flex-wrap">
           {/* Visit type */}
           <div className="flex-shrink-0">
-            <label className="label-text mb-1 block">Visit Type</label>
+            <label className="data-label mb-1 block">Visit Type</label>
             <Select
               value={visitType}
               onValueChange={(v) => {
@@ -465,7 +465,7 @@ export function EncounterNotePage() {
 
           {/* Chief complaint */}
           <div className="flex-1 min-w-[200px]">
-            <label className="label-text mb-1 block">Chief Complaint</label>
+            <label className="data-label mb-1 block">Chief Complaint</label>
             <Input
               type="text"
               value={chiefComplaint}
