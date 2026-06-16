@@ -43,15 +43,18 @@ export function ItemTypeBadge({ type }: { type: string }) {
 
 export function PriorityDot({ priority }: { priority: string | null }) {
   if (!priority) return null;
-  const colors: Record<string, string> = {
-    high: 'bg-crimson',
-    medium: 'bg-amber',
-    low: 'bg-emerald',
+  const cfg: Record<string, { dot: string; letter: string }> = {
+    high: { dot: 'bg-crimson', letter: 'H' },
+    medium: { dot: 'bg-amber', letter: 'M' },
+    low: { dot: 'bg-emerald', letter: 'L' },
   };
+  const c = cfg[priority] ?? { dot: 'bg-dim', letter: '?' };
+  const label = `${priority} priority`;
+  // Color + letter + accessible label — never priority-by-color-alone.
   return (
-    <span
-      className={`inline-block w-2 h-2 rounded-full ${colors[priority] ?? 'bg-dim'}`}
-      title={`${priority} priority`}
-    />
+    <span className="inline-flex items-center gap-1" title={label} aria-label={label}>
+      <span className={`inline-block w-2 h-2 rounded-full ${c.dot}`} aria-hidden="true" />
+      <span className="text-[10px] font-medium text-dim" aria-hidden="true">{c.letter}</span>
+    </span>
   );
 }
