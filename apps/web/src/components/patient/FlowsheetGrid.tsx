@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { usePatientFlowsheet } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 import { TrendingUp } from 'lucide-react';
 
 interface FlowsheetGridProps {
@@ -54,7 +55,7 @@ interface FlowsheetPoint {
 export function FlowsheetGrid({ patientId, onTrend }: FlowsheetGridProps) {
   const [category, setCategory] = useState('');
 
-  const { data, isLoading } = usePatientFlowsheet(patientId, category || undefined);
+  const { data, isLoading, isError, refetch } = usePatientFlowsheet(patientId, category || undefined);
   const rawPoints = (data?.data ?? []) as FlowsheetPoint[];
 
   if (isLoading) {
@@ -65,6 +66,14 @@ export function FlowsheetGrid({ patientId, onTrend }: FlowsheetGridProps) {
             <div key={i} className="skeleton h-8 rounded" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="surface">
+        <QueryError what="flowsheet observations" onRetry={() => void refetch()} />
       </div>
     );
   }

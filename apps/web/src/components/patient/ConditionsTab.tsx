@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Activity } from 'lucide-react';
 import { usePatientConditions } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 
 interface Condition {
   id: number;
@@ -68,7 +69,7 @@ const GROUPS: GroupConfig[] = [
 
 export function ConditionsTab({ patientId }: ConditionsTabProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ resolved: true });
-  const { data, isLoading } = usePatientConditions(patientId, { limit: 500 });
+  const { data, isLoading, isError, refetch } = usePatientConditions(patientId, { limit: 500 });
   const conditions = (data?.data ?? []) as Condition[];
 
   if (isLoading) {
@@ -77,6 +78,14 @@ export function ConditionsTab({ patientId }: ConditionsTabProps) {
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="skeleton h-16 rounded-card" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="surface">
+        <QueryError what="conditions" onRetry={() => void refetch()} />
       </div>
     );
   }

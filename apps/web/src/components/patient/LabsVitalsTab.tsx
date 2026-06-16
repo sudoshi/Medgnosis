@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { usePatientObservations } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 import { FlowsheetGrid } from './FlowsheetGrid.js';
 import { ObservationTrendChart } from './ObservationTrendChart.js';
 import { Beaker, Grid3x3, TrendingUp, List, AlertTriangle } from 'lucide-react';
@@ -36,7 +37,7 @@ export function LabsVitalsTab({ patientId }: LabsVitalsTabProps) {
   const [trendingCode, setTrendingCode] = useState<string | null>(null);
   const [trendingLabel, setTrendingLabel] = useState<string>('');
 
-  const { data, isLoading } = usePatientObservations(patientId, { limit: 200 });
+  const { data, isLoading, isError, refetch } = usePatientObservations(patientId, { limit: 200 });
 
   const observations = (data?.data ?? []) as Array<{
     id: number;
@@ -67,6 +68,14 @@ export function LabsVitalsTab({ patientId }: LabsVitalsTabProps) {
             <div className="skeleton h-3 w-16 rounded" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="surface">
+        <QueryError what="labs and vitals" onRetry={() => void refetch()} />
       </div>
     );
   }

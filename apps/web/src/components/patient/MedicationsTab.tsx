@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { usePatientMedications } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 import { Pill } from 'lucide-react';
 
 interface MedicationsTabProps {
@@ -32,7 +33,7 @@ function statusBadge(status: string | null) {
 }
 
 export function MedicationsTab({ patientId }: MedicationsTabProps) {
-  const { data, isLoading } = usePatientMedications(patientId);
+  const { data, isLoading, isError, refetch } = usePatientMedications(patientId);
 
   const medications = (data?.data ?? []) as Array<{
     id: number;
@@ -59,6 +60,14 @@ export function MedicationsTab({ patientId }: MedicationsTabProps) {
             <div className="skeleton h-2.5 w-1/2 rounded" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="surface">
+        <QueryError what="medications" onRetry={() => void refetch()} />
       </div>
     );
   }

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { usePatientCareBundle, usePatientConditions, usePatientEncounters, usePatientObservations, usePatientMedications } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 
 interface OverviewTabProps {
   patientId: string;
@@ -93,10 +94,10 @@ function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
 }
 
 export function OverviewTab({ patientId, onTabChange }: OverviewTabProps) {
-  const { data: conditionsData } = usePatientConditions(patientId, { limit: 50 });
-  const { data: encountersData } = usePatientEncounters(patientId, { limit: 5, page: 1 });
-  const { data: observationsData } = usePatientObservations(patientId, { limit: 20, offset: 0 });
-  const { data: medicationsData } = usePatientMedications(patientId);
+  const { data: conditionsData, isError: condError, refetch: refetchCond } = usePatientConditions(patientId, { limit: 50 });
+  const { data: encountersData, isError: encError, refetch: refetchEnc } = usePatientEncounters(patientId, { limit: 5, page: 1 });
+  const { data: observationsData, isError: obsError, refetch: refetchObs } = usePatientObservations(patientId, { limit: 20, offset: 0 });
+  const { data: medicationsData, isError: medError, refetch: refetchMed } = usePatientMedications(patientId);
 
   const conditions = (conditionsData?.data ?? []) as Array<{ id: number; code: string; name: string; status: string; onset_date: string }>;
   const encounters = (encountersData?.data ?? []) as Array<{ id: number; date: string; type: string; reason: string | null; provider_name?: string | null }>;
@@ -116,6 +117,24 @@ export function OverviewTab({ patientId, onTabChange }: OverviewTabProps) {
     total_measures: number;
     deduplicated_measures: number;
   } | undefined;
+
+  // A failed core query must not render as "no data" — show one honest error.
+  const anyError = condError || encError || obsError || medError;
+  if (anyError) {
+    return (
+      <div className="surface">
+        <QueryError
+          what="patient overview"
+          onRetry={() => {
+            void refetchCond();
+            void refetchEnc();
+            void refetchObs();
+            void refetchMed();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

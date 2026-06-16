@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { usePatientEncounters } from '../../hooks/useApi.js';
+import { QueryError } from '../QueryError.js';
 import {
   Calendar,
   ChevronDown,
@@ -58,7 +59,7 @@ export function EncountersTab({ patientId }: EncountersTabProps) {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const { data, isLoading } = usePatientEncounters(patientId, { limit: 25, page });
+  const { data, isLoading, isError, refetch } = usePatientEncounters(patientId, { limit: 25, page });
 
   const encounters = data?.data ?? [];
   const meta = data?.meta;
@@ -75,6 +76,14 @@ export function EncountersTab({ patientId }: EncountersTabProps) {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="surface">
+        <QueryError what="encounters" onRetry={() => void refetch()} />
       </div>
     );
   }
