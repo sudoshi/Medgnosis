@@ -324,7 +324,11 @@ function BundleDetailPanel({
       <div className="surface">
         <h3 className="text-xs font-semibold text-bright mb-3">Risk Distribution</h3>
         <div className="flex items-center gap-2 mb-2">
-          <div className="flex-1 h-3 rounded-full bg-s2 overflow-hidden flex">
+          <div
+            className="flex-1 h-3 rounded-full bg-s2 overflow-hidden flex"
+            role="img"
+            aria-label={`Risk distribution: ${bundle.critical_patients} critical, ${bundle.high_risk_patients} high, ${otherPatients} other`}
+          >
             {bundle.patient_count > 0 && (
               <>
                 {bundle.critical_patients > 0 && (
