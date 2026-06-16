@@ -4,7 +4,7 @@
 // the diagnosis as the plan is written. Documentation as the cockpit.
 // =============================================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { FileText, ArrowLeft, Stethoscope, ClipboardList, FlaskConical, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
@@ -14,6 +14,7 @@ import {
   labLabel,
   type ApScaffoldEntry,
 } from '../hooks/useSuperNote.js';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard.js';
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -33,15 +34,38 @@ export function SuperNotePage() {
   const note = data?.data;
   const [plans, setPlans] = useState<Record<string, string>>({});
   const [includeGaps, setIncludeGaps] = useState(true);
+  const [filed, setFiled] = useState(false);
 
-  // Seed plan editor state once the note loads.
-  useEffect(() => {
-    if (note) {
-      const seed: Record<string, string> = {};
-      note.assessment_plan.forEach((e, i) => { seed[`${e.icd10_code}-${i}`] = e.current_plan; });
-      setPlans(seed);
-    }
+  const draftKey = `mg_supernote_draft_${patientId ?? ''}`;
+
+  // Seed plan editor from the record, then restore any unsaved local draft on top.
+  const seed = useMemo(() => {
+    const s: Record<string, string> = {};
+    note?.assessment_plan.forEach((e, i) => { s[`${e.icd10_code}-${i}`] = e.current_plan; });
+    return s;
   }, [note]);
+
+  useEffect(() => {
+    if (!note) return;
+    let restored = seed;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) restored = { ...seed, ...(JSON.parse(saved) as Record<string, string>) };
+    } catch { /* ignore malformed draft */ }
+    setPlans(restored);
+  }, [note, seed, draftKey]);
+
+  const isDirty = useMemo(
+    () => !!note && !filed && JSON.stringify(plans) !== JSON.stringify(seed),
+    [note, filed, plans, seed],
+  );
+
+  // No server draft endpoint exists for SuperNote, so unsaved A&P plans are
+  // persisted to localStorage (survives in-app navigation); beforeunload warns
+  // on tab close / refresh.
+  useUnsavedChangesGuard(isDirty, () => {
+    try { localStorage.setItem(draftKey, JSON.stringify(plans)); } catch { /* quota */ }
+  });
 
   if (isLoading) return <div className="py-16 text-center text-dim">Assembling note…</div>;
   if (!note) return <div className="py-16 text-center text-dim">Patient not found.</div>;
@@ -54,7 +78,11 @@ export function SuperNotePage() {
     finalize.mutate(
       { ap },
       {
-        onSuccess: (res) => toast.success(`Note filed — ${res.data?.coded ?? 0} diagnoses coded`),
+        onSuccess: (res) => {
+          setFiled(true);
+          try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+          toast.success(`Note filed — ${res.data?.coded ?? 0} diagnoses coded`);
+        },
         onError: () => toast.error('Finalize failed'),
       },
     );

@@ -23,6 +23,7 @@ import {
   useFinalizeClinicalNote,
   useAiScribe,
 } from '../hooks/useApi.js';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard.js';
 import { SOAPSectionEditor } from '../components/encounter/SOAPSectionEditor.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,6 +112,7 @@ export function EncounterNotePage() {
   const [saveIndicator, setSaveIndicator] = useState<'idle' | 'saving' | 'saved'>('idle');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   // Queries
   const { data: patientData } = useQuery({
@@ -180,6 +182,7 @@ export function EncounterNotePage() {
   // Auto-save debounce
   const triggerAutoSave = useCallback(() => {
     if (!noteId || noteStatus !== 'draft') return;
+    setIsDirty(true);
 
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
@@ -196,6 +199,7 @@ export function EncounterNotePage() {
         {
           onSuccess: () => {
             setSaveIndicator('saved');
+            setIsDirty(false);
             setTimeout(() => setSaveIndicator('idle'), 2000);
           },
           onError: () => setSaveIndicator('idle'),
@@ -231,12 +235,28 @@ export function EncounterNotePage() {
       {
         onSuccess: () => {
           setSaveIndicator('saved');
+          setIsDirty(false);
           setTimeout(() => setSaveIndicator('idle'), 2000);
         },
         onError: () => setSaveIndicator('idle'),
       },
     );
   }, [noteId, noteStatus, chiefComplaint, soapContent, visitType, updateNote]);
+
+  // Flush pending edits when navigating away (fire-and-forget; no setState so it
+  // is safe to run during unmount). The SPA keeps the request alive after the
+  // page unmounts, so the draft persists.
+  const flushPendingSave = useCallback(() => {
+    if (!noteId || noteStatus !== 'draft') return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    updateNote.mutate({
+      noteId,
+      data: { chief_complaint: chiefComplaint || undefined, ...soapContent, visit_type: visitType },
+    });
+  }, [noteId, noteStatus, chiefComplaint, soapContent, visitType, updateNote]);
+
+  // Guard against silent data loss: warn on tab close/refresh, flush on in-app nav.
+  useUnsavedChangesGuard(isDirty, flushPendingSave);
 
   // AI Scribe — single section
   const handleAiGenerate = useCallback(
