@@ -46,9 +46,14 @@ export function DashboardPage() {
     );
   }
 
-  const schedule = USE_MOCK_SCHEDULE
+  // Prefer real appointments; fall back to a clearly-labeled sample only when the
+  // dataset has none (the demo EDW carries no live schedule) — never present mock
+  // patients unlabeled as if they were real.
+  const realSchedule = clinician?.todays_schedule ?? [];
+  const usingSampleSchedule = realSchedule.length === 0 && USE_MOCK_SCHEDULE;
+  const schedule = usingSampleSchedule
     ? (MOCK_SCHEDULE as unknown as NonNullable<typeof clinician>['todays_schedule'])
-    : (clinician?.todays_schedule ?? []);
+    : realSchedule;
   const alerts     = clinician?.urgent_alerts     ?? [];
   const criticalCt = clinician?.critical_alert_count ?? 0;
   const abby       = clinician?.abby_briefing;
@@ -92,7 +97,7 @@ export function DashboardPage() {
 
       {/* SECTION 3 — Clinician Workspace (Schedule + Alerts) */}
       <SectionDivider label="Today's Workspace" />
-      <WorkspaceSection isLoading={isLoading} schedule={schedule} alerts={alerts} />
+      <WorkspaceSection isLoading={isLoading} schedule={schedule} alerts={alerts} isSampleSchedule={usingSampleSchedule} />
 
       {/* SECTION 4 — Population Health */}
       <SectionDivider label="Population Health" />

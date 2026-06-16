@@ -21,9 +21,10 @@ interface WorkspaceSectionProps {
   isLoading: boolean;
   schedule: ScheduleEntry[];
   alerts: AlertEntry[];
+  isSampleSchedule?: boolean;
 }
 
-export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSectionProps) {
+export function WorkspaceSection({ isLoading, schedule, alerts, isSampleSchedule = false }: WorkspaceSectionProps) {
   const hasCritical = alerts.some((a) => a.severity === 'critical');
 
   if (isLoading) {
@@ -51,6 +52,11 @@ export function WorkspaceSection({ isLoading, schedule, alerts }: WorkspaceSecti
           <div className="flex items-center gap-2.5">
             <Calendar size={15} strokeWidth={1.5} className="text-teal" />
             <h3 className="text-base font-semibold text-bright">Today&apos;s Schedule</h3>
+            {isSampleSchedule && (
+              <span className="badge-dim text-[10px]" title="Demo schedule — this dataset has no live appointments">
+                Sample data
+              </span>
+            )}
           </div>
           <span className="font-data text-sm text-ghost tabular-nums">
             {schedule.length} visit{schedule.length !== 1 ? 's' : ''}
