@@ -27,6 +27,15 @@ import {
 import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard.js';
 import { SOAPSectionEditor } from '../components/encounter/SOAPSectionEditor.js';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -567,39 +576,44 @@ export function EncounterNotePage() {
         </div>
       </div>
 
-      {/* Finalize confirmation dialog */}
-      {showFinalizeDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="surface max-w-md w-full mx-4 space-y-4">
-            <h2 className="text-lg font-bold text-bright">Finalize & Sign Note</h2>
-            <p className="text-sm text-dim">
-              Once finalized, this note will be locked and cannot be edited.
-              You can amend it later if needed.
-            </p>
-            <p className="text-xs text-ghost">
-              By signing, you attest that this documentation is accurate and complete.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowFinalizeDialog(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleFinalize}
-                disabled={finalizeNote.isPending}
-                className="gap-1.5"
-              >
-                {finalizeNote.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Lock />
-                )}
-                Finalize & Sign
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Finalize confirmation — Radix AlertDialog (focus trap, ESC, scroll-lock) */}
+      <AlertDialog
+        open={showFinalizeDialog}
+        onOpenChange={(o) => {
+          if (!o) setShowFinalizeDialog(false);
+        }}
+      >
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalize & Sign Note</AlertDialogTitle>
+            <AlertDialogDescription>
+              Once finalized, this note will be locked and cannot be edited. You can amend it
+              later if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-xs text-ghost">
+            By signing, you attest that this documentation is accurate and complete.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={finalizeNote.isPending}>Cancel</AlertDialogCancel>
+            {/* Plain Button (not AlertDialogAction) so the dialog stays open during the
+                async finalize to show pending; handleFinalize closes it on success. */}
+            <Button
+              size="sm"
+              onClick={handleFinalize}
+              disabled={finalizeNote.isPending}
+              className="gap-1.5"
+            >
+              {finalizeNote.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Lock />
+              )}
+              Finalize & Sign
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
