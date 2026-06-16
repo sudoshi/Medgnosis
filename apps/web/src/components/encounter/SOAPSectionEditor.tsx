@@ -25,6 +25,7 @@ import { TaskItem } from '@tiptap/extension-task-item';
 import { TaskList } from '@tiptap/extension-task-list';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
+import { Placeholder } from '@tiptap/extension-placeholder';
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ export function SOAPSectionEditor({
       TiptapLink.configure({ openOnClick: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Placeholder.configure({ placeholder }),
     ],
     content: value || `<p></p>`,
     editable: !readOnly,
@@ -102,17 +104,12 @@ export function SOAPSectionEditor({
     },
     editorProps: {
       attributes: {
-        class: [
-          'prose prose-invert prose-sm max-w-none focus:outline-none min-h-[120px] px-4 py-3',
-          'prose-headings:text-bright prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2',
-          'prose-p:my-2 prose-p:leading-relaxed prose-p:text-dim',
-          'prose-a:text-teal prose-a:no-underline hover:prose-a:underline',
-          'prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5',
-          'prose-ol:my-2 prose-ol:list-decimal prose-ol:pl-5',
-          'prose-li:my-0.5 prose-li:text-dim',
-          'prose-blockquote:border-l-2 prose-blockquote:border-teal/40 prose-blockquote:pl-3 prose-blockquote:italic prose-blockquote:text-ghost',
-          'prose-code:rounded prose-code:bg-edge/40 prose-code:px-1 prose-code:text-xs',
-        ].join(' '),
+        // Visual styling comes from the themed `.prose` block in globals.css
+        // (token-driven, light+dark). No `prose-invert` / per-element modifiers.
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[120px] px-4 py-3',
+        'aria-label': label,
+        role: 'textbox',
+        'aria-multiline': 'true',
       },
     },
   });
@@ -180,7 +177,7 @@ export function SOAPSectionEditor({
 
       {/* Toolbar */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5 border-b border-edge/10 bg-surface-alt/30">
+        <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5 border-b border-edge/10 bg-s1/40">
           <ToolbarBtn
             onClick={() => editor.chain().focus().toggleBold().run()}
             icon={Bold}
@@ -245,7 +242,7 @@ export function SOAPSectionEditor({
       <div className={`relative ${isGenerating ? 'opacity-50 pointer-events-none' : ''}`}>
         {isGenerating && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="flex items-center gap-2 text-teal text-sm bg-surface/90 px-4 py-2 rounded-lg">
+            <div className="flex items-center gap-2 text-teal text-sm bg-s0/95 px-4 py-2 rounded-lg">
               <Loader2 size={16} className="animate-spin" />
               Generating {label.toLowerCase()}...
             </div>
@@ -253,7 +250,6 @@ export function SOAPSectionEditor({
         )}
         <EditorContent
           editor={editor}
-          data-placeholder={placeholder}
           data-section={section}
         />
       </div>

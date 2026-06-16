@@ -690,3 +690,69 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =============================================================================
+   RICH TEXT EDITOR — TipTap (.ProseMirror) + .prose, themed to tokens.
+   Intentionally OUTSIDE @layer: the selectors (.ProseMirror, .is-editor-empty)
+   are added at runtime by TipTap, so Tailwind would purge them from @layer.
+   Plain CSS here is always emitted. Works in BOTH light and dark.
+   ============================================================================= */
+.ProseMirror {
+  outline: none;
+}
+.ProseMirror:focus,
+.ProseMirror:focus-visible {
+  outline: none;
+}
+
+/* Empty-state placeholder — TipTap Placeholder extension marks the empty node;
+   this renders the per-section clinical prompt text. */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: rgb(var(--ghost));
+  font-style: italic;
+}
+
+/* Theme @tailwindcss/typography via its --tw-prose-* vars (the supported hook)
+   so rich text stays legible in light and dark without `prose-invert`. */
+.prose {
+  --tw-prose-body:          rgb(var(--dim));
+  --tw-prose-headings:      rgb(var(--bright));
+  --tw-prose-lead:          rgb(var(--dim));
+  --tw-prose-links:         var(--primary);
+  --tw-prose-bold:          rgb(var(--bright));
+  --tw-prose-counters:      rgb(var(--dim));
+  --tw-prose-bullets:       rgb(var(--dim));
+  --tw-prose-hr:            rgb(var(--edge) / 0.4);
+  --tw-prose-quotes:        rgb(var(--ghost));
+  --tw-prose-quote-borders: rgb(var(--teal) / 0.4);
+  --tw-prose-captions:      rgb(var(--ghost));
+  --tw-prose-code:          rgb(var(--bright));
+  --tw-prose-pre-code:      rgb(var(--bright));
+  --tw-prose-pre-bg:        rgb(var(--s2));
+  --tw-prose-th-borders:    rgb(var(--edge));
+  --tw-prose-td-borders:    rgb(var(--edge) / 0.5);
+}
+.prose :where(h1, h2, h3, h4, h5, h6):not(:where([class~='not-prose'] *)) {
+  font-family: var(--font-heading);
+}
+.prose :where(a):not(:where([class~='not-prose'] *)) {
+  text-decoration: none;
+}
+.prose :where(a):not(:where([class~='not-prose'] *)):hover {
+  text-decoration: underline;
+}
+.prose :where(code):not(:where([class~='not-prose'] *)) {
+  background: rgb(var(--edge) / 0.4);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  font-weight: 500;
+}
+/* Strip typography's default backtick quotes around inline code */
+.prose :where(code):not(:where([class~='not-prose'] *))::before,
+.prose :where(code):not(:where([class~='not-prose'] *))::after {
+  content: none;
+}

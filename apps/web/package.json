@@ -36,6 +36,7 @@
     "@tiptap/extension-highlight": "^2.11.3",
     "@tiptap/extension-image": "^2.11.3",
     "@tiptap/extension-link": "^2.11.3",
+    "@tiptap/extension-placeholder": "^2.27.2",
     "@tiptap/extension-task-item": "^2.11.3",
     "@tiptap/extension-task-list": "^2.11.3",
     "@tiptap/extension-typography": "^2.11.3",
@@ -59,6 +60,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@tailwindcss/typography": "^0.5.20",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.1.0",
