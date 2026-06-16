@@ -11,6 +11,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useOrderWorklist, usePlaceOrder, usePlaceOrderBatch } from '../hooks/useApi.js';
 import { Pagination } from '../components/Pagination.js';
+import { DataBoundary } from '../components/DataBoundary.js';
 import { useToast } from '../stores/ui.js';
 import type { OrderItem, WorklistMeasure, WorklistPatient } from './care-lists/types.js';
 import { CareListsStatsStrip } from './care-lists/StatsStrip.js';
@@ -48,7 +49,7 @@ export function CareListsPage() {
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
-  const { data, isLoading } = useOrderWorklist({
+  const { data, isLoading, isError, refetch } = useOrderWorklist({
     search: debouncedSearch || undefined,
     page,
     per_page: perPage,
@@ -187,41 +188,42 @@ export function CareListsPage() {
 
       {/* Worklist */}
       <div className="surface p-0 overflow-hidden animate-fade-up stagger-3">
-        {/* Loading skeletons */}
-        {isLoading && (
-          <div>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-edge/15">
-                <div className="skeleton w-4 h-4 rounded flex-shrink-0" />
-                <div className="skeleton w-8 h-8 rounded-full flex-shrink-0" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="skeleton h-3 w-40 rounded" />
-                  <div className="skeleton h-2.5 w-56 rounded" />
+        <DataBoundary
+          isLoading={isLoading}
+          isError={isError}
+          isEmpty={patients.length === 0}
+          what="the care-gap worklist"
+          onRetry={() => void refetch()}
+          loading={
+            <div>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-edge/15">
+                  <div className="skeleton w-4 h-4 rounded flex-shrink-0" />
+                  <div className="skeleton w-8 h-8 rounded-full flex-shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="skeleton h-3 w-40 rounded" />
+                    <div className="skeleton h-2.5 w-56 rounded" />
+                  </div>
+                  <div className="skeleton h-5 w-20 rounded-pill" />
                 </div>
-                <div className="skeleton h-5 w-20 rounded-pill" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!isLoading && patients.length === 0 && (
-          <div className="empty-state py-16">
-            <p className="empty-state-title">No open care gaps found</p>
-            {debouncedSearch ? (
-              <p className="empty-state-desc">
-                No results for <span className="text-bright font-medium">&quot;{debouncedSearch}&quot;</span>
-              </p>
-            ) : (
-              <p className="empty-state-desc text-emerald">
-                All care gaps are resolved — excellent work!
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Patient groups */}
-        {!isLoading && patients.length > 0 && (
+              ))}
+            </div>
+          }
+          empty={
+            <div className="empty-state py-16">
+              <p className="empty-state-title">No open care gaps found</p>
+              {debouncedSearch ? (
+                <p className="empty-state-desc">
+                  No results for <span className="text-bright font-medium">&quot;{debouncedSearch}&quot;</span>
+                </p>
+              ) : (
+                <p className="empty-state-desc text-emerald">
+                  All care gaps are resolved — excellent work!
+                </p>
+              )}
+            </div>
+          }
+        >
           <div>
             {patients.map((patient, idx) => (
               <PatientBundleGroup
@@ -234,7 +236,7 @@ export function CareListsPage() {
               />
             ))}
           </div>
-        )}
+        </DataBoundary>
       </div>
 
       {/* Pagination */}
