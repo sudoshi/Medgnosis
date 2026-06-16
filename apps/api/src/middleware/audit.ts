@@ -17,7 +17,7 @@ export async function auditMiddleware(
   // Log after response is sent
   reply.then(async () => {
     try {
-      const userId = (req.user as { id?: number })?.id ?? null;
+      const userId = (req.user as { sub?: string } | undefined)?.sub ?? null;
       const action = `${req.method} ${req.url}`;
 
       // Redact sensitive fields from request body
@@ -32,7 +32,7 @@ export async function auditMiddleware(
       await sql`
         INSERT INTO audit_log (user_id, action, resource_type, resource_id, details, ip_address)
         VALUES (
-          ${userId},
+          ${userId}::uuid,
           ${action},
           ${extractResourceType(req.url)},
           ${extractResourceId(req.url)},

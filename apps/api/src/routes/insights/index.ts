@@ -13,6 +13,7 @@ import {
   getPatientClinicalContext,
   formatContextForPrompt,
 } from '../../services/patientContext.js';
+import { requirePatientAccess } from '../../utils/authz.js';
 
 // ─── System Prompts ─────────────────────────────────────────────────────────
 
@@ -83,18 +84,7 @@ export default async function insightsRoutes(fastify: FastifyInstance): Promise<
       let contextSummary: string | undefined;
 
       if (body.patient_id) {
-        // Verify patient exists
-        const [patient] = await sql`
-          SELECT patient_id FROM phm_edw.patient
-          WHERE patient_id = ${body.patient_id} AND active_ind = 'Y'
-        `;
-
-        if (!patient) {
-          return reply.status(404).send({
-            success: false,
-            error: { code: 'PATIENT_NOT_FOUND', message: 'Patient not found' },
-          });
-        }
+        if (!(await requirePatientAccess(request, reply, body.patient_id))) return reply;
 
         // Fetch clinical context and build enriched prompt
         const ctx = await getPatientClinicalContext(body.patient_id);

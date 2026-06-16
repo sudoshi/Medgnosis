@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { placeOrderSchema, placeOrderBatchSchema } from '@medgnosis/shared';
+import { getActorScope, requirePatientAccess } from '../../utils/authz.js';
 
 // ─── FHIR ServiceRequest builder ─────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     const page = parseInt(query.page ?? '1', 10);
     const perPage = parseInt(query.per_page ?? '20', 10);
     const offset = (page - 1) * perPage;
+    const { providerId, scoped } = getActorScope(request);
 
     // Step 1: Get distinct patients with open care gaps (paginated)
     const [patients, [countResult]] = await Promise.all([
@@ -92,6 +94,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
         FROM phm_edw.care_gap cg
         JOIN phm_edw.patient p ON p.patient_id = cg.patient_id
         WHERE cg.active_ind = 'Y' AND cg.gap_status IN ('open', 'identified')
+          ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
           ${query.search
             ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${'%' + query.search + '%'}`
             : sql``}
@@ -103,6 +106,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
         FROM phm_edw.care_gap cg
         JOIN phm_edw.patient p ON p.patient_id = cg.patient_id
         WHERE cg.active_ind = 'Y' AND cg.gap_status IN ('open', 'identified')
+          ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
           ${query.search
             ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${'%' + query.search + '%'}`
             : sql``}
@@ -269,6 +273,8 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     async (request, reply) => {
       const patientId = parseInt(request.params.patientId, 10);
 
+      if (!(await requirePatientAccess(request, reply, patientId))) return reply;
+
       // Verify patient
       const [patient] = await sql<{ patient_id: number; first_name: string; last_name: string }[]>`
         SELECT patient_id, first_name, last_name
@@ -410,6 +416,8 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
 
     const { patient_id, care_gap_id, order_set_item_id, priority, instructions } = parseResult.data;
 
+    if (!(await requirePatientAccess(request, reply, patient_id))) return reply;
+
     // Validate all references exist
     const [[patient], [gap], [item]] = await Promise.all([
       sql<{ patient_id: number; first_name: string; last_name: string }[]>`
@@ -418,7 +426,9 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
       `,
       sql<{ care_gap_id: number; gap_status: string }[]>`
         SELECT care_gap_id, gap_status FROM phm_edw.care_gap
-        WHERE care_gap_id = ${care_gap_id} AND active_ind = 'Y'
+        WHERE care_gap_id = ${care_gap_id}
+          AND patient_id = ${patient_id}
+          AND active_ind = 'Y'
       `,
       sql<{
         item_id: number; order_set_id: number; item_name: string; item_type: string;
@@ -518,6 +528,8 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
 
     const { patient_id, priority, orders } = parseResult.data;
 
+    if (!(await requirePatientAccess(request, reply, patient_id))) return reply;
+
     // Validate patient
     const [patient] = await sql<{ patient_id: number; first_name: string; last_name: string }[]>`
       SELECT patient_id, first_name, last_name FROM phm_edw.patient
@@ -534,7 +546,9 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     // Validate all care gaps exist
     const gaps = await sql<{ care_gap_id: number; gap_status: string }[]>`
       SELECT care_gap_id, gap_status FROM phm_edw.care_gap
-      WHERE care_gap_id = ANY(${careGapIds}) AND active_ind = 'Y'
+      WHERE care_gap_id = ANY(${careGapIds})
+        AND patient_id = ${patient_id}
+        AND active_ind = 'Y'
     `;
     const gapMap = new Map(gaps.map((g) => [g.care_gap_id, g]));
     const missingGaps = careGapIds.filter((id) => !gapMap.has(id));

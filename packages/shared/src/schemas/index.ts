@@ -41,7 +41,9 @@ export const patientSearchSchema = z.object({
   per_page: z.coerce.number().int().positive().max(100).default(25),
   sort_by: z.enum(['name', 'mrn', 'risk_score', 'last_encounter']).default('name'),
   sort_order: z.enum(['asc', 'desc']).default('asc'),
-  risk_level: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  risk_level: z.enum(['low', 'medium', 'moderate', 'high', 'critical']).optional(),
+  measure: z.string().min(1).max(100).optional(),
+  cohort: z.enum(['eligible', 'compliant', 'noncompliant']).optional(),
 });
 
 export const patientCreateSchema = z.object({

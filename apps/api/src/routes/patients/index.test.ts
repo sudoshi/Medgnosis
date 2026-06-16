@@ -42,6 +42,64 @@ beforeEach(() => {
 });
 
 describe('patient route authorization', () => {
+  it('applies risk filters to patient list queries', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('COUNT(*)::int AS total')) {
+        return Promise.resolve([{ total: 0 }]);
+      }
+      if (text.includes('p.patient_id AS id')) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/?risk_level=moderate' });
+
+    expect(res.statusCode).toBe(200);
+    expect(
+      mockSql.mock.calls.some(([strings, ...values]) =>
+        strings.join('').includes('fact_patient_composite') &&
+        values.some((value) =>
+          Array.isArray(value) && value.includes('moderate') && value.includes('medium'),
+        ),
+      ),
+    ).toBe(true);
+    await app.close();
+  });
+
+  it('applies measure cohort filters to patient list queries', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('COUNT(*)::int AS total')) {
+        return Promise.resolve([{ total: 0 }]);
+      }
+      if (text.includes('p.patient_id AS id')) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/?measure=COL130&cohort=compliant',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(
+      mockSql.mock.calls.some(([strings]) => strings.join('').includes('fact_measure_result')),
+    ).toBe(true);
+    expect(
+      mockSql.mock.calls.some(([strings]) => strings.join('').includes('fmr.numerator_flag = TRUE')),
+    ).toBe(true);
+    expect(
+      mockSql.mock.calls.some(([, ...values]) => values.includes('COL130')),
+    ).toBe(true);
+    await app.close();
+  });
+
   it('rejects patient subresources outside the authenticated provider panel', async () => {
     const app = await buildApp();
 

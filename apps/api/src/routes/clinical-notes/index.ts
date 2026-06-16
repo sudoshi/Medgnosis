@@ -14,6 +14,7 @@ import { config } from '../../config.js';
 import { generateCompletion } from '../../services/llmClient.js';
 import { aiGateMiddleware } from '../../middleware/aiGate.js';
 import { getPatientClinicalContext } from '../../services/patientContext.js';
+import { requirePatientAccess } from '../../utils/authz.js';
 
 export default async function clinicalNoteRoutes(
   fastify: FastifyInstance,
@@ -37,19 +38,9 @@ export default async function clinicalNoteRoutes(
 
     const { patient_id, visit_type, encounter_id, chief_complaint } =
       parseResult.data;
-    const userId = (request.user as unknown as { id: string }).id;
+    const userId = request.user.sub;
 
-    // Verify patient exists
-    const [patient] = await sql<{ patient_id: number }[]>`
-      SELECT patient_id FROM phm_edw.patient
-      WHERE patient_id = ${patient_id} AND active_ind = 'Y'
-    `;
-    if (!patient) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Patient not found' },
-      });
-    }
+    if (!(await requirePatientAccess(request, reply, patient_id))) return reply;
 
     const [note] = await sql`
       INSERT INTO phm_edw.clinical_note (
@@ -88,6 +79,8 @@ export default async function clinicalNoteRoutes(
         });
       }
 
+      if (!(await requirePatientAccess(request, reply, String(note.patient_id)))) return reply;
+
       return reply.send({ success: true, data: note });
     },
   );
@@ -111,8 +104,9 @@ export default async function clinicalNoteRoutes(
       }
 
       // Only allow editing drafts
-      const [existing] = await sql<{ status: string }[]>`
-        SELECT status FROM phm_edw.clinical_note
+      const [existing] = await sql<{ status: string; patient_id: number }[]>`
+        SELECT status, patient_id
+        FROM phm_edw.clinical_note
         WHERE note_id = ${noteId}::uuid AND active_ind = 'Y'
       `;
       if (!existing) {
@@ -121,6 +115,7 @@ export default async function clinicalNoteRoutes(
           error: { code: 'NOT_FOUND', message: 'Note not found' },
         });
       }
+      if (!(await requirePatientAccess(request, reply, existing.patient_id))) return reply;
       if (existing.status !== 'draft') {
         return reply.status(409).send({
           success: false,
@@ -189,8 +184,9 @@ export default async function clinicalNoteRoutes(
     async (request, reply) => {
       const { noteId } = request.params;
 
-      const [note] = await sql<{ status: string }[]>`
-        SELECT status FROM phm_edw.clinical_note
+      const [note] = await sql<{ status: string; patient_id: number }[]>`
+        SELECT status, patient_id
+        FROM phm_edw.clinical_note
         WHERE note_id = ${noteId}::uuid AND active_ind = 'Y'
       `;
       if (!note) {
@@ -199,6 +195,7 @@ export default async function clinicalNoteRoutes(
           error: { code: 'NOT_FOUND', message: 'Note not found' },
         });
       }
+      if (!(await requirePatientAccess(request, reply, note.patient_id))) return reply;
       if (note.status !== 'draft') {
         return reply.status(409).send({
           success: false,
@@ -237,8 +234,9 @@ export default async function clinicalNoteRoutes(
         });
       }
 
-      const [note] = await sql<{ status: string }[]>`
-        SELECT status FROM phm_edw.clinical_note
+      const [note] = await sql<{ status: string; patient_id: number }[]>`
+        SELECT status, patient_id
+        FROM phm_edw.clinical_note
         WHERE note_id = ${noteId}::uuid AND active_ind = 'Y'
       `;
       if (!note) {
@@ -247,6 +245,7 @@ export default async function clinicalNoteRoutes(
           error: { code: 'NOT_FOUND', message: 'Note not found' },
         });
       }
+      if (!(await requirePatientAccess(request, reply, note.patient_id))) return reply;
       if (note.status !== 'finalized') {
         return reply.status(409).send({
           success: false,
@@ -277,8 +276,9 @@ export default async function clinicalNoteRoutes(
     async (request, reply) => {
       const { noteId } = request.params;
 
-      const [note] = await sql<{ status: string }[]>`
-        SELECT status FROM phm_edw.clinical_note
+      const [note] = await sql<{ status: string; patient_id: number }[]>`
+        SELECT status, patient_id
+        FROM phm_edw.clinical_note
         WHERE note_id = ${noteId}::uuid AND active_ind = 'Y'
       `;
       if (!note) {
@@ -287,6 +287,7 @@ export default async function clinicalNoteRoutes(
           error: { code: 'NOT_FOUND', message: 'Note not found' },
         });
       }
+      if (!(await requirePatientAccess(request, reply, note.patient_id))) return reply;
       if (note.status !== 'draft') {
         return reply.status(409).send({
           success: false,
@@ -337,6 +338,8 @@ export default async function clinicalNoteRoutes(
 
       const { patient_id, visit_type, sections, chief_complaint, existing_content } =
         parseResult.data;
+
+      if (!(await requirePatientAccess(request, reply, patient_id))) return reply;
 
       // Gather patient clinical context via shared helper
       const ctx = await getPatientClinicalContext(patient_id);

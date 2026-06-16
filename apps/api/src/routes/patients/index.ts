@@ -26,8 +26,10 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
   fastify.get('/', async (request, reply) => {
     const startedAt = process.hrtime.bigint();
     const params = patientSearchSchema.parse(request.query);
-    const { search, page, per_page, sort_by, sort_order, risk_level: _risk_level } = params;
+    const { search, page, per_page, sort_by, sort_order, risk_level, measure, cohort } = params;
     const offset = (page - 1) * per_page;
+    const normalizedRiskLevel = risk_level === 'medium' ? 'moderate' : risk_level;
+    const hasStructuredFilters = Boolean(normalizedRiskLevel || measure);
 
     // Provider scoping: restrict to the logged-in provider's PCP panel.
     // Admin users (no provider_id) see all patients.
@@ -41,7 +43,7 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     const solr = getSolrClient();
 
     // Use Solr for search queries (the main performance win)
-    if (solr && search) {
+    if (solr && search && !hasStructuredFilters) {
       try {
         const solrQuery = buildSearchCoreQuery({
           searchTerm: search,
@@ -75,10 +77,32 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         source = 'solr';
       } catch (err) {
         request.log.warn({ err }, '[patients] Solr search failed — falling back to PG');
-        ({ patients, total } = await pgPatientList(search, scoped, providerId, sort_by, sort_order, per_page, offset));
+        ({ patients, total } = await pgPatientList(
+          search,
+          scoped,
+          providerId,
+          sort_by,
+          sort_order,
+          per_page,
+          offset,
+          normalizedRiskLevel,
+          measure,
+          cohort,
+        ));
       }
     } else {
-      ({ patients, total } = await pgPatientList(search, scoped, providerId, sort_by, sort_order, per_page, offset));
+      ({ patients, total } = await pgPatientList(
+        search,
+        scoped,
+        providerId,
+        sort_by,
+        sort_order,
+        per_page,
+        offset,
+        normalizedRiskLevel,
+        measure,
+        cohort,
+      ));
     }
 
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
@@ -88,6 +112,9 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
         source,
         provider_id: providerId ?? null,
         search: search ?? null,
+        risk_level: normalizedRiskLevel ?? null,
+        measure: measure ?? null,
+        cohort: cohort ?? null,
         page,
         per_page,
         result_count: patients.length,
@@ -794,7 +821,13 @@ async function pgPatientList(
   sort_order: string,
   per_page: number,
   offset: number,
+  risk_level?: 'low' | 'moderate' | 'high' | 'critical',
+  measure?: string,
+  cohort?: 'eligible' | 'compliant' | 'noncompliant',
 ): Promise<{ patients: Record<string, unknown>[]; total: number }> {
+  const riskLevels = risk_level === 'moderate' ? ['moderate', 'medium'] : risk_level ? [risk_level] : [];
+  const measureCohort = measure ? (cohort ?? 'eligible') : undefined;
+
   const [[countResult], patients] = await Promise.all([
     sql<{ total: number }[]>`
       SELECT COUNT(*)::int AS total
@@ -802,6 +835,24 @@ async function pgPatientList(
       WHERE p.active_ind = 'Y'
         ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
         ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+        ${risk_level ? sql`AND EXISTS (
+          SELECT 1
+          FROM phm_star.dim_patient dp
+          JOIN phm_star.fact_patient_composite fpc ON fpc.patient_key = dp.patient_key
+          WHERE dp.patient_id = p.patient_id
+            AND LOWER(fpc.risk_tier) = ANY(${riskLevels})
+        )` : sql``}
+        ${measure ? sql`AND EXISTS (
+          SELECT 1
+          FROM phm_star.dim_patient dp
+          JOIN phm_star.fact_measure_result fmr ON fmr.patient_key = dp.patient_key
+          JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+          WHERE dp.patient_id = p.patient_id
+            AND LOWER(dm.measure_code) = LOWER(${measure})
+            ${measureCohort === 'eligible' ? sql`AND fmr.denominator_flag = TRUE` : sql``}
+            ${measureCohort === 'compliant' ? sql`AND fmr.numerator_flag = TRUE` : sql``}
+            ${measureCohort === 'noncompliant' ? sql`AND fmr.denominator_flag = TRUE AND fmr.numerator_flag = FALSE` : sql``}
+        )` : sql``}
     `,
     sql`
       SELECT
@@ -816,6 +867,24 @@ async function pgPatientList(
       WHERE p.active_ind = 'Y'
         ${scoped ? sql`AND p.pcp_provider_id = ${providerId!}` : sql``}
         ${search ? sql`AND (p.first_name || ' ' || p.last_name) ILIKE ${`%${search}%`}` : sql``}
+        ${risk_level ? sql`AND EXISTS (
+          SELECT 1
+          FROM phm_star.dim_patient dp
+          JOIN phm_star.fact_patient_composite fpc ON fpc.patient_key = dp.patient_key
+          WHERE dp.patient_id = p.patient_id
+            AND LOWER(fpc.risk_tier) = ANY(${riskLevels})
+        )` : sql``}
+        ${measure ? sql`AND EXISTS (
+          SELECT 1
+          FROM phm_star.dim_patient dp
+          JOIN phm_star.fact_measure_result fmr ON fmr.patient_key = dp.patient_key
+          JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+          WHERE dp.patient_id = p.patient_id
+            AND LOWER(dm.measure_code) = LOWER(${measure})
+            ${measureCohort === 'eligible' ? sql`AND fmr.denominator_flag = TRUE` : sql``}
+            ${measureCohort === 'compliant' ? sql`AND fmr.numerator_flag = TRUE` : sql``}
+            ${measureCohort === 'noncompliant' ? sql`AND fmr.denominator_flag = TRUE AND fmr.numerator_flag = FALSE` : sql``}
+        )` : sql``}
       ORDER BY
         ${sort_by === 'name' ? sql`p.last_name` : sql`p.patient_id`}
         ${sort_order === 'desc' ? sql`DESC` : sql`ASC`}

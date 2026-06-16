@@ -10,13 +10,13 @@ export async function aiGateMiddleware(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const userId = (req.user as unknown as { id: number }).id;
+  const userId = req.user.sub;
 
   // Check if user has given AI consent
   const [consent] = await sql`
     SELECT ai_consent_given_at
     FROM app_users
-    WHERE id = ${userId}
+    WHERE id = ${userId}::uuid
   `;
 
   if (!consent?.ai_consent_given_at) {
