@@ -316,9 +316,7 @@ export function ChangePasswordModal() {
                 type="button"
                 className="cpw-pw-btn"
                 onClick={() => setShowCurrent((v) => !v)}
-                aria-label={showCurrent ? 'Hide password' : 'Show password'}
-                tabIndex={-1}
-              >
+                aria-label={showCurrent ? 'Hide password' : 'Show password'}              >
                 {showCurrent ? <EyeOff size={17} strokeWidth={1.8} /> : <Eye size={17} strokeWidth={1.8} />}
               </button>
             </div>
@@ -342,9 +340,7 @@ export function ChangePasswordModal() {
                 type="button"
                 className="cpw-pw-btn"
                 onClick={() => setShowNew((v) => !v)}
-                aria-label={showNew ? 'Hide password' : 'Show password'}
-                tabIndex={-1}
-              >
+                aria-label={showNew ? 'Hide password' : 'Show password'}              >
                 {showNew ? <EyeOff size={17} strokeWidth={1.8} /> : <Eye size={17} strokeWidth={1.8} />}
               </button>
             </div>
@@ -394,9 +390,7 @@ export function ChangePasswordModal() {
                 type="button"
                 className="cpw-pw-btn"
                 onClick={() => setShowConfirm((v) => !v)}
-                aria-label={showConfirm ? 'Hide password' : 'Show password'}
-                tabIndex={-1}
-              >
+                aria-label={showConfirm ? 'Hide password' : 'Show password'}              >
                 {showConfirm ? <EyeOff size={17} strokeWidth={1.8} /> : <Eye size={17} strokeWidth={1.8} />}
               </button>
             </div>

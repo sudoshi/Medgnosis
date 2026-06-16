@@ -194,6 +194,13 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen bg-void overflow-hidden">
+      {/* Skip link — first focusable element; lets keyboard/SR users jump past the nav */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-btn focus:bg-teal focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-accent-fg focus:shadow-panel-hover"
+      >
+        Skip to main content
+      </a>
 
       {/* ════════════════════════════════════════════════════════════
           SIDEBAR
@@ -208,9 +215,16 @@ export function AppShell() {
       >
         {/* ── Logo / brand ────────────────────────────────────────── */}
         <div
-          className="flex items-center h-14 px-3 border-b border-edge/25 cursor-pointer select-none flex-shrink-0"
+          className="flex items-center h-14 px-3 border-b border-edge/25 cursor-pointer select-none flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 focus-visible:ring-inset"
           onClick={toggleSidebar}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggleSidebar();
+            }
+          }}
           role="button"
+          tabIndex={0}
           aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           {/* MG monogram */}
@@ -446,7 +460,7 @@ export function AppShell() {
         </header>
 
         {/* ── Page content ────────────────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto bg-void scrollbar-thin" id="main-content">
+        <main className="flex-1 overflow-y-auto bg-void scrollbar-thin focus:outline-none" id="main-content" tabIndex={-1}>
           <div className="p-4">
             <Outlet />
           </div>

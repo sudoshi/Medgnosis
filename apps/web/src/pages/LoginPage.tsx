@@ -756,7 +756,6 @@ export function LoginPage() {
                   className="lpg-pw-btn"
                   onClick={() => setShowPw(v => !v)}
                   aria-label={showPw ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
                 >
                   {showPw
                     ? <EyeOff size={17} strokeWidth={1.8}/>
