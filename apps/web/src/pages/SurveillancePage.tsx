@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { Activity, HeartPulse, Droplet, RefreshCw } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
 import { QueryError } from '../components/QueryError.js';
+import { SeverityBadge, type Severity } from '../components/SeverityBadge.js';
 import {
   useSurveillanceCensus,
   useSurveillanceDetail,
@@ -28,6 +29,23 @@ function scoreClass(scoreType: string, score: number | null): string {
   if (med) return 'text-amber';
   if (low) return 'text-gold';
   return 'text-emerald';
+}
+
+// Map an EWS score to a clinical severity level for redundant (non-color) display.
+function scoreSeverity(scoreType: string, score: number | null): Severity | null {
+  if (score == null) return null;
+  if (scoreType === 'MEWS' ? score >= 5 : score >= 7) return 'critical';
+  if (scoreType === 'MEWS' ? score >= 4 : score >= 5) return 'high';
+  if (scoreType === 'MEWS' ? score >= 3 : score >= 1) return 'moderate';
+  return null;
+}
+
+// Escalation band shown as an icon+text+color badge — so deterioration is never
+// signalled by the colored score number alone.
+function ScoreBand({ scoreType, score, band }: { scoreType: string; score: number | null; band?: string | null }) {
+  const sev = scoreSeverity(scoreType, score);
+  if (sev) return <SeverityBadge severity={sev} label={band ?? undefined} className="text-[10px]" />;
+  return band ? <span className="text-xs text-dim">{band}</span> : null;
 }
 
 function Drilldown({ admissionId, scoreType }: { admissionId: number; scoreType: 'MEWS' | 'NEWS2' }) {
@@ -107,7 +125,7 @@ function SurveillanceTab() {
                   <span className="text-xs text-ghost truncate hidden md:inline">{r.admitting_dx}</span>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  {r.band && <span className="text-xs text-dim">{r.band}</span>}
+                  <ScoreBand scoreType={scoreType} score={r.score} band={r.band} />
                   <span className={`text-xl font-semibold tabular-nums ${scoreClass(scoreType, r.score)}`}>{r.score ?? '—'}</span>
                 </div>
               </button>

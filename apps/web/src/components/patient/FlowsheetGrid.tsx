@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { usePatientFlowsheet } from '../../hooks/useApi.js';
 import { QueryError } from '../QueryError.js';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, AlertTriangle } from 'lucide-react';
 
 interface FlowsheetGridProps {
   patientId: string;
@@ -194,8 +194,14 @@ export function FlowsheetGrid({ patientId, onTrend }: FlowsheetGridProps) {
                           ? 'text-crimson font-semibold bg-crimson/8'
                           : 'text-bright',
                       ].join(' ')}
+                      aria-label={isAbnormal ? `${displayVal} — abnormal` : undefined}
                     >
-                      {displayVal}
+                      <span className="inline-flex items-center justify-center gap-0.5">
+                        {displayVal}
+                        {isAbnormal && (
+                          <AlertTriangle size={9} strokeWidth={2.5} aria-hidden="true" />
+                        )}
+                      </span>
                     </td>
                   );
                 })}
