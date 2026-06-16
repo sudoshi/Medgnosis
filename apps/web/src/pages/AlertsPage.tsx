@@ -65,6 +65,9 @@ function getSeverityCard(severity: string) {
   return SEVERITY_CARD[severity] ?? SEVERITY_CARD.info;
 }
 
+// Triage order for the feed — most-urgent first.
+const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+
 function SeverityIcon({ severity }: { severity: string }) {
   const cls = 'flex-shrink-0';
   switch (severity) {
@@ -243,7 +246,13 @@ export function AlertsPage() {
     },
   });
 
-  const alerts      = data?.data ?? [];
+  // Sort for triage: active (unacknowledged) before resolved, then by severity.
+  const alerts = [...(data?.data ?? [])].sort((a, b) => {
+    const aResolved = a.acknowledged_at || a.auto_resolved ? 1 : 0;
+    const bResolved = b.acknowledged_at || b.auto_resolved ? 1 : 0;
+    if (aResolved !== bResolved) return aResolved - bResolved;
+    return (SEVERITY_RANK[a.severity] ?? 5) - (SEVERITY_RANK[b.severity] ?? 5);
+  });
   const activeCount = alerts.filter((a) => !a.acknowledged_at && !a.auto_resolved).length;
 
   const criticalCount = alerts.filter((a) => a.severity === 'critical' && !a.acknowledged_at).length;
