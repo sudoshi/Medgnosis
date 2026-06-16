@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Loader2,
   TrendingUp,
-  TrendingDown,
   Minus,
   AlertTriangle,
 } from 'lucide-react';
@@ -46,14 +45,17 @@ function statusBadge(status: string) {
 }
 
 
-// ─── Risk Tier Card ───────────────────────────────────────────────────────────
+// ─── Care Bundle Compliance Card ────────────────────────────────────────────────
+// Shows care-bundle compliance — higher is better. This is PROCESS adherence,
+// NOT patient acuity; it must not be presented as a clinical risk score
+// (a patient with no applicable bundles would otherwise read as "High Risk").
 
-function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
-  const tier = pct >= 80 ? 'Low Risk' : pct >= 50 ? 'Moderate Risk' : 'High Risk';
+function ComplianceCard({ pct, onClick }: { pct: number; onClick: () => void }) {
+  const status = pct >= 80 ? 'On Track' : pct >= 50 ? 'Needs Review' : 'Action Needed';
   const color = pct >= 80 ? 'rgb(var(--emerald))' : pct >= 50 ? 'rgb(var(--amber))' : 'rgb(var(--crimson))';
   const textColor = pct >= 80 ? 'text-emerald' : pct >= 50 ? 'text-amber' : 'text-crimson';
   const bgColor = pct >= 80 ? 'bg-emerald/10 border-emerald/20' : pct >= 50 ? 'bg-amber/10 border-amber/20' : 'bg-crimson/10 border-crimson/20';
-  const Icon = pct >= 80 ? TrendingDown : pct >= 50 ? Minus : TrendingUp;
+  const Icon = pct >= 80 ? TrendingUp : pct >= 50 ? Minus : AlertTriangle;
 
   // Mini arc gauge (48px)
   const r = 16;
@@ -64,7 +66,7 @@ function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-card border ${bgColor} transition-colors hover:opacity-80 group`}
-      aria-label={`Risk tier: ${tier} — ${pct}% care bundle compliance`}
+      aria-label={`Care bundle compliance: ${pct}% — ${status}`}
     >
       {/* Mini gauge */}
       <div className="relative flex-shrink-0" style={{ width: 48, height: 32 }}>
@@ -85,9 +87,9 @@ function RiskTierCard({ pct, onClick }: { pct: number; onClick: () => void }) {
       <div className="flex-1 min-w-0 text-left">
         <div className="flex items-center gap-1.5">
           <Icon size={12} strokeWidth={2} className={textColor} aria-hidden="true" />
-          <span className={`text-xs font-semibold ${textColor}`}>{tier}</span>
+          <span className={`text-xs font-semibold ${textColor}`}>{status}</span>
         </div>
-        <p className="text-[10px] text-ghost mt-0.5">Based on care bundle compliance</p>
+        <p className="text-[10px] text-ghost mt-0.5">Care bundle compliance</p>
       </div>
     </button>
   );
@@ -250,9 +252,9 @@ export function OverviewTab({ patientId, onTabChange }: OverviewTabProps) {
       {/* ── Right Column ─────────────────────────────────────────────── */}
       <div className="space-y-4">
 
-        {/* Risk Score Card (shown when bundle data is available) */}
+        {/* Care bundle compliance (shown when bundle data is available) */}
         {bundleData && !bundleLoading && (
-          <RiskTierCard
+          <ComplianceCard
             pct={bundleData.overall_compliance_pct}
             onClick={() => onTabChange('care-gaps')}
           />
