@@ -184,7 +184,7 @@ export function AbbyTab({ patientId }: AbbyTabProps) {
     return (
       <div
         className="surface overflow-hidden"
-        style={{ borderTop: '2px solid rgba(139,92,246,0.45)' }}
+        style={{ borderTop: '2px solid rgb(var(--violet) / 0.45)' }}
       >
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <div className="w-14 h-14 rounded-full bg-violet/10 border border-violet/20 flex items-center justify-center">
@@ -223,7 +223,7 @@ export function AbbyTab({ patientId }: AbbyTabProps) {
     <div
       className="surface overflow-hidden flex flex-col"
       style={{
-        borderTop: '2px solid rgba(139,92,246,0.45)',
+        borderTop: '2px solid rgb(var(--violet) / 0.45)',
         minHeight: '500px',
         maxHeight: 'calc(100vh - 20rem)',
       }}

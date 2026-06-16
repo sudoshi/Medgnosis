@@ -45,17 +45,17 @@ const SEVERITY_CARD: Record<string, { style: React.CSSProperties; borderClass: s
     bg: 'bg-amber/5',
   },
   medium: {
-    style: { boxShadow: 'inset 2px 0 0 rgba(245, 166, 35, 0.4)' },
+    style: { boxShadow: 'inset 2px 0 0 rgb(var(--amber) / 0.4)' },
     borderClass: 'border border-edge/30',
     bg: 'bg-s1',
   },
   low: {
-    style: { boxShadow: 'inset 2px 0 0 rgba(75, 158, 219, 0.3)' },
+    style: { boxShadow: 'inset 2px 0 0 rgb(var(--info) / 0.3)' },
     borderClass: 'border border-edge/25',
     bg: 'bg-s1',
   },
   info: {
-    style: { boxShadow: 'inset 2px 0 0 rgba(75, 158, 219, 0.3)' },
+    style: { boxShadow: 'inset 2px 0 0 rgb(var(--info) / 0.3)' },
     borderClass: 'border border-edge/25',
     bg: 'bg-s1',
   },
@@ -295,7 +295,7 @@ export function AlertsPage() {
       {!isLoading && criticalCount > 0 && (
         <div
           className="rounded-card px-4 py-3 bg-crimson/8 border border-crimson/20 flex items-center gap-3 animate-fade-up"
-          style={{ boxShadow: '0 0 24px rgba(232, 57, 74, 0.12)' }}
+          style={{ boxShadow: '0 0 24px rgb(var(--crimson) / 0.12)' }}
         >
           <AlertTriangle size={16} strokeWidth={2} className="text-crimson flex-shrink-0" aria-hidden="true" />
           <p className="text-sm text-crimson font-medium">
