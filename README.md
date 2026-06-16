@@ -14,8 +14,8 @@ Built as a TypeScript monorepo: **Fastify API + Vite/React SPA + PostgreSQL + Re
 
 ```
 apps/
-  api/       Fastify 5 REST API + WebSocket      :3001
-  web/       Vite 6 + React 19 SPA               :5173
+  api/       Fastify 5 REST API + WebSocket      :3002
+  web/       Vite 8 + React 19 SPA               :5175
 
 packages/
   shared/    Types, Zod schemas, constants        @medgnosis/shared
@@ -61,7 +61,7 @@ Fastify 5 with plugin architecture, JWT auth, and role-based access control.
 
 ### Frontend
 
-Vite 6 + React 19 SPA with React Router 7, TanStack React Query, and Zustand state management.
+Vite 8 + React 19 SPA with React Router 7, TanStack React Query, and Zustand state management.
 
 **Pages:** Login, Dashboard, Patients, Patient Detail, Measures, Care Lists, Alerts, Settings, 404
 
@@ -96,21 +96,23 @@ npm run demo:setup
 npm run dev
 ```
 
-Open http://localhost:5173 and log in with a test account.
+Open http://localhost:5175 and log in with a test account.
 
 ### Test Accounts
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@medgnosis.com | admin123 |
-| Provider | provider@medgnosis.com | provider123 |
-| Analyst | analyst@medgnosis.com | analyst123 |
+| Admin | admin@medgnosis.app | password |
+| Provider | dr.chen@medgnosis.app | password |
+| Provider | nurse.williams@medgnosis.app | password |
+| Analyst | analyst@medgnosis.app | password |
+| Care Coordinator | coordinator@medgnosis.app | password |
 
 ### Individual Services
 
 ```bash
-npm run demo:api          # API only (localhost:3001)
-npm run demo:web          # Web only (localhost:5173)
+npm run demo:api          # API only (localhost:3002)
+npm run demo:web          # Web only (localhost:5175)
 ```
 
 ### Infrastructure Management
@@ -250,14 +252,14 @@ CI runs automatically on push/PR to `main` via GitHub Actions with Postgres and 
 ```
 Medgnosis/
 ├── apps/
-│   ├── api/                    Fastify 5 API (port 3001)
+│   ├── api/                    Fastify 5 API (port 3002)
 │   │   └── src/
 │   │       ├── plugins/        Auth, error handler, WebSocket
 │   │       ├── middleware/      AI consent gate, audit trail
 │   │       ├── routes/         10 route modules
 │   │       ├── services/       Risk scoring, LLM, FHIR, OMOP, measures, cohorts
 │   │       └── workers/        BullMQ background jobs
-│   └── web/                    Vite + React SPA (port 5173)
+│   └── web/                    Vite + React SPA (port 5175)
 │       └── src/
 │           ├── pages/          9 page components
 │           ├── components/     AuthGuard, AppShell, GlobalSearch
