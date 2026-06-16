@@ -26,6 +26,7 @@ import {
   ChevronRight,
   WifiOff,
   ShieldCheck,
+  Repeat,
   Sun,
   Moon,
 } from 'lucide-react';
@@ -45,7 +46,7 @@ const mainNav = [
   { to: '/bundles',   icon: Layers,           label: 'Bundles',   end: true },
   { to: '/care-lists',icon: ListChecks,       label: 'Care Lists',end: true },
   { to: '/population-finder', icon: ScanSearch, label: 'Finder',   end: true },
-  { to: '/close-the-loop', icon: ShieldCheck, label: 'Loops',     end: true },
+  { to: '/close-the-loop', icon: Repeat,      label: 'Loops',     end: true },
   { to: '/anticipatory', icon: CalendarClock, label: 'Anticipatory', end: true },
   { to: '/surveillance', icon: Activity,      label: 'Surveillance', end: true },
   { to: '/cohorts',   icon: UsersRound,       label: 'Cohorts',   end: true },
