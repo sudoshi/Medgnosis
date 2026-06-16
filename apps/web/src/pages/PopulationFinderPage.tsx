@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Search, Check, X, Ban, Clock, FlaskConical, Activity } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
 import { QueryError } from '../components/QueryError.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 import {
   usePopulationFinder,
   useFinderActions,
@@ -49,6 +50,7 @@ function CandidateRow({ c }: { c: FinderCandidate }) {
   const { accept, reject, dismiss } = useFinderActions();
   const toast = useToast();
   const busy = accept.isPending || reject.isPending || dismiss.isPending;
+  const [confirmDismiss, setConfirmDismiss] = useState(false);
 
   const act = (
     fn: { mutate: (v: never, opts?: { onSuccess?: () => void; onError?: () => void }) => void },
@@ -104,7 +106,7 @@ function CandidateRow({ c }: { c: FinderCandidate }) {
           <X size={13} strokeWidth={2} aria-hidden="true" /> Reject
         </button>
         <button
-          onClick={() => act(dismiss, { id: c.candidate_id, reason: 'does_not_have' }, 'Marked: does not have')}
+          onClick={() => setConfirmDismiss(true)}
           disabled={busy}
           title="Patient does not have this condition (permanent dismissal)"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn text-xs font-ui border border-edge/35 text-dim hover:text-crimson hover:border-crimson/40 transition-colors disabled:opacity-50"
@@ -120,6 +122,19 @@ function CandidateRow({ c }: { c: FinderCandidate }) {
           <Clock size={13} strokeWidth={2} aria-hidden="true" /> 12mo
         </button>
       </div>
+
+      <ConfirmModal
+        open={confirmDismiss}
+        title="Permanently dismiss this suggestion?"
+        body={`Marks ${c.suggested_name} as not present for ${c.patient_name}. It won't resurface for this patient.`}
+        confirmLabel="Does not have"
+        confirmVariant="danger"
+        onConfirm={() => {
+          act(dismiss, { id: c.candidate_id, reason: 'does_not_have' }, 'Marked: does not have');
+          setConfirmDismiss(false);
+        }}
+        onCancel={() => setConfirmDismiss(false)}
+      />
     </div>
   );
 }

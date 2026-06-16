@@ -20,6 +20,7 @@ import { useToast } from '../stores/ui.js';
 import { useUpdateProfile, useUserPreferences, useSavePreferences, useDbOverview, useProviderSchedule, useSaveProviderSchedule } from '../hooks/useApi.js';
 import { api } from '../services/api.js';
 import type { User as UserType } from '@medgnosis/shared';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 import { PALETTES } from '../styles/palettes.js';
 import { useThemeStore } from '../stores/theme.js';
 import { Button } from '@/components/ui/button';
@@ -647,6 +648,7 @@ function SecuritySection() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
   const [revoking, setRevoking] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const handleRevokeAll = async () => {
     setRevoking(true);
@@ -716,7 +718,7 @@ function SecuritySection() {
             </p>
           </div>
           <button
-            onClick={handleRevokeAll}
+            onClick={() => setConfirmRevoke(true)}
             disabled={revoking}
             className={[
               'flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-btn text-xs font-ui',
@@ -729,6 +731,16 @@ function SecuritySection() {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmRevoke}
+        title="Sign out of all devices?"
+        body="This invalidates every active session across all devices. You will need to sign in again."
+        confirmLabel="Sign out all"
+        confirmVariant="danger"
+        onConfirm={() => { setConfirmRevoke(false); handleRevokeAll(); }}
+        onCancel={() => setConfirmRevoke(false)}
+      />
     </div>
   );
 }

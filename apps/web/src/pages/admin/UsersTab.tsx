@@ -37,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ConfirmModal } from '../../components/ConfirmModal.js';
 
 // ─── Modal: Invite User ───────────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ export function UsersTab() {
   const toast = useToast();
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState<AdminUser | null>(null);
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -198,7 +200,7 @@ export function UsersTab() {
                   <TableCell>
                     {u.is_active && (
                       <button
-                        onClick={() => deactivate.mutate(u.id)}
+                        onClick={() => setDeactivateTarget(u)}
                         className="text-ghost hover:text-crimson transition-colors p-1 rounded"
                         title="Deactivate user"
                       >
@@ -219,6 +221,19 @@ export function UsersTab() {
           onSuccess={() => qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
         />
       )}
+
+      <ConfirmModal
+        open={deactivateTarget !== null}
+        title={`Deactivate ${`${deactivateTarget?.first_name ?? ''} ${deactivateTarget?.last_name ?? ''}`.trim()}?`}
+        body="They will immediately lose access to Medgnosis. You can re-invite them later."
+        confirmLabel="Deactivate"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (deactivateTarget) deactivate.mutate(deactivateTarget.id);
+          setDeactivateTarget(null);
+        }}
+        onCancel={() => setDeactivateTarget(null)}
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { useToast } from '../../stores/ui.js';
 import { api } from '../../services/api.js';
 import { StatusBadge, fmtDateTime } from './helpers.js';
 import type { FhirEndpoint } from './types.js';
+import { ConfirmModal } from '../../components/ConfirmModal.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -159,6 +160,7 @@ export function FhirTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<FhirEndpoint | undefined>();
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FhirEndpoint | null>(null);
 
   const { data: epData, isLoading } = useQuery({
     queryKey: ['admin', 'fhir-endpoints'],
@@ -264,7 +266,7 @@ export function FhirTab() {
                     <Pencil size={14} />
                   </button>
                   <button
-                    onClick={() => deleteMutation.mutate(ep.endpoint_id)}
+                    onClick={() => setDeleteTarget(ep)}
                     className="p-1.5 text-ghost hover:text-crimson transition-colors rounded"
                     title="Remove"
                   >
@@ -310,6 +312,19 @@ export function FhirTab() {
           onSuccess={() => qc.invalidateQueries({ queryKey: ['admin', 'fhir-endpoints'] })}
         />
       )}
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title={`Remove ${deleteTarget?.name ?? 'endpoint'}?`}
+        body="This disconnects the EHR integration and stops syncing patient data from it."
+        confirmLabel="Remove endpoint"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.endpoint_id);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
