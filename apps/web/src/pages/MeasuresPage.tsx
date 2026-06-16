@@ -17,6 +17,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { api } from '../services/api.js';
+import { ArcGauge } from '../components/charts/ArcGauge.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -48,63 +49,7 @@ interface MeasureDetail extends MeasureRow {
   };
 }
 
-// ─── Arc Gauge ────────────────────────────────────────────────────────────────
-// Semi-circle SVG gauge — 9 o'clock to 3 o'clock, fills clockwise
-
-function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
-  const r = 36;
-  const C = 2 * Math.PI * r; // ≈ 226
-  const pct = Math.min(Math.max(value / max, 0), 1);
-
-  const gaugeColor =
-    pct >= 0.75
-      ? 'rgb(var(--emerald))'
-      : pct >= 0.50
-        ? 'rgb(var(--amber))'
-        : 'rgb(var(--crimson))';
-
-  return (
-    <div className="relative" style={{ width: 140, height: 90 }}>
-      <svg viewBox="0 0 100 65" width="140" height="90" aria-hidden="true">
-        {/* Track — top semi-circle */}
-        <circle
-          cx="50" cy="60" r={r}
-          fill="none"
-          stroke="var(--chart-track)"
-          strokeWidth="9"
-          strokeLinecap="butt"
-          strokeDasharray={`${C / 2} ${C / 2}`}
-          transform="rotate(-180 50 60)"
-        />
-        {/* Value arc */}
-        {pct > 0.01 && (
-          <circle
-            cx="50" cy="60" r={r}
-            fill="none"
-            stroke={gaugeColor}
-            strokeWidth="9"
-            strokeLinecap="round"
-            strokeDasharray={`${pct * (C / 2) - 3} ${C}`}
-            transform="rotate(-180 50 60)"
-          />
-        )}
-      </svg>
-
-      {/* Center overlay — score + label */}
-      <div className="absolute inset-0 flex items-end justify-center pb-1">
-        <div className="text-center leading-none">
-          <p
-            className="font-data text-2xl font-medium tabular-nums leading-none"
-            style={{ color: gaugeColor }}
-          >
-            {Math.round(pct * 100)}
-          </p>
-          <p className="data-label mt-0.5">% rate</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ─── Arc Gauge — moved to components/charts/ArcGauge.tsx (shared w/ Bundles) ────
 
 // ─── TrendBadge ───────────────────────────────────────────────────────────────
 

@@ -25,6 +25,7 @@ import {
 import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
 import { Pagination } from '../components/Pagination.js';
 import { QueryError } from '../components/QueryError.js';
+import { ArcGauge } from '../components/charts/ArcGauge.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,45 +86,7 @@ function riskBadgeClass(tier: string | null): string {
   }
 }
 
-// ─── Arc Gauge ────────────────────────────────────────────────────────────────
-
-function ArcGauge({ value, max = 100 }: { value: number; max?: number }) {
-  const r = 36;
-  const C = 2 * Math.PI * r;
-  const pct = Math.min(Math.max(value / max, 0), 1);
-  const color = complianceColor(pct * 100);
-
-  return (
-    <div className="relative" style={{ width: 140, height: 90 }}>
-      <svg viewBox="0 0 100 65" width="140" height="90" aria-hidden="true">
-        <circle
-          cx="50" cy="60" r={r}
-          fill="none" stroke="var(--chart-track)" strokeWidth="9"
-          strokeLinecap="butt"
-          strokeDasharray={`${C / 2} ${C / 2}`}
-          transform="rotate(-180 50 60)"
-        />
-        {pct > 0.01 && (
-          <circle
-            cx="50" cy="60" r={r}
-            fill="none" stroke={color} strokeWidth="9"
-            strokeLinecap="round"
-            strokeDasharray={`${pct * (C / 2) - 3} ${C}`}
-            transform="rotate(-180 50 60)"
-          />
-        )}
-      </svg>
-      <div className="absolute inset-0 flex items-end justify-center pb-1">
-        <div className="text-center leading-none">
-          <p className="font-data text-2xl font-medium tabular-nums leading-none" style={{ color }}>
-            {Math.round(pct * 100)}
-          </p>
-          <p className="data-label mt-0.5">% compliant</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ─── Arc Gauge — moved to components/charts/ArcGauge.tsx (shared w/ Measures) ───
 
 // ─── Bundle Card (left panel) ─────────────────────────────────────────────────
 
@@ -310,7 +273,7 @@ function BundleDetailPanel({
       {/* ── Gauge + Stats strip ────────────────────────────────────── */}
       <div className="surface">
         <div className="flex items-center gap-6">
-          <ArcGauge value={pct} max={100} />
+          <ArcGauge value={pct} max={100} label="% compliant" />
 
           <div className="flex-1 grid grid-cols-2 gap-3">
             {/* Patients */}
