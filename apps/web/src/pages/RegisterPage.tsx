@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { api } from '../services/api.js';
+import { api, apiErrorMessage } from '../services/api.js';
 
 export function RegisterPage() {
   const [firstName, setFirstName] = useState('');
@@ -34,8 +34,8 @@ export function RegisterPage() {
       } else {
         setError(res.error?.message ?? 'Registration failed');
       }
-    } catch {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'An unexpected error occurred'));
     } finally {
       setLoading(false);
     }

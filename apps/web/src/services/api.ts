@@ -8,6 +8,31 @@ import type { ApiResponse } from '@medgnosis/shared';
 
 const BASE_URL = '/api/v1';
 
+/**
+ * Thrown by the API client on any non-2xx response. Carries the parsed body so
+ * callers (e.g. auth forms) can still surface the server's error message.
+ * Critically, throwing is what makes TanStack Query's `isError` fire and lets
+ * mutations route to `onError` — without it, an HTTP error resolves as a normal
+ * value and silently reads as "no data".
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: ApiResponse<unknown> | null;
+  constructor(status: number, body: ApiResponse<unknown> | null) {
+    super(body?.error?.message ?? `Request failed with status ${status}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/** Extract a user-facing message from an unknown thrown value. */
+export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  if (err instanceof ApiError) return err.body?.error?.message ?? err.message;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
 async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (response.status === 204) {
     return { success: response.ok } as ApiResponse<T>;
@@ -64,7 +89,16 @@ async function request<T>(
     }
   }
 
-  return readApiResponse<T>(response);
+  const payload = await readApiResponse<T>(response);
+
+  // Propagate HTTP failures so TanStack `isError` fires and mutations route to
+  // onError. The parsed body rides on the error so callers can surface
+  // error.message (e.g. auth forms showing "Invalid email or password").
+  if (!response.ok) {
+    throw new ApiError(response.status, payload);
+  }
+
+  return payload;
 }
 
 export const api = {

@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
-import { api } from '../services/api.js';
+import { api, apiErrorMessage } from '../services/api.js';
 import type { User, AuthTokens } from '@medgnosis/shared';
 
 // ── Population Network Visualization (SVG) ───────────────────────────────────
@@ -166,15 +166,15 @@ export function LoginPage() {
       } else {
         setError(res.error?.message ?? 'Login failed');
       }
-    } catch {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Login failed'));
     } finally {
       setLoading(false);
     }
   };
 
   const fillDemo = () => {
-    setEmail('dr.udoshi@medgnosis.app');
+    setEmail('admin@medgnosis.app');
     setPassword('password');
   };
 
@@ -799,7 +799,7 @@ export function LoginPage() {
           <div className="lpg-demo">
             <span className="lpg-demo-lbl">Quick demo</span>
             <button type="button" className="lpg-demo-btn" onClick={fillDemo}>
-              Dr. Udoshi — Demo Account
+              Admin — Demo Account
             </button>
           </div>
 

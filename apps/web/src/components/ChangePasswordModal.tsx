@@ -6,7 +6,7 @@
 import { useState, useMemo } from 'react';
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
-import { api } from '../services/api.js';
+import { api, apiErrorMessage } from '../services/api.js';
 
 // ── Password strength calculation ─────────────────────────────────────────────
 
@@ -81,8 +81,8 @@ export function ChangePasswordModal() {
       } else {
         setError(res.error?.message ?? 'Password change failed');
       }
-    } catch {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'An unexpected error occurred'));
     } finally {
       setLoading(false);
     }

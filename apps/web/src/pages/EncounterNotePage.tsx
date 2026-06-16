@@ -15,6 +15,7 @@ import {
   Trash2,
   FileEdit,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '../services/api.js';
 import {
   useCreateClinicalNote,
@@ -497,9 +498,10 @@ export function EncounterNotePage() {
                 size="sm"
                 onClick={() => {
                   if (confirm('Delete this draft note?')) {
-                    api.delete(`/clinical-notes/${noteId}`).then(() => {
-                      navigate(`/patients/${patientId}`);
-                    });
+                    api
+                      .delete(`/clinical-notes/${noteId}`)
+                      .then(() => navigate(`/patients/${patientId}`))
+                      .catch(() => toast.error('Failed to delete draft'));
                   }
                 }}
                 className="gap-1.5 text-crimson hover:text-crimson"
