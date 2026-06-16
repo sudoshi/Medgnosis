@@ -300,12 +300,22 @@ function MeasureDetailPanel({ measureId }: { measureId: number }) {
             {compliant.toLocaleString()}
           </span>
         </div>
-        <div className="flex items-center justify-between py-1.5 border-t border-edge/15">
-          <span className="text-sm text-dim">Not compliant</span>
-          <span className="font-data text-sm text-amber tabular-nums">
+        <Link
+          to={`/patients?measure=${detail.code}&cohort=noncompliant`}
+          className="group -mx-2 flex items-center justify-between rounded px-2 py-1.5 border-t border-edge/15 transition-colors hover:bg-s1/50"
+          title="View the patients with this open care gap"
+        >
+          <span className="text-sm text-dim group-hover:text-bright transition-colors">Not compliant</span>
+          <span className="flex items-center gap-1 font-data text-sm text-amber tabular-nums">
             {(eligible - compliant).toLocaleString()}
+            <ChevronRight
+              size={13}
+              strokeWidth={2}
+              className="text-ghost transition-colors group-hover:text-amber"
+              aria-hidden="true"
+            />
           </span>
-        </div>
+        </Link>
       </div>
     </div>
   );

@@ -411,7 +411,13 @@ function BundleDetailPanel({
                   <tr key={m.measure_id} className="border-b border-edge/10 hover:bg-s1/50 transition-colors">
                     <td className="px-4 py-2 font-data text-ghost tabular-nums">{m.ordinal}</td>
                     <td className="px-4 py-2 text-dim">
-                      <span className="font-medium text-bright">{m.measure_name}</span>
+                      <Link
+                        to={`/patients?measure=${m.measure_code}&cohort=noncompliant`}
+                        className="font-medium text-bright transition-colors hover:text-teal"
+                        title="View patients with this measure's open care gap"
+                      >
+                        {m.measure_name}
+                      </Link>
                       {m.description && (
                         <span className="ml-1.5 text-ghost">&mdash; {m.description}</span>
                       )}
