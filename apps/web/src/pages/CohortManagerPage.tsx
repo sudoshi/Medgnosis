@@ -44,10 +44,11 @@ function MemberRow({ m, cohortName }: { m: CohortMember; cohortName: string }) {
 }
 
 function MessagesPanel() {
-  const { data } = useCohortMessages();
+  const { data, isError } = useCohortMessages();
   const { resolveMessage } = useCohortActions();
   const toast = useToast();
   const messages = data?.data ?? [];
+  if (isError) return <QueryError what="closed-loop messages" />;
   if (messages.length === 0) return <div className="card p-4 text-sm text-dim">No closed-loop messages yet.</div>;
   return (
     <div className="space-y-2">
@@ -74,7 +75,7 @@ function MessagesPanel() {
 }
 
 export function CohortManagerPage() {
-  const { data: cohortsData } = useCohorts();
+  const { data: cohortsData, isError: cohortsError } = useCohorts();
   const cohorts = cohortsData?.data ?? [];
   const [selected, setSelected] = useState<number | null>(null);
   const activeId = selected ?? cohorts[0]?.cohort_id ?? null;
@@ -93,16 +94,20 @@ export function CohortManagerPage() {
         closed-loop guidance back to primary care — not a curbside, a tracked disposition.
       </p>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        {cohorts.map((c) => (
-          <button key={c.cohort_id} onClick={() => setSelected(c.cohort_id)}
-            className={['px-3 py-1.5 rounded-btn text-sm font-ui border transition-colors',
-              activeId === c.cohort_id ? 'border-teal/50 text-bright bg-teal/5' : 'border-edge/35 text-dim hover:text-bright'].join(' ')}>
-            {c.name}
-          </button>
-        ))}
-        {cohorts.length === 0 && <span className="text-sm text-dim">No cohorts defined.</span>}
-      </div>
+      {cohortsError ? (
+        <QueryError what="cohorts" />
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap">
+          {cohorts.map((c) => (
+            <button key={c.cohort_id} onClick={() => setSelected(c.cohort_id)}
+              className={['px-3 py-1.5 rounded-btn text-sm font-ui border transition-colors',
+                activeId === c.cohort_id ? 'border-teal/50 text-bright bg-teal/5' : 'border-edge/35 text-dim hover:text-bright'].join(' ')}>
+              {c.name}
+            </button>
+          ))}
+          {cohorts.length === 0 && <span className="text-sm text-dim">No cohorts defined.</span>}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <section className="space-y-2">

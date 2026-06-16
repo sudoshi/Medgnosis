@@ -145,10 +145,11 @@ function AmpSection() {
 
 // ─── Auto-Orders co-sign queue ─────────────────────────────────────────────────
 function EnrollmentSection() {
-  const { data } = useEnrollments('pending');
+  const { data, isError } = useEnrollments('pending');
   const { cosign, disenroll } = useEnrollmentActions();
   const toast = useToast();
   const rows = data?.data ?? [];
+  if (isError) return <QueryError what="the co-sign queue" />;
   if (rows.length === 0) {
     return <div className="card p-4 text-sm text-dim">No enrollments awaiting co-sign.</div>;
   }
@@ -180,10 +181,11 @@ function EnrollmentSection() {
 
 // ─── MTM referrals ──────────────────────────────────────────────────────────────
 function MtmSection() {
-  const { data } = useMtmReferrals();
+  const { data, isError } = useMtmReferrals();
   const advance = useMtmAdvance();
   const toast = useToast();
   const rows = data?.data ?? [];
+  if (isError) return <QueryError what="MTM referrals" />;
   if (rows.length === 0) return <div className="card p-4 text-sm text-dim">No active MTM referrals.</div>;
   return (
     <div className="space-y-2">

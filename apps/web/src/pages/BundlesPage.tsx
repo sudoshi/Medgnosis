@@ -24,6 +24,7 @@ import {
 } from '../hooks/useApi.js';
 import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
 import { Pagination } from '../components/Pagination.js';
+import { QueryError } from '../components/QueryError.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -653,7 +654,7 @@ export function BundlesPage() {
   const [search, setSearch] = useState('');
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
-  const { data, isLoading } = useBundlePopulation();
+  const { data, isLoading, isError, refetch } = useBundlePopulation();
 
   const bundles: PopulationBundle[] = useMemo(
     () => (data as { data?: { bundles?: PopulationBundle[] } })?.data?.bundles ?? [],
@@ -762,6 +763,10 @@ export function BundlesPage() {
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {isLoading ? (
             <LeftPanelSkeleton />
+          ) : isError ? (
+            <div className="p-5">
+              <QueryError what="disease bundles" onRetry={() => void refetch()} />
+            </div>
           ) : filteredGrouped.length === 0 ? (
             <div className="py-12 px-5 text-center">
               <p className="text-sm text-dim">No bundles found</p>
@@ -791,6 +796,10 @@ export function BundlesPage() {
         {isLoading ? (
           <div className="p-6">
             <RightPanelSkeleton />
+          </div>
+        ) : isError ? (
+          <div className="p-6">
+            <QueryError what="disease bundles" onRetry={() => void refetch()} />
           </div>
         ) : selectedBundle ? (
           <div className="p-6">

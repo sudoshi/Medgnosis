@@ -58,8 +58,18 @@ function CaptureSection() {
 }
 
 function EmSection() {
-  const { data } = useEmDistribution();
+  const { data, isError } = useEmDistribution();
   const o = data?.data?.overall;
+  if (isError) {
+    return (
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-bright flex items-center gap-2">
+          <TrendingUp size={15} className="text-teal" aria-hidden="true" /> E&amp;M visit-level distribution
+        </h2>
+        <QueryError what="E&M distribution" />
+      </section>
+    );
+  }
   if (!o) return null;
   const bar = (n: number, color: string, label: string) => (
     <div className="flex items-center gap-2">
@@ -88,8 +98,18 @@ function EmSection() {
 }
 
 function MissedSection() {
-  const { data } = useMissedOpportunities();
+  const { data, isError } = useMissedOpportunities();
   const d = data?.data;
+  if (isError) {
+    return (
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-bright flex items-center gap-2">
+          <Search size={15} className="text-amber" aria-hidden="true" /> Missed opportunities
+        </h2>
+        <QueryError what="missed opportunities" />
+      </section>
+    );
+  }
   if (!d) return null;
   return (
     <section className="space-y-3">
