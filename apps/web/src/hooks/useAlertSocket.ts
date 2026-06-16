@@ -4,8 +4,10 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { WS_EVENTS } from '@medgnosis/shared';
 import { useAuthStore } from '../stores/auth.js';
 import { useWsStore } from '../stores/ws.js';
+import { announce } from '../stores/announcer.js';
 
 type AlertMessage = {
   type: string;
@@ -45,10 +47,21 @@ export function useAlertSocket() {
       try {
         const msg: AlertMessage = JSON.parse(event.data);
         switch (msg.type) {
-          case 'alert:new':
+          case WS_EVENTS.ALERT_CREATED:
+          case 'alert:new': {
             queryClient.invalidateQueries({ queryKey: ['alerts'] });
             queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            // Give screen readers a voice for realtime arrivals (was silent).
+            const sev = String(msg.payload?.severity ?? '').toLowerCase();
+            const label = String(
+              msg.payload?.title ?? msg.payload?.message ?? msg.payload?.alert_type ?? 'New clinical alert',
+            );
+            announce(sev ? `New ${sev} alert: ${label}` : `New alert: ${label}`, {
+              assertive: sev === 'critical' || sev === 'high',
+            });
             break;
+          }
+          case WS_EVENTS.CARE_GAP_CLOSED:
           case 'care-gap:closed':
             queryClient.invalidateQueries({ queryKey: ['care-gaps'] });
             queryClient.invalidateQueries({ queryKey: ['dashboard'] });

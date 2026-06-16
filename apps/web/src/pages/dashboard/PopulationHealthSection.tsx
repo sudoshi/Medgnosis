@@ -118,7 +118,7 @@ export function PopulationHealthSection({
               return (
                 <button
                   key={band.risk_level}
-                  onClick={() => navigate(`/patients?risk=${band.risk_level}`)}
+                  onClick={() => navigate(`/patients?risk_level=${band.risk_level}`)}
                   className="w-full text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 rounded-card"
                   title={`View ${band.risk_level} risk patients`}
                 >
