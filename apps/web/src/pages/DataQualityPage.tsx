@@ -8,6 +8,14 @@ import { ShieldAlert, Check, X, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '../stores/ui.js';
 import { QueryError } from '../components/QueryError.js';
 import { useDqFindings, useDqFeeds, useDqActions, type DqFinding, type DqFeed } from '../hooks/useDataQuality.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 const DETECTOR_LABEL: Record<string, string> = {
   impossible_height: 'Impossible height',
@@ -31,33 +39,33 @@ function FeedBoard() {
   const feeds = data?.data ?? [];
   if (feeds.length === 0) return null;
   return (
-    <div className="card overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-ghost border-b border-edge/20">
-            <th className="text-left p-2 font-medium">Feed</th>
-            <th className="p-2 font-medium">Accurate</th>
-            <th className="p-2 font-medium">Timely</th>
-            <th className="p-2 font-medium">Complete</th>
-            <th className="p-2 font-medium">Understood</th>
-            <th className="p-2 font-medium">Trusted</th>
-            <th className="text-left p-2 font-medium">Latency</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="card">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Feed</TableHead>
+            <TableHead className="text-center">Accurate</TableHead>
+            <TableHead className="text-center">Timely</TableHead>
+            <TableHead className="text-center">Complete</TableHead>
+            <TableHead className="text-center">Understood</TableHead>
+            <TableHead className="text-center">Trusted</TableHead>
+            <TableHead>Latency</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {feeds.map((f: DqFeed) => (
-            <tr key={f.feed_name} className="border-b border-edge/10">
-              <td className="p-2 text-bright">{f.feed_name}<div className="text-[11px] text-ghost">{f.source}</div></td>
-              <td className="p-2 text-center"><TestCell ok={f.accurate} /></td>
-              <td className="p-2 text-center"><TestCell ok={f.timely} /></td>
-              <td className="p-2 text-center"><TestCell ok={f.complete} /></td>
-              <td className="p-2 text-center"><TestCell ok={f.understood} /></td>
-              <td className="p-2 text-center"><TestCell ok={f.trusted} /></td>
-              <td className="p-2 text-xs text-dim">{f.latency}</td>
-            </tr>
+            <TableRow key={f.feed_name}>
+              <TableCell className="py-2">{f.feed_name}<div className="text-[11px] text-ghost">{f.source}</div></TableCell>
+              <TableCell className="py-2 text-center"><TestCell ok={f.accurate} /></TableCell>
+              <TableCell className="py-2 text-center"><TestCell ok={f.timely} /></TableCell>
+              <TableCell className="py-2 text-center"><TestCell ok={f.complete} /></TableCell>
+              <TableCell className="py-2 text-center"><TestCell ok={f.understood} /></TableCell>
+              <TableCell className="py-2 text-center"><TestCell ok={f.trusted} /></TableCell>
+              <TableCell className="py-2 text-xs text-dim">{f.latency}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
