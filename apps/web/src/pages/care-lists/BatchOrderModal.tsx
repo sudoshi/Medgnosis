@@ -3,11 +3,16 @@
 // =============================================================================
 
 import {
-  X,
   Zap,
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { ItemTypeBadge } from './helpers.js';
 import type { OrderItem, WorklistPatient } from './types.js';
 
@@ -43,36 +48,21 @@ export function BatchOrderModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-xl bg-s0 border border-edge/40 shadow-2xl rounded-card overflow-hidden animate-fade-up">
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-edge/35">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-card bg-violet/10">
-              <Zap size={15} className="text-violet" strokeWidth={2} />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-bright">Order All for {patient.patient_name}</h2>
-              <p className="text-xs text-ghost mt-0.5">
-                Place {actionable.length} order{actionable.length !== 1 ? 's' : ''} in a single batch
-              </p>
-            </div>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-edge/35">
+          <div className="flex items-center justify-center w-8 h-8 rounded-card bg-violet/10">
+            <Zap size={15} className="text-violet" strokeWidth={2} aria-hidden="true" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded text-ghost hover:text-bright hover:bg-s1 transition-colors"
-            aria-label="Close"
-          >
-            <X size={16} strokeWidth={1.5} />
-          </button>
+          <div>
+            <DialogTitle className="text-base font-semibold text-bright">
+              Order All for {patient.patient_name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-ghost mt-0.5">
+              Place {actionable.length} order{actionable.length !== 1 ? 's' : ''} in a single batch
+            </DialogDescription>
+          </div>
         </div>
 
         {/* Orders list */}
@@ -151,7 +141,7 @@ export function BatchOrderModal({
               : `Confirm & Place ${actionable.length} Order${actionable.length !== 1 ? 's' : ''}`}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

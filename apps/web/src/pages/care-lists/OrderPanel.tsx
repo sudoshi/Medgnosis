@@ -4,11 +4,17 @@
 
 import { useState } from 'react';
 import {
-  X,
   Send,
   FileCode2,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 import { ItemTypeBadge } from './helpers.js';
 import type { OrderItem, WorklistMeasure } from './types.js';
 
@@ -52,32 +58,14 @@ export function OrderPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end" role="dialog" aria-modal="true">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>Place Order</SheetTitle>
+          <SheetDescription>FHIR ServiceRequest via CDS Hooks</SheetDescription>
+        </SheetHeader>
 
-      {/* Panel */}
-      <div className="relative w-full max-w-lg bg-s0 border-l border-edge/40 shadow-2xl overflow-y-auto animate-fade-up">
-        {/* Header */}
-        <div className="sticky top-0 bg-s0 z-10 flex items-center justify-between px-5 py-4 border-b border-edge/35">
-          <div>
-            <h2 className="text-base font-semibold text-bright">Place Order</h2>
-            <p className="text-xs text-ghost mt-0.5">FHIR ServiceRequest via CDS Hooks</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded text-ghost hover:text-bright hover:bg-s1 transition-colors"
-            aria-label="Close"
-          >
-            <X size={16} strokeWidth={1.5} />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-5">
+        <div className="space-y-5 pt-2">
           {/* Order details */}
           <div className="space-y-3">
             <h3 className="text-xs font-ui font-semibold uppercase tracking-wider text-ghost">Order Details</h3>
@@ -178,7 +166,7 @@ export function OrderPanel({
             {isPlacing ? 'Placing Order...' : 'Confirm & Place Order'}
           </button>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
