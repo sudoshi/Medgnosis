@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api.js';
+import { announce } from '../stores/announcer.js';
 import {
   useCreateClinicalNote,
   useUpdateClinicalNote,
@@ -236,6 +237,7 @@ export function EncounterNotePage() {
         onSuccess: () => {
           setSaveIndicator('saved');
           setIsDirty(false);
+          announce('Note saved');
           setTimeout(() => setSaveIndicator('idle'), 2000);
         },
         onError: () => setSaveIndicator('idle'),

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner.js';
+import { LiveRegion } from './components/LiveRegion.js';
 import { AuthGuard } from './components/AuthGuard.js';
 import { AppShell } from './components/AppShell.js';
 import { CommandPalette } from './components/CommandPalette.js';
@@ -45,6 +46,7 @@ export function App() {
   return (
     <AppProviders>
       <Toaster />
+      <LiveRegion />
       <CommandPalette />
       <ErrorBoundary>
       <Suspense
