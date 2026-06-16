@@ -169,8 +169,12 @@ export default async function dashboardRoutes(fastify: FastifyInstance): Promise
     if (mv.risk_low > 0) riskDist.push({ risk_level: 'low', count: mv.risk_low });
 
     const highRiskCount = mv.risk_high + mv.risk_critical;
-    const highRiskPct = mv.total_patients > 0
-      ? Math.round((highRiskCount / mv.total_patients) * 100)
+    // Percentage is over the risk-stratified cohort, not the whole panel:
+    // only a fraction of patients carry a composite risk tier, so dividing
+    // by total_patients (1M+) rounds any real high-risk count to 0%.
+    const stratifiedCount = mv.risk_critical + mv.risk_high + mv.risk_moderate + mv.risk_low;
+    const highRiskPct = stratifiedCount > 0
+      ? Math.round((highRiskCount / stratifiedCount) * 100)
       : 0;
 
     // Trend calculations from mat view

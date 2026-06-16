@@ -91,7 +91,7 @@ export function StatsStrip({ isLoading, stats }: StatsStripProps) {
                 {(stats?.risk_score.high_risk_count ?? 0).toLocaleString()}
               </p>
               <p className="text-xs text-ghost mt-1">
-                {stats?.risk_score.high_risk_percentage ?? 0}% of population
+                {stats?.risk_score.high_risk_percentage ?? 0}% of stratified
               </p>
             </div>
           </div>
