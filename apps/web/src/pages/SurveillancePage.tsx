@@ -171,7 +171,14 @@ function GlucoDrilldown({ admissionId }: { admissionId: number }) {
 function GlucometricsTab() {
   const [open, setOpen] = useState<number | null>(null);
   const { data, isLoading, isError } = useGlucoCensus();
-  const census = data?.data?.census ?? [];
+  // Server returns the census in bed order; re-sort for triage so the beds that
+  // need pharmacy attention float to the top — high-risk first, then by the most
+  // alarming glucose (peak, then 24h average), nulls last.
+  const census = [...(data?.data?.census ?? [])].sort((a, b) => {
+    if (a.high_risk !== b.high_risk) return a.high_risk ? -1 : 1;
+    if ((b.max_24h ?? -1) !== (a.max_24h ?? -1)) return (b.max_24h ?? -1) - (a.max_24h ?? -1);
+    return (b.avg_24h ?? -1) - (a.avg_24h ?? -1);
+  });
   return (
     <div className="space-y-3">
       {data?.data && (
