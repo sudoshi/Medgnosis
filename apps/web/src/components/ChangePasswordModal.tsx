@@ -248,7 +248,7 @@ export function ChangePasswordModal() {
           transition: color 0.2s;
         }
         .cpw-hint--pass { color: #0DD9D9; }
-        .cpw-hint--fail { color: #4E5D6C; }
+        .cpw-hint--fail { color: #8FA0B5; }
         .cpw-hint--error { color: #E85A6B; }
 
         .cpw-error {

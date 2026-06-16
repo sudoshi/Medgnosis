@@ -140,7 +140,7 @@ export function MedicationsTab({ patientId }: MedicationsTabProps) {
             <h3 className="text-sm font-semibold text-dim">Past Medications</h3>
             <span className="font-data text-xs text-ghost tabular-nums">{inactive.length}</span>
           </div>
-          <div className="space-y-0 opacity-75">
+          <div className="space-y-0">
             {inactive.map((m) => (
               <div key={m.id} className="py-2 border-b border-edge/10 last:border-0">
                 <div className="flex items-start justify-between gap-2">

@@ -81,7 +81,7 @@ function FindingRow({ f }: { f: DqFinding }) {
       <div className="flex items-center gap-2 flex-shrink-0">
         <button onClick={() => confirm.mutate(f.finding_id, { onSuccess: () => toast.success('Confirmed — now a standing check'), onError: () => toast.error('Failed') })}
           disabled={busy} title="Confirm → standing regression check"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn text-xs font-ui border border-crimson/40 text-crimson hover:bg-crimson/10 transition-colors disabled:opacity-50">
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-btn text-xs font-ui border border-emerald/40 text-emerald hover:bg-emerald/10 transition-colors disabled:opacity-50">
           <Check size={13} strokeWidth={2} aria-hidden="true" /> Confirm
         </button>
         <button onClick={() => dismiss.mutate(f.finding_id, { onSuccess: () => toast.success('Dismissed'), onError: () => toast.error('Failed') })}
