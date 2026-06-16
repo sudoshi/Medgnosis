@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react';
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { api, apiErrorMessage } from '../services/api.js';
+import * as Dialog from '@radix-ui/react-dialog';
 
 // ── Password strength calculation ─────────────────────────────────────────────
 
@@ -89,7 +90,18 @@ export function ChangePasswordModal() {
   };
 
   return (
-    <div className="cpw-overlay">
+    <Dialog.Root open>
+      <Dialog.Portal>
+        <Dialog.Overlay className="cpw-overlay" />
+        {/* Forced password change — MUST stay non-dismissable (auth contract):
+            block ESC + outside interaction, and render no close button. Radix
+            adds the focus trap + role="dialog" + aria-modal the old markup lacked. */}
+        <Dialog.Content
+          className="fixed left-[50%] top-[50%] z-[10000] translate-x-[-50%] translate-y-[-50%] focus:outline-none"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
       <style>{`
         .cpw-overlay {
           position: fixed;
@@ -292,10 +304,10 @@ export function ChangePasswordModal() {
           <Lock size={22} strokeWidth={1.8} />
         </div>
 
-        <h2 className="cpw-title">Change your password</h2>
-        <p className="cpw-subtitle">
+        <Dialog.Title className="cpw-title">Change your password</Dialog.Title>
+        <Dialog.Description className="cpw-subtitle">
           Your account requires a password change before continuing.
-        </p>
+        </Dialog.Description>
 
         <form onSubmit={handleSubmit} noValidate>
           {/* Current password */}
@@ -424,6 +436,8 @@ export function ChangePasswordModal() {
           </button>
         </form>
       </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
