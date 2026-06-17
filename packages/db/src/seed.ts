@@ -14,9 +14,13 @@ async function main(): Promise<void> {
 
   // Ensure default organization exists
   await sql`
-    INSERT INTO phm_edw.organization (organization_id, organization_name, organization_type, active_ind, created_date, updated_date)
-    VALUES (1, 'Medgnosis Health System', 'Health System', 'Y', NOW(), NOW())
-    ON CONFLICT DO NOTHING
+    INSERT INTO phm_edw.organization (organization_name, organization_type, active_ind, created_date, updated_date)
+    SELECT 'Medgnosis Health System', 'Health System', 'Y', NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM phm_edw.organization
+      WHERE organization_name = 'Medgnosis Health System'
+    )
   `;
 
   // Ensure admin user exists with proper bcrypt hash
