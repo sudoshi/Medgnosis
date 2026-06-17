@@ -166,12 +166,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npm exec --workspace=apps/web -- playwright install --with-deps chromium
       - run: npx turbo run build
         env:
           NODE_ENV: production
       - run: npx turbo run db:migrate && npx turbo run db:seed
-      - run: npx turbo run test:e2e
+      - run: npm run test:e2e --workspace=apps/web
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

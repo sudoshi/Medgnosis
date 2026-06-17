@@ -22,8 +22,16 @@ echo ""
 
 # Step 2: Restart services
 echo "[2/3] Restarting production services..."
-sudo systemctl restart medgnosis-api medgnosis-worker
-echo "    Services restarted."
+sudo systemctl restart medgnosis-api
+WORKER_REQUIRED=false
+if systemctl cat medgnosis-worker >/dev/null 2>&1 \
+    && [ "$(systemctl is-enabled medgnosis-worker 2>/dev/null || true)" != "masked" ]; then
+    WORKER_REQUIRED=true
+    sudo systemctl restart medgnosis-worker
+else
+    echo "    medgnosis-worker is unavailable or masked; API restart continues."
+fi
+echo "    Services restart requested."
 echo ""
 
 # Step 3: Verify
@@ -41,7 +49,7 @@ HEALTH=$(curl -sf http://127.0.0.1:3081/health 2>/dev/null || echo '{"status":"u
 echo "    Health check:     $HEALTH"
 echo ""
 
-if [ "$API_STATUS" = "active" ] && [ "$WORKER_STATUS" = "active" ]; then
+if [ "$API_STATUS" = "active" ] && { [ "$WORKER_REQUIRED" != "true" ] || [ "$WORKER_STATUS" = "active" ]; }; then
     echo "Deploy successful! Site: https://medgnosis.acumenus.net"
 else
     echo "WARNING: One or more services are not active. Check: journalctl -u medgnosis-api -n 50"

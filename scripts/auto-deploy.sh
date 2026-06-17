@@ -41,8 +41,14 @@ deploy() {
         # world-read, so make the fresh dist readable or the frontend 403s.
         chmod -R o+rX "$REPO_ROOT/apps/web/dist" 2>/dev/null || true
         /usr/bin/systemctl restart medgnosis-api
-        # worker may be masked in this environment — restart only if available
-        /usr/bin/systemctl restart medgnosis-worker 2>/dev/null || true
+        WORKER_REQUIRED=""
+        if systemctl cat medgnosis-worker >/dev/null 2>&1 \
+            && [ "$(systemctl is-enabled medgnosis-worker 2>/dev/null || true)" != "masked" ]; then
+            WORKER_REQUIRED=1
+            if ! /usr/bin/systemctl restart medgnosis-worker; then
+                log "ERROR: medgnosis-worker restart failed."
+            fi
+        fi
 
         # Boot/health gate: poll the real HTTP health endpoint. `systemctl
         # is-active` reads "activating" during a crash-loop and "active" for an
@@ -63,7 +69,7 @@ deploy() {
         # Advance the hash only on a real 200 — otherwise the daemon retries next
         # interval (self-heals once a fix lands) instead of marking a broken
         # deploy "complete".
-        if [ -n "$HEALTHY" ]; then
+        if [ -n "$HEALTHY" ] && { [ -z "$WORKER_REQUIRED" ] || [ "$WORKER_STATUS" = "active" ]; }; then
             touch "$HASH_FILE"
             log "Deploy complete — health 200. API=$API_STATUS Worker=$WORKER_STATUS"
         else
