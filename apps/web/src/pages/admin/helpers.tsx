@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   Globe,
+  PlugZap,
   Database,
   ScrollText,
   CheckCircle2,
@@ -19,6 +20,7 @@ export const ADMIN_TABS = [
   { id: 'dashboard',  label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'users',      label: 'Users',         icon: Users           },
   { id: 'fhir',       label: 'FHIR Endpoints',icon: Globe           },
+  { id: 'ehr',        label: 'EHR Integrations', icon: PlugZap      },
   { id: 'etl',        label: 'ETL & Database',icon: Database        },
   { id: 'audit',      label: 'Audit Log',     icon: ScrollText      },
 ] as const;

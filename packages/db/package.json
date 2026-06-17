@@ -18,6 +18,7 @@
     "db:migrate:dry-run": "node --import tsx/esm src/migrate.ts --dry-run",
     "db:migrate:list": "node --import tsx/esm src/migrate.ts --list",
     "db:seed": "node --import tsx/esm src/seed.ts",
+    "db:seed-ehr-sandbox": "node --import tsx/esm src/seed-ehr-sandbox.ts",
     "db:seed-demo": "node --import tsx/esm src/seed-demo.ts"
   },
   "dependencies": {

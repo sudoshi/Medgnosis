@@ -12,6 +12,7 @@ import { ADMIN_TABS, type AdminTab } from './admin/helpers.js';
 import { DashboardTab } from './admin/DashboardTab.js';
 import { UsersTab } from './admin/UsersTab.js';
 import { FhirTab } from './admin/FhirTab.js';
+import { EhrIntegrationsTab } from './admin/EhrIntegrationsTab.js';
 import { EtlTab } from './admin/EtlTab.js';
 import { AuditTab } from './admin/AuditTab.js';
 
@@ -70,6 +71,7 @@ export function AdminPage() {
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'users'     && <UsersTab />}
         {activeTab === 'fhir'      && <FhirTab />}
+        {activeTab === 'ehr'       && <EhrIntegrationsTab />}
         {activeTab === 'etl'       && <EtlTab />}
         {activeTab === 'audit'     && <AuditTab />}
       </div>

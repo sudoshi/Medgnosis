@@ -22,6 +22,6 @@ describe('announcer', () => {
     announce('Note saved');
     const second = useAnnouncerStore.getState().polite;
     expect(second).not.toBe(first); // text must change so SR re-reads
-    expect(second.replace(/​/g, '')).toBe('Note saved'); // ...but reads the same words
+    expect(second.replace(/\u200B/g, '')).toBe('Note saved'); // ...but reads the same words
   });
 });

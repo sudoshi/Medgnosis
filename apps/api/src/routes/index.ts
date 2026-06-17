@@ -36,6 +36,8 @@ import superNoteRoutes from './supernote/index.js';
 import dataQualityRoutes from './data-quality/index.js';
 import cohortRoutes from './cohorts/index.js';
 import codingRoutes from './coding/index.js';
+import ehrRoutes from './ehr/index.js';
+import ehrJwksRoutes from './ehr/jwks.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health check — no prefix, no auth
@@ -45,6 +47,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(cdsHooksRoutes, { prefix: '/cds-services' });
   // CDS Hooks 2.0.1 feedback loop — same prefix, separate plugin
   await fastify.register(cdsFeedbackRoutes, { prefix: '/cds-services' });
+  // SMART Backend Services public signing keys for EHR private_key_jwt validation
+  await fastify.register(ehrJwksRoutes, { prefix: '/.well-known' });
 
   // Versioned API routes
   await fastify.register(
@@ -78,6 +82,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(dataQualityRoutes, { prefix: '/data-quality' });
       await api.register(cohortRoutes, { prefix: '/cohorts' });
       await api.register(codingRoutes, { prefix: '/coding' });
+      await api.register(ehrRoutes, { prefix: '/ehr' });
     },
     { prefix: API_PREFIX },
   );

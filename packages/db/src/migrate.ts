@@ -292,20 +292,43 @@ async function applyMigration(db: SqlClient, migration: MigrationFile): Promise<
   console.info(`[migrate] Applying: ${migration.name}`);
   const start = Date.now();
 
-  await db.begin(async (tx) => {
-    await tx.unsafe(migration.content);
-
-    await tx.unsafe(
+  if (containsTransactionControl(migration.content)) {
+    await db.unsafe(migration.content);
+    await db.unsafe(
       `
         INSERT INTO _migrations (name, checksum, execution_ms)
         VALUES ($1, $2, $3)
       `,
       [migration.name, migration.checksum, Date.now() - start],
     );
-  });
+    const elapsed = Date.now() - start;
+    console.info(`[migrate] Applied: ${migration.name} (${elapsed}ms)`);
+    return;
+  }
+
+  await db.unsafe('BEGIN');
+  try {
+    await db.unsafe(migration.content);
+
+    await db.unsafe(
+      `
+        INSERT INTO _migrations (name, checksum, execution_ms)
+        VALUES ($1, $2, $3)
+      `,
+      [migration.name, migration.checksum, Date.now() - start],
+    );
+    await db.unsafe('COMMIT');
+  } catch (err) {
+    await db.unsafe('ROLLBACK');
+    throw err;
+  }
 
   const elapsed = Date.now() - start;
   console.info(`[migrate] Applied: ${migration.name} (${elapsed}ms)`);
+}
+
+function containsTransactionControl(content: string): boolean {
+  return /^\s*(BEGIN|COMMIT|ROLLBACK)\b/im.test(content);
 }
 
 async function main(): Promise<void> {

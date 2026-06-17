@@ -37,6 +37,17 @@
       "dependsOn": ["db:migrate"],
       "passThroughEnv": ["DATABASE_URL"]
     },
+    "db:seed-ehr-sandbox": {
+      "cache": false,
+      "dependsOn": ["db:migrate"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "API_PORT",
+        "EHR_SANDBOX_ORG_ID",
+        "EHR_SMART_SANDBOX_CLIENT_ID",
+        "EHR_SMART_SANDBOX_REDIRECT_URI"
+      ]
+    },
     "solr:reindex": {
       "cache": false,
       "passThroughEnv": ["DATABASE_URL", "SOLR_URL", "SOLR_AUTH_USER", "SOLR_AUTH_PASSWORD"]

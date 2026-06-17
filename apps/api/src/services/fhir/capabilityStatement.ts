@@ -1,6 +1,6 @@
 // =============================================================================
 // Medgnosis API — FHIR CapabilityStatement builder (read-only server)
-// Declares the read/search resources + ValueSet terminology operations so
+// Declares the implemented resources + ValueSet terminology operations so
 // clients (and conformance tooling) can discover the server's capabilities.
 // =============================================================================
 
@@ -29,21 +29,21 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
           },
           {
             type: 'Condition',
-            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            interaction: [{ code: 'search-type' }],
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns',
             ],
           },
           {
             type: 'Observation',
-            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            interaction: [{ code: 'search-type' }],
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result',
             ],
           },
           {
             type: 'MedicationRequest',
-            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            interaction: [{ code: 'search-type' }],
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest',
             ],

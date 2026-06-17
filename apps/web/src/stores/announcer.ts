@@ -8,6 +8,8 @@
 
 import { create } from 'zustand';
 
+const REANNOUNCE_SUFFIX = '\u200B';
+
 interface AnnouncerState {
   polite: string;
   assertive: string;
@@ -19,9 +21,8 @@ export const useAnnouncerStore = create<AnnouncerState>((set, get) => ({
   assertive: '',
   announce: (message, opts) => {
     const key = opts?.assertive ? 'assertive' : 'polite';
-    // Force a DOM text change even for repeats (e.g. two "Saved"s) so the
-    // screen reader re-announces — a zero-width space is invisible on screen.
-    const next = get()[key] === message ? `${message}​` : message;
+    // Force a DOM text change even for repeats so screen readers re-announce.
+    const next = get()[key] === message ? `${message}${REANNOUNCE_SUFFIX}` : message;
     set({ [key]: next } as Partial<AnnouncerState>);
   },
 }));

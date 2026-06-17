@@ -78,6 +78,13 @@ export const config = {
 
   // External integrations / API documentation
   cdsHooksSecret: process.env['CDS_HOOKS_SECRET'] ?? '',
+  cdsFhirAuthRequired: optionalBool('CDS_FHIR_AUTH_REQUIRED', false),
+  cdsSharedSecretCompat: optionalBool('CDS_SHARED_SECRET_COMPAT', true),
+  cdsJwksCacheTtlSeconds: Number(optional('CDS_JWKS_CACHE_TTL_SECONDS', '300')),
+  cdsFhirAuthIssuer: process.env['CDS_FHIR_AUTH_ISSUER'] ?? '',
+  cdsFhirAuthAudience: process.env['CDS_FHIR_AUTH_AUDIENCE'] ?? '',
+  cdsFhirAuthJwksUrl: process.env['CDS_FHIR_AUTH_JWKS_URL'] ?? '',
+  cdsFhirAuthRequiredScopes: process.env['CDS_FHIR_AUTH_REQUIRED_SCOPES'] ?? '',
   swaggerEnabled: optionalBool('SWAGGER_ENABLED', optional('NODE_ENV', 'development') !== 'production'),
 
   get isDev(): boolean {

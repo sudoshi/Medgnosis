@@ -38,6 +38,91 @@ export interface FhirEndpoint {
   notes: string | null;
 }
 
+export type EhrVendor = 'epic' | 'oracle_cerner' | 'smart_generic' | 'hapi' | 'other';
+export type EhrEnvironment = 'sandbox' | 'staging' | 'production';
+export type EhrClientType = 'smart_launch' | 'backend_services' | 'cds_hooks';
+export type EhrClientAuthMethod =
+  | 'public_pkce'
+  | 'client_secret_post'
+  | 'client_secret_basic'
+  | 'private_key_jwt'
+  | 'fhir_authorization_jwt'
+  | 'shared_secret';
+export type EhrClientApprovalStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'revoked'
+  | 'unknown';
+
+export interface EhrTenant {
+  id: number;
+  orgId: number | null;
+  vendor: EhrVendor;
+  name: string;
+  environment: EhrEnvironment;
+  fhirBaseUrl: string;
+  smartConfigUrl: string | null;
+  issuer: string | null;
+  audience: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EhrClientRegistration {
+  id: number;
+  ehrTenantId: number;
+  clientType: EhrClientType;
+  clientSlot: string;
+  clientId: string;
+  jwksUrl: string | null;
+  redirectUris: string[];
+  launchUrl: string | null;
+  scopesRequested: string;
+  scopesGranted: string;
+  authMethod: EhrClientAuthMethod;
+  profileId: string | null;
+  profileVersion: string | null;
+  portalAppId: string | null;
+  approvalStatus: EhrClientApprovalStatus;
+  approvalEvidence: Record<string, unknown>;
+  enabled: boolean;
+  hasClientSecretRef: boolean;
+  hasPrivateKeyRef: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EhrClientReadiness {
+  clientSlot: string;
+  clientType: EhrClientType;
+  clientId: string;
+  authMethod: EhrClientAuthMethod;
+  status: 'ready' | 'blocked';
+  missing: string[];
+}
+
+export interface EhrCapabilitySnapshot {
+  id: number;
+  ehrTenantId: number;
+  smartConfiguration: Record<string, unknown> | null;
+  capabilityStatement: Record<string, unknown> | null;
+  resourceSupport: Record<string, unknown>;
+  capturedAt: string;
+}
+
+export interface EhrTenantDetail {
+  tenant: EhrTenant;
+  clientRegistrations: EhrClientRegistration[];
+  latestCapabilitySnapshot: EhrCapabilitySnapshot | null;
+  readiness: {
+    clients: EhrClientReadiness[];
+  };
+}
+
 export interface AuditLog {
   audit_id: number;
   event_type: string;
