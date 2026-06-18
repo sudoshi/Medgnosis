@@ -18,6 +18,7 @@ import { AuditTab } from './admin/AuditTab.js';
 import { AuthProvidersTab } from './admin/AuthProvidersTab.js';
 import { SystemHealthTab } from './admin/SystemHealthTab.js';
 import { MeasureGovernanceTab } from './admin/MeasureGovernanceTab.js';
+import { RoadmapTab } from './admin/RoadmapTab.js';
 
 // ─── AdminPage ────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ export function AdminPage() {
         {activeTab === 'auth'      && isSuperAdmin() && <AuthProvidersTab />}
         {activeTab === 'health'    && <SystemHealthTab />}
         {activeTab === 'governance' && <MeasureGovernanceTab />}
+        {activeTab === 'roadmap'   && <RoadmapTab />}
         {activeTab === 'fhir'      && <FhirTab />}
         {activeTab === 'ehr'       && <EhrIntegrationsTab />}
         {activeTab === 'etl'       && <EtlTab />}
