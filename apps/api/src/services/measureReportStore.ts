@@ -11,6 +11,11 @@ import { sql } from '@medgnosis/db';
 import { populationsFromReport, type FhirMeasureReport } from './fhir/cqlEngineClient.js';
 
 export type ReportType = 'subject' | 'subject-list' | 'population';
+type UnsafeParameter = NonNullable<Parameters<typeof sql.unsafe>[1]>[number];
+
+function asUnsafeJson(value: unknown): UnsafeParameter {
+  return value as UnsafeParameter;
+}
 
 export interface PersistedMeasureReport {
   measure_code: string;
@@ -30,6 +35,28 @@ export interface PersistedMeasureReport {
 export interface PersistOptions {
   reportType?: ReportType;
   source?: string;
+}
+
+export interface MeasureEvidenceRow {
+  measureCode: string;
+  patientId?: number | null;
+  patientRef?: string | null;
+  patientKey?: number | null;
+  measureKey?: number | null;
+  periodStart: string;
+  periodEnd: string;
+  denominatorFlag?: boolean;
+  numeratorFlag?: boolean;
+  exclusionFlag?: boolean;
+  measureValue?: number | null;
+  source?: string;
+  qdmEvidence?: unknown[];
+  fhirSubjectReport?: FhirMeasureReport | Record<string, unknown> | null;
+}
+
+export interface PersistMeasureEvidenceResult {
+  rowCount: number;
+  ids: number[];
 }
 
 /**
@@ -69,7 +96,93 @@ export async function persistMeasureReport(
       computed_at           = NOW()
     RETURNING id
   `;
-  return rows[0]!.id;
+  return Number(rows[0]!.id);
+}
+
+/**
+ * Upsert patient-level evidence adjacent to a persisted MeasureReport. This is
+ * intentionally separate from fact_measure_result so CQL/QDM evidence can be
+ * reconciled against the current SQL analytics path before it drives measure
+ * accounting.
+ */
+export async function persistMeasureEvidenceRows(
+  measureReportId: number,
+  rows: readonly MeasureEvidenceRow[],
+): Promise<PersistMeasureEvidenceResult> {
+  if (rows.length === 0) {
+    return { rowCount: 0, ids: [] };
+  }
+
+  const ids: number[] = [];
+
+  await sql.begin(async (tx) => {
+    for (const row of rows) {
+      if (row.patientId == null && !row.patientRef) {
+        throw new Error('Measure evidence row requires patientId or patientRef');
+      }
+
+      const inserted = await tx.unsafe<{ id: number }[]>(
+        `
+        INSERT INTO phm_edw.measure_report_evidence
+          (measure_report_id, measure_code, patient_id, patient_ref,
+           patient_key, measure_key, period_start, period_end,
+           denominator_flag, numerator_flag, exclusion_flag, measure_value,
+           source, qdm_evidence, fhir_subject_report)
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13,
+          $14::jsonb,
+          $15::jsonb
+        )
+        ON CONFLICT ON CONSTRAINT uq_measure_report_evidence_subject
+        DO UPDATE SET
+          measure_report_id   = EXCLUDED.measure_report_id,
+          patient_key         = EXCLUDED.patient_key,
+          measure_key         = EXCLUDED.measure_key,
+          denominator_flag    = EXCLUDED.denominator_flag,
+          numerator_flag      = EXCLUDED.numerator_flag,
+          exclusion_flag      = EXCLUDED.exclusion_flag,
+          measure_value       = EXCLUDED.measure_value,
+          qdm_evidence        = EXCLUDED.qdm_evidence,
+          fhir_subject_report = EXCLUDED.fhir_subject_report,
+          computed_at         = NOW()
+        RETURNING id
+        `,
+        [
+          measureReportId,
+          row.measureCode,
+          row.patientId ?? null,
+          row.patientRef ?? null,
+          row.patientKey ?? null,
+          row.measureKey ?? null,
+          row.periodStart,
+          row.periodEnd,
+          row.denominatorFlag ?? false,
+          row.numeratorFlag ?? false,
+          row.exclusionFlag ?? false,
+          row.measureValue ?? null,
+          row.source ?? 'cql',
+          asUnsafeJson(row.qdmEvidence ?? []),
+          asUnsafeJson(row.fhirSubjectReport ?? null),
+        ],
+      );
+
+      ids.push(Number(inserted[0]!.id));
+    }
+  });
+
+  return { rowCount: ids.length, ids };
 }
 
 /** Most-recently computed MeasureReport for a measure (any period/type). */

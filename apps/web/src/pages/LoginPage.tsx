@@ -4,12 +4,12 @@
 // Matches MindLog's production quality with a distinct clinical-data aesthetic
 // =============================================================================
 
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { api, apiErrorMessage } from '../services/api.js';
-import type { User, AuthTokens } from '@medgnosis/shared';
+import type { AuthProviderDiscovery, User, AuthTokens } from '@medgnosis/shared';
 
 // ── Population Network Visualization (SVG) ───────────────────────────────────
 
@@ -142,6 +142,7 @@ function PopulationNetwork() {
 
 export function LoginPage() {
   const navigate    = useNavigate();
+  const [params] = useSearchParams();
   const { setAuth } = useAuthStore();
 
   const [email,    setEmail]    = useState('');
@@ -150,6 +151,29 @@ export function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [providers, setProviders] = useState<AuthProviderDiscovery | null>(null);
+
+  useEffect(() => {
+    const oidcError = params.get('oidc_error');
+    if (oidcError) {
+      setError('Single sign-on could not complete. Use local sign-in or contact an administrator.');
+    }
+  }, [params]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<AuthProviderDiscovery>('/auth/providers')
+      .then((res) => {
+        if (!cancelled) setProviders(res.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setProviders(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -176,6 +200,10 @@ export function LoginPage() {
   const fillDemo = () => {
     setEmail('admin@medgnosis.app');
     setPassword('password');
+  };
+
+  const startOidc = () => {
+    window.location.href = '/api/v1/auth/oidc/redirect';
   };
 
   return (
@@ -442,6 +470,48 @@ export function LoginPage() {
         }
         .lpg-submit:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
         .lpg-submit:disabled { opacity: 0.58; cursor: not-allowed; }
+        .lpg-sso {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          padding: 12px 0;
+          margin-bottom: 16px;
+          background: rgba(255,255,255,0.035);
+          color: #D6E2EC;
+          border: 1px solid rgba(13,217,217,0.18);
+          border-radius: 8px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.875em;
+          font-weight: 700;
+          cursor: pointer;
+          transition: border-color 0.22s, background 0.22s, transform 0.22s;
+          animation: field-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.14s both;
+        }
+        .lpg-sso:hover {
+          border-color: rgba(13,217,217,0.38);
+          background: rgba(13,217,217,0.07);
+          transform: translateY(-1px);
+        }
+        .lpg-sep {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 0 0 16px;
+          color: rgba(78,93,108,0.8);
+          font-size: 0.688em;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          animation: field-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.16s both;
+        }
+        .lpg-sep::before,
+        .lpg-sep::after {
+          content: '';
+          height: 1px;
+          flex: 1;
+          background: rgba(255,255,255,0.075);
+        }
         .lpg-spin {
           width: 16px; height: 16px;
           border: 2px solid rgba(5,13,26,0.28);
@@ -716,6 +786,16 @@ export function LoginPage() {
           </div>
 
           {/* Form */}
+          {providers?.oidc_enabled && (
+            <>
+              <button type="button" className="lpg-sso" onClick={startOidc}>
+                <ShieldCheck size={17} strokeWidth={1.8} />
+                Continue with {providers.oidc_label ?? 'Authentik'}
+              </button>
+              <div className="lpg-sep">or</div>
+            </>
+          )}
+
           <form onSubmit={handleSubmit} noValidate autoComplete="on">
 
             <div className="lpg-f">

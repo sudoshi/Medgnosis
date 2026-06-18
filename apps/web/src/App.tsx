@@ -14,6 +14,7 @@ import { useUiStore } from './stores/ui.js';
 
 const LoginPage = lazy(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/RegisterPage.js').then((m) => ({ default: m.RegisterPage })));
+const OidcCallbackPage = lazy(() => import('./pages/OidcCallbackPage.js').then((m) => ({ default: m.OidcCallbackPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.js').then((m) => ({ default: m.DashboardPage })));
 const PatientsPage = lazy(() => import('./pages/PatientsPage.js').then((m) => ({ default: m.PatientsPage })));
 const PatientDetailPage = lazy(() => import('./pages/PatientDetailPage.js').then((m) => ({ default: m.PatientDetailPage })));
@@ -59,6 +60,7 @@ export function App() {
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<OidcCallbackPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
           {/* Protected - requires authenticated session */}

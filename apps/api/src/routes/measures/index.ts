@@ -65,7 +65,12 @@ export default async function measureRoutes(fastify: FastifyInstance): Promise<v
         COUNT(*) FILTER (WHERE fmr.denominator_flag = TRUE)::int AS eligible
       FROM phm_star.fact_measure_result fmr
       JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+      LEFT JOIN phm_edw.measure_promotion_config mpc
+        ON mpc.measure_code = dm.measure_code
       WHERE dm.measure_id = ${id}::int
+        AND fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')
+        AND fmr.evaluation_scope = 'full_population'
+        AND fmr.reconciliation_status = 'authoritative'
     `.catch((err) => {
       fastify.log.error({ err, measureId: id }, 'Measures: population stats query failed');
       return [{ total_patients: 0, compliant: 0, eligible: 0 }];

@@ -42,6 +42,20 @@ const mockConfig = {
   resendApiKey: '',
   emailFrom: 'test@example.com',
   publicRegistrationEnabled: true,
+  localAuthEnabled: true,
+  oidcEnabled: false,
+  oidcLabel: 'Authentik',
+  oidcDiscoveryUrl: '',
+  oidcClientId: '',
+  oidcClientSecret: '',
+  oidcClientSecretRef: 'OIDC_CLIENT_SECRET',
+  oidcRedirectUri: 'http://localhost:3000/api/v1/auth/oidc/callback',
+  oidcScopes: ['openid', 'profile', 'email', 'groups'],
+  oidcAllowedGroups: ['Medgnosis Admins'],
+  oidcAdminGroups: ['Medgnosis Admins'],
+  oidcStateTtlSeconds: 300,
+  oidcExchangeTtlSeconds: 60,
+  webAppUrl: 'http://localhost:5173',
 };
 
 // Mock config (avoid requiring real env vars)
@@ -108,6 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUnsafe.mockResolvedValue([]);
   mockConfig.publicRegistrationEnabled = true;
+  mockConfig.localAuthEnabled = true;
 });
 
 // ---------------------------------------------------------------------------
@@ -119,7 +134,7 @@ function configureLoginMock(user: SqlRow | null = MOCK_USER): void {
     const query = strings.join('');
 
     // User lookup
-    if (query.includes('FROM app_users') && query.includes('WHERE email')) {
+    if (query.includes('FROM app_users') && query.includes('email')) {
       return Promise.resolve(user ? [user] : []);
     }
     // Update last_login_at

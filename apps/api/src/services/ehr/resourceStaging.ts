@@ -5,6 +5,10 @@
 import { createHash } from 'node:crypto';
 import { sql } from '@medgnosis/db';
 import type { FhirBundle, FhirBundleEntry, FhirResource } from './types.js';
+import {
+  normalizeStagedRunToQdm,
+  type NormalizeStagedRunToQdmResult,
+} from './qdmBridge.js';
 
 export type FhirStagingStatus = 'staged' | 'normalized' | 'failed' | 'skipped';
 export type JsonObject = Record<string, unknown>;
@@ -42,11 +46,20 @@ export interface StageFhirResourcesInput {
   ehrTenantId: number;
   ingestRunId: string;
   source: FhirBundle | FhirResource | readonly FhirResource[];
+  normalizeToQdm?: false | StageFhirResourcesQdmOptions;
 }
 
 export interface StageFhirResourcesResult {
   receivedCount: number;
   staged: StagedFhirResource[];
+  qdm: NormalizeStagedRunToQdmResult | null;
+}
+
+export interface StageFhirResourcesQdmOptions {
+  enabled: true;
+  limit?: number;
+  sourceSystem?: string;
+  failOnError?: boolean;
 }
 
 interface StagingCandidate {
@@ -139,9 +152,11 @@ export async function stageFhirResources(
     staged.push(await upsertPreparedResource(prepared));
   }
 
+  const qdm = await maybeNormalizeToQdm(input);
   return {
     receivedCount: candidates.length,
     staged,
+    qdm,
   };
 }
 
@@ -164,6 +179,28 @@ function candidatesFromSource(
   }
 
   return [{ resource }];
+}
+
+async function maybeNormalizeToQdm(
+  input: StageFhirResourcesInput,
+): Promise<NormalizeStagedRunToQdmResult | null> {
+  if (input.normalizeToQdm === false || input.normalizeToQdm?.enabled !== true) {
+    return null;
+  }
+
+  const result = await normalizeStagedRunToQdm({
+    ingestRunId: input.ingestRunId,
+    ehrTenantId: input.ehrTenantId,
+    orgId: input.orgId,
+    limit: input.normalizeToQdm.limit,
+    sourceSystem: input.normalizeToQdm.sourceSystem ?? 'ehr-resource-staging',
+  });
+
+  if (input.normalizeToQdm.failOnError === true && result.resourcesFailed > 0) {
+    throw new Error(`QDM normalization failed for ${result.resourcesFailed} staged FHIR resource(s)`);
+  }
+
+  return result;
 }
 
 function prepareResource(
@@ -225,7 +262,9 @@ async function upsertPreparedResource(resource: PreparedStagingResource): Promis
       ingest_run_id = EXCLUDED.ingest_run_id,
       patient_ref = EXCLUDED.patient_ref,
       resource = EXCLUDED.resource,
+      source_version_id = EXCLUDED.source_version_id,
       source_last_updated = EXCLUDED.source_last_updated,
+      content_hash = EXCLUDED.content_hash,
       status = 'staged',
       error_message = NULL,
       errors = '[]'::jsonb,

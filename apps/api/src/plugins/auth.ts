@@ -6,7 +6,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
 import { config } from '../config.js';
-import type { UserRole } from '@medgnosis/shared';
+import type { AuthPermission, UserRole } from '@medgnosis/shared';
+import {
+  hasPermission,
+  isSuperAdminRole,
+  roleSatisfies,
+} from '../services/auth/permissions.js';
 
 function extractToken(request: FastifyRequest): string | undefined {
   const auth = request.headers.authorization;
@@ -23,6 +28,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: UserRole;
+  roles?: UserRole[];
+  permissions?: AuthPermission[];
   org_id: string;
   provider_id?: number; // phm_edw.provider.provider_id — null for admin/non-provider users
   mfa_pending?: boolean;
@@ -42,6 +49,10 @@ declare module 'fastify' {
     requireRole: (
       roles: UserRole[],
     ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requirePermission: (
+      permission: AuthPermission,
+    ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requireSuperAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     optionalAuth: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
@@ -74,7 +85,9 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
     (roles: UserRole[]) =>
       async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
         await fastify.authenticate(request, reply);
-        if (!roles.includes(request.user.role)) {
+        if (reply.sent) return;
+
+        if (!roleSatisfies(request.user.role, roles)) {
           await reply.status(403).send({
             success: false,
             error: {
@@ -84,6 +97,43 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
           });
         }
       },
+  );
+
+  fastify.decorate(
+    'requirePermission',
+    (permission: AuthPermission) =>
+      async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+        await fastify.authenticate(request, reply);
+        if (reply.sent) return;
+
+        if (!hasPermission(request.user.role, permission)) {
+          await reply.status(403).send({
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: `Permission '${permission}' is required to access this resource`,
+            },
+          });
+        }
+      },
+  );
+
+  fastify.decorate(
+    'requireSuperAdmin',
+    async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      await fastify.authenticate(request, reply);
+      if (reply.sent) return;
+
+      if (!isSuperAdminRole(request.user.role)) {
+        await reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Super-admin access is required to access this resource',
+          },
+        });
+      }
+    },
   );
 
   fastify.decorate(

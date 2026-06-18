@@ -9,10 +9,244 @@ import type { UserRole } from '@medgnosis/shared';
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { config } from '../../config.js';
+import { formatAuthUser, issueAuthSession, resolveProviderId } from '../../services/auth/session.js';
+import { permissionsForRole } from '../../services/auth/permissions.js';
+import {
+  getOidcProviderConfig,
+  isOidcPubliclyAvailable,
+} from '../../services/auth/oidc/providerConfig.js';
+import { fetchOidcDiscovery } from '../../services/auth/oidc/discovery.js';
+import {
+  consumeHandshake,
+  generateNonce,
+  generatePkceVerifier,
+  sha256Base64Url,
+  storeHandshake,
+} from '../../services/auth/oidc/handshakeStore.js';
+import { validateOidcIdToken } from '../../services/auth/oidc/tokenValidator.js';
+import {
+  OidcAccessDeniedError,
+  reconcileOidcUser,
+} from '../../services/auth/oidc/reconciliation.js';
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
+  // GET /auth/providers
+  fastify.get('/providers', async () => {
+    const oidcProvider = await getOidcProviderConfig();
+    const oidcEnabled = isOidcPubliclyAvailable(oidcProvider);
+
+    return {
+      success: true,
+      data: {
+        local_enabled: config.localAuthEnabled,
+        oidc_enabled: oidcEnabled,
+        oidc_label: oidcEnabled ? oidcProvider.label : null,
+        oidc_redirect_path: oidcEnabled ? '/auth/oidc/redirect' : null,
+      },
+    };
+  });
+
+  // GET /auth/oidc/redirect
+  fastify.get(
+    '/oidc/redirect',
+    {
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
+    },
+    async (_request, reply) => {
+      const provider = await getOidcProviderConfig();
+      if (!isOidcPubliclyAvailable(provider)) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'OIDC_DISABLED', message: 'OIDC sign-in is not enabled' },
+        });
+      }
+
+      const discovery = await fetchOidcDiscovery(provider.discoveryUrl);
+      const codeVerifier = generatePkceVerifier();
+      const nonce = generateNonce();
+      const state = await storeHandshake('state', {
+        nonce,
+        codeVerifier,
+      }, provider.stateTtlSeconds);
+
+      const authorizeUrl = new URL(discovery.authorization_endpoint);
+      authorizeUrl.searchParams.set('response_type', 'code');
+      authorizeUrl.searchParams.set('client_id', provider.clientId);
+      authorizeUrl.searchParams.set('redirect_uri', provider.redirectUri);
+      authorizeUrl.searchParams.set('scope', provider.scopes.join(' '));
+      authorizeUrl.searchParams.set('state', state);
+      authorizeUrl.searchParams.set('nonce', nonce);
+      authorizeUrl.searchParams.set('code_challenge', sha256Base64Url(codeVerifier));
+      authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+
+      return reply.redirect(authorizeUrl.toString());
+    },
+  );
+
+  // GET /auth/oidc/callback
+  fastify.get(
+    '/oidc/callback',
+    {
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const query = request.query as {
+        code?: string;
+        state?: string;
+        error?: string;
+        error_description?: string;
+      };
+
+      if (query.error) {
+        return reply.redirect(`${config.webAppUrl}/login?oidc_error=${encodeURIComponent(query.error)}`);
+      }
+
+      if (!query.code || !query.state) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'OIDC_BAD_CALLBACK', message: 'OIDC callback is missing code or state' },
+        });
+      }
+
+      const statePayload = await consumeHandshake<{
+        nonce: string;
+        codeVerifier: string;
+      }>(query.state, 'state');
+
+      if (!statePayload) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'OIDC_STATE_INVALID', message: 'OIDC state is invalid or expired' },
+        });
+      }
+
+      const provider = await getOidcProviderConfig();
+      if (!isOidcPubliclyAvailable(provider)) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'OIDC_DISABLED', message: 'OIDC sign-in is not enabled' },
+        });
+      }
+
+      const discovery = await fetchOidcDiscovery(provider.discoveryUrl);
+      const form = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: query.code,
+        redirect_uri: provider.redirectUri,
+        client_id: provider.clientId,
+        code_verifier: statePayload.codeVerifier,
+      });
+      if (provider.clientSecret) {
+        form.set('client_secret', provider.clientSecret);
+      }
+
+      const tokenResponse = await fetch(discovery.token_endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      });
+
+      if (!tokenResponse.ok) {
+        fastify.log.warn({ status: tokenResponse.status }, 'OIDC token exchange failed');
+        return reply.redirect(`${config.webAppUrl}/login?oidc_error=token_exchange_failed`);
+      }
+
+      const tokenBody = await tokenResponse.json() as { id_token?: string };
+      if (!tokenBody.id_token) {
+        return reply.redirect(`${config.webAppUrl}/login?oidc_error=missing_id_token`);
+      }
+
+      try {
+        const claims = await validateOidcIdToken(
+          tokenBody.id_token,
+          discovery,
+          provider,
+          statePayload.nonce,
+        );
+        const user = await reconcileOidcUser(claims, provider);
+        const exchangeCode = await storeHandshake('exchange', { userId: user.id }, provider.exchangeTtlSeconds);
+
+        await request.auditLog('oidc_callback_success', 'auth', user.id, {
+          provider: 'authentik',
+          email: claims.email,
+        });
+
+        return reply.redirect(`${config.webAppUrl}/auth/callback?code=${encodeURIComponent(exchangeCode)}`);
+      } catch (err) {
+        const code = err instanceof OidcAccessDeniedError ? 'access_denied' : 'validation_failed';
+        fastify.log.warn({ err }, 'OIDC callback validation failed');
+        return reply.redirect(`${config.webAppUrl}/login?oidc_error=${code}`);
+      }
+    },
+  );
+
+  // POST /auth/oidc/exchange
+  fastify.post(
+    '/oidc/exchange',
+    {
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as { code?: string };
+      if (!body.code) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'MISSING_CODE', message: 'code is required' },
+        });
+      }
+
+      const payload = await consumeHandshake<{ userId: string }>(body.code, 'exchange');
+      if (!payload) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'CODE_INVALID', message: 'OIDC exchange code is invalid or expired' },
+        });
+      }
+
+      const [user] = await sql<{
+        id: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        org_id: number | null;
+        mfa_enabled: boolean;
+        must_change_password: boolean;
+      }[]>`
+        SELECT id, email, first_name, last_name, role, org_id, mfa_enabled, must_change_password
+        FROM public.app_users
+        WHERE id = ${payload.userId}::uuid AND is_active = TRUE
+      `;
+
+      if (!user) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: 'User account not found or disabled' },
+        });
+      }
+
+      const session = await issueAuthSession(fastify, user);
+      await request.auditLog('oidc_exchange', 'auth', user.id, { provider: 'authentik' });
+
+      return reply.send({ success: true, data: session });
+    },
+  );
+
   // POST /auth/login
   fastify.post('/login', async (request, reply) => {
+    if (!config.localAuthEnabled) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'LOCAL_AUTH_DISABLED', message: 'Local sign-in is not enabled' },
+      });
+    }
+
     const parseResult = loginRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({
@@ -26,6 +260,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }
 
     const { email, password } = parseResult.data;
+    const normalizedEmail = email.trim().toLowerCase();
 
     // Look up user
     const [user] = await sql<{
@@ -42,7 +277,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }[]>`
       SELECT id, email, password_hash, first_name, last_name, role, org_id, mfa_enabled, is_active, must_change_password
       FROM app_users
-      WHERE email = ${email}
+      WHERE lower(email) = ${normalizedEmail}
     `;
 
     if (!user || !user.is_active) {
@@ -62,65 +297,13 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    // Update last login
     await sql`UPDATE app_users SET last_login_at = NOW() WHERE id = ${user.id}::UUID`;
-
-    // Resolve provider_id for provider-role users (org_id → provider 1:1 mapping)
-    let providerId: number | undefined;
-    if (user.org_id) {
-      const [prov] = await sql<{ provider_id: number }[]>`
-        SELECT provider_id FROM phm_edw.provider
-        WHERE org_id = ${user.org_id} AND active_ind = 'Y'
-        LIMIT 1
-      `.catch(() => []);
-      providerId = prov?.provider_id;
-    }
-
-    // Generate JWT
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role as UserRole,
-      org_id: String(user.org_id ?? ''),
-      ...(providerId !== undefined ? { provider_id: providerId } : {}),
-      ...(user.must_change_password ? { must_change_password: true } : {}),
-    };
-
-    const accessToken = fastify.jwt.sign(payload);
-    const refreshToken = crypto.randomUUID();
-
-    // Store refresh token hash
-    const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    await sql`
-      INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-      VALUES (${user.id}::UUID, ${refreshHash}, ${refreshExpiry.toISOString()})
-    `;
-
+    const session = await issueAuthSession(fastify, user);
     await request.auditLog('login', 'auth', user.id);
 
     return reply.send({
       success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          role: user.role,
-          org_id: String(user.org_id ?? ''),
-          provider_id: providerId ?? null,
-          mfa_enabled: user.mfa_enabled,
-          must_change_password: user.must_change_password,
-        },
-        tokens: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_in: 900, // 15 minutes in seconds
-        },
-        mfa_required: user.mfa_enabled,
-      },
+      data: session,
     });
   });
 
@@ -269,6 +452,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         sub: user.id,
         email: user.email,
         role: user.role as UserRole,
+        roles: [user.role as UserRole],
+        permissions: permissionsForRole(user.role),
         org_id: String(user.org_id ?? ''),
         ...(refreshProviderId !== undefined ? { provider_id: refreshProviderId } : {}),
         ...(user.must_change_password ? { must_change_password: true } : {}),
@@ -457,8 +642,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         role: string;
         org_id: number | null;
         mfa_enabled: boolean;
+        must_change_password: boolean;
       }[]>`
-        SELECT id, email, first_name, last_name, role, org_id, mfa_enabled
+        SELECT id, email, first_name, last_name, role, org_id, mfa_enabled, must_change_password
         FROM app_users
         WHERE id = ${request.user.sub}::UUID AND is_active = TRUE
       `;
@@ -470,9 +656,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         });
       }
 
+      const providerId = await resolveProviderId(user.org_id);
+
       return reply.send({
         success: true,
-        data: { ...user, org_id: String(user.org_id ?? '') },
+        data: formatAuthUser(user, providerId),
       });
     },
   );
@@ -519,7 +707,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       const [updated] = await sql.unsafe(
         `UPDATE app_users SET ${updates.join(', ')}
          WHERE id = $${paramIdx}::UUID AND is_active = TRUE
-         RETURNING id, email, first_name, last_name, role, org_id, mfa_enabled`,
+         RETURNING id, email, first_name, last_name, role, org_id, mfa_enabled, must_change_password`,
         values,
       );
 
@@ -530,11 +718,22 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         });
       }
 
+      const updatedUser = updated as unknown as {
+        id: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        org_id: number | null;
+        mfa_enabled: boolean;
+        must_change_password: boolean;
+      };
+      const providerId = await resolveProviderId(updatedUser.org_id);
       await request.auditLog('profile_update', 'auth', request.user.sub);
 
       return reply.send({
         success: true,
-        data: { ...updated, org_id: String((updated as Record<string, unknown>).org_id ?? '') },
+        data: formatAuthUser(updatedUser, providerId),
       });
     },
   );

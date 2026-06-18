@@ -9,16 +9,23 @@ import {
   PlugZap,
   Database,
   ScrollText,
+  KeyRound,
+  ServerCog,
+  Scale,
   CheckCircle2,
   AlertTriangle,
   XCircle,
 } from 'lucide-react';
+import type { ElementType } from 'react';
 
 // ─── Tab config ──────────────────────────────────────────────────────────────
 
 export const ADMIN_TABS = [
   { id: 'dashboard',  label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'users',      label: 'Users',         icon: Users           },
+  { id: 'auth',       label: 'Auth Providers',icon: KeyRound,       superAdminOnly: true },
+  { id: 'health',     label: 'System Health', icon: ServerCog       },
+  { id: 'governance', label: 'Measure Governance', icon: Scale      },
   { id: 'fhir',       label: 'FHIR Endpoints',icon: Globe           },
   { id: 'ehr',        label: 'EHR Integrations', icon: PlugZap      },
   { id: 'etl',        label: 'ETL & Database',icon: Database        },
@@ -71,6 +78,7 @@ export function MetricCard({ label, value, sub, color = 'teal' }: {
 export function RoleBadge({ role }: { role: string }) {
   const styles: Record<string, string> = {
     admin:             'bg-[var(--primary-bg)] text-[var(--primary)] border border-[var(--primary-border)]',
+    super_admin:       'bg-amber/10 text-amber border border-amber/25',
     provider:          'bg-emerald/10 text-emerald border border-emerald/25',
     analyst:           'bg-violet/10 text-violet border border-violet/25',
     care_coordinator:  'bg-info/10 text-info border border-info/25',
@@ -85,7 +93,7 @@ export function RoleBadge({ role }: { role: string }) {
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { icon: React.ElementType; cls: string }> = {
+  const map: Record<string, { icon: ElementType; cls: string }> = {
     connected:    { icon: CheckCircle2,  cls: 'text-emerald' },
     degraded:     { icon: AlertTriangle, cls: 'text-amber'   },
     disconnected: { icon: XCircle,       cls: 'text-ghost'   },

@@ -21,6 +21,7 @@
     "ehr:keygen": "npm run ehr:keygen --workspace=apps/api --",
     "ehr:onboard": "npm run ehr:onboard --workspace=apps/api --",
     "ehr:profile": "npm run ehr:profile --workspace=apps/api --",
+    "qdm:shadow-refresh": "npm run qdm:shadow-refresh --workspace=apps/api --",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,sql}\"",
     "demo:infra": "docker compose -f docker-compose.demo.yml up -d",
     "demo:infra:stop": "docker compose -f docker-compose.demo.yml down",

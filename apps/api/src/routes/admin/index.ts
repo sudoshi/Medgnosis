@@ -8,7 +8,7 @@
 //   _migrations: id, name, applied_at
 // =============================================================================
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
   exportPatientsToOmop,
   exportConditionsToOmop,
@@ -19,11 +19,327 @@ import { sql } from '@medgnosis/db';
 import { getMeasureEvaluator } from '../../services/measureEvaluator.js';
 import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
 import { config } from '../../config.js';
+import { Redis } from 'ioredis';
+import { fetchOidcDiscovery } from '../../services/auth/oidc/discovery.js';
+import { getOidcProviderConfig } from '../../services/auth/oidc/providerConfig.js';
+import {
+  listMeasurePromotionConfigs,
+  updateMeasurePromotionConfig,
+  promoteMeasureToCqlAuthoritative,
+  MeasurePromotionError,
+  type MeasurePromotionMode,
+} from '../../services/measureReconciliation.js';
+import {
+  generateMeasureSemanticDriftDossier,
+  getMeasureSemanticDriftDetail,
+  listMeasureSemanticDriftWorklist,
+  MeasureSemanticDriftError,
+} from '../../services/measureSemanticDriftDossier.js';
+import {
+  getQdmBridgeOperationalStatus,
+  listQdmBridgeIssues,
+  listQdmBridgeRuns,
+  type QdmBridgeIssueSeverity,
+  type QdmBridgeIssueStatus,
+  type QdmBridgeOperation,
+  type QdmBridgeRunStatus,
+} from '../../services/qdm/bridgeOps.js';
+
+interface AuthProviderRow {
+  provider_type: string;
+  display_name: string;
+  enabled: boolean;
+  settings: Record<string, unknown>;
+  updated_at: string;
+}
+
+const PROMOTION_MODES: MeasurePromotionMode[] = [
+  'sql_only',
+  'cql_shadow',
+  'cql_authoritative',
+  'manual_hold',
+];
+const QDM_BRIDGE_OPERATIONS: QdmBridgeOperation[] = [
+  'normalization',
+  'cql_shadow_refresh',
+  'star_refresh',
+  'reconciliation',
+  'semantic_drift_dossier',
+  'promotion_validation',
+  'manual_review',
+];
+const QDM_BRIDGE_RUN_STATUSES: QdmBridgeRunStatus[] = ['running', 'completed', 'failed', 'canceled'];
+const QDM_BRIDGE_ISSUE_SEVERITIES: QdmBridgeIssueSeverity[] = ['info', 'warning', 'error', 'critical'];
+const QDM_BRIDGE_ISSUE_STATUSES: QdmBridgeIssueStatus[] = [
+  'open',
+  'acknowledged',
+  'resolved',
+  'suppressed',
+];
+
+function listFromUnknown(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
+function normalizeProviderSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  const stringKeys = [
+    'label',
+    'discovery_url',
+    'client_id',
+    'client_secret_ref',
+    'redirect_uri',
+  ];
+
+  for (const key of stringKeys) {
+    const value = settings[key];
+    if (typeof value === 'string') normalized[key] = value.trim();
+  }
+
+  for (const key of ['scopes', 'allowed_groups', 'admin_groups']) {
+    const list = listFromUnknown(settings[key]);
+    if (list) normalized[key] = list;
+  }
+
+  return normalized;
+}
+
+function maskProvider(row: AuthProviderRow) {
+  return {
+    ...row,
+    settings: Object.fromEntries(
+      Object.entries(row.settings ?? {}).map(([key, value]) => [
+        key,
+        /secret|password|private_key/i.test(key) &&
+        !/_ref$/i.test(key) &&
+        typeof value === 'string' &&
+        value.length > 0
+          ? '__stored__'
+          : value,
+      ]),
+    ),
+  };
+}
+
+function positiveInt(value: unknown): number | null {
+  if (typeof value === 'string' && !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function nonnegativeInt(value: unknown): number | null {
+  if (typeof value === 'string' && !/^(0|[1-9]\d*)$/.test(value)) return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function optionalEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T | null | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !allowed.includes(value as T)) return null;
+  return value as T;
+}
+
+function mapMeasurePromotionError(err: unknown, reply: FastifyReply) {
+  if (err instanceof MeasurePromotionError || err instanceof MeasureSemanticDriftError) {
+    return reply.status(err.statusCode).send({
+      success: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(err.details ? { details: err.details } : {}),
+      },
+    });
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return reply.status(500).send({
+    success: false,
+    error: { code: 'PROMOTION_GOVERNANCE_FAILED', message },
+  });
+}
+
+async function isLastActiveSuperAdmin(userId: string): Promise<boolean> {
+  const [target] = await sql<{ role: string; is_active: boolean }[]>`
+    SELECT role, is_active
+    FROM public.app_users
+    WHERE id = ${userId}::uuid
+  `;
+
+  if (target?.role !== 'super_admin' || !target.is_active) {
+    return false;
+  }
+
+  const [remaining] = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count
+    FROM public.app_users
+    WHERE role = 'super_admin'
+      AND is_active = TRUE
+      AND id <> ${userId}::uuid
+  `;
+
+  return Number(remaining?.count ?? 0) === 0;
+}
 
 export default async function adminRoutes(app: FastifyInstance) {
   // Require admin role for all admin routes
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireRole(['admin']));
+
+  // ---- Authentication Providers ----
+
+  app.get('/auth-providers', { preHandler: app.requireSuperAdmin }, async () => {
+    const providers = await sql<AuthProviderRow[]>`
+      SELECT provider_type, display_name, enabled, settings, updated_at
+      FROM public.auth_provider_settings
+      ORDER BY provider_type
+    `;
+
+    return { success: true, data: { providers: providers.map(maskProvider) } };
+  });
+
+  app.patch('/auth-providers/:type', { preHandler: app.requireSuperAdmin }, async (req, reply) => {
+    const { type } = req.params as { type: string };
+    const body = req.body as {
+      display_name?: string;
+      enabled?: boolean;
+      settings?: Record<string, unknown>;
+    };
+
+    if (!['local', 'oidc', 'ldap', 'oauth2', 'saml2'].includes(type)) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVALID_PROVIDER', message: 'Unsupported auth provider type' },
+      });
+    }
+
+    const [existing] = await sql<AuthProviderRow[]>`
+      SELECT provider_type, display_name, enabled, settings, updated_at
+      FROM public.auth_provider_settings
+      WHERE provider_type = ${type}
+    `;
+    const nextSettings = {
+      ...(existing?.settings ?? {}),
+      ...normalizeProviderSettings(body.settings ?? {}),
+    };
+
+    const [provider] = await sql<AuthProviderRow[]>`
+      INSERT INTO public.auth_provider_settings (
+        provider_type, display_name, enabled, settings, updated_by, updated_at
+      )
+      VALUES (
+        ${type},
+        ${body.display_name?.trim() || existing?.display_name || type.toUpperCase()},
+        ${body.enabled ?? existing?.enabled ?? false},
+        ${JSON.stringify(nextSettings)}::jsonb,
+        ${req.user.sub}::uuid,
+        NOW()
+      )
+      ON CONFLICT (provider_type)
+      DO UPDATE SET
+        display_name = EXCLUDED.display_name,
+        enabled = EXCLUDED.enabled,
+        settings = EXCLUDED.settings,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = NOW()
+      RETURNING provider_type, display_name, enabled, settings, updated_at
+    `;
+
+    await req.auditLog('auth_provider_update', 'auth_provider', type, {
+      provider_type: type,
+      enabled: provider?.enabled ?? false,
+    });
+
+    return { success: true, data: { provider: provider ? maskProvider(provider) : null } };
+  });
+
+  app.post('/auth-providers/:type/test', { preHandler: app.requireSuperAdmin }, async (req, reply) => {
+    const { type } = req.params as { type: string };
+    if (type !== 'oidc') {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'UNSUPPORTED_TEST', message: 'Only OIDC provider tests are currently supported' },
+      });
+    }
+
+    try {
+      const provider = await getOidcProviderConfig();
+      const discovery = await fetchOidcDiscovery(provider.discoveryUrl);
+      return {
+        success: true,
+        data: {
+          issuer: discovery.issuer,
+          authorization_endpoint: discovery.authorization_endpoint,
+          token_endpoint: discovery.token_endpoint,
+          jwks_uri: discovery.jwks_uri,
+          client_configured: Boolean(provider.clientId),
+          redirect_uri: provider.redirectUri,
+        },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(502).send({
+        success: false,
+        error: { code: 'PROVIDER_TEST_FAILED', message },
+      });
+    }
+  });
+
+  // ---- System Health ----
+
+  app.get('/system-health', { preHandler: app.requirePermission('admin:system-health') }, async () => {
+    const startedAt = Date.now();
+    const db = await sql`SELECT NOW() AS now`.then(
+      () => ({ status: 'ok' as const }),
+      (err: unknown) => ({ status: 'error' as const, error: String(err) }),
+    );
+
+    const redis = new Redis(config.redisUrl, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+    });
+    const redisHealth = await redis.connect()
+      .then(() => redis.ping())
+      .then(() => ({ status: 'ok' as const }))
+      .catch((err: unknown) => ({ status: 'error' as const, error: String(err) }))
+      .finally(() => redis.disconnect());
+
+    const solr = getSolrClient();
+    const solrHealth = solr
+      ? {
+          status: isSolrAvailable() ? 'ok' : 'degraded',
+          enabled: config.solrEnabled,
+        }
+      : {
+          status: config.solrEnabled ? 'error' : 'disabled',
+          enabled: config.solrEnabled,
+        };
+
+    return {
+      success: true,
+      data: {
+        api: { status: 'ok', node_env: config.nodeEnv },
+        database: db,
+        redis: redisHealth,
+        solr: solrHealth,
+        auth: {
+          local_enabled: config.localAuthEnabled,
+          oidc_enabled: (await getOidcProviderConfig()).enabled,
+        },
+        duration_ms: Date.now() - startedAt,
+      },
+    };
+  });
 
   // ---- OMOP CDM Export ----
 
@@ -117,8 +433,15 @@ export default async function adminRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: { message: 'email and first_name are required' } });
     }
 
-    const validRoles = ['provider', 'analyst', 'admin', 'care_coordinator'];
+    const validRoles = ['provider', 'analyst', 'admin', 'super_admin', 'care_coordinator'];
     const resolvedRole = validRoles.includes(role ?? '') ? role! : 'provider';
+
+    if (resolvedRole === 'super_admin' && req.user.role !== 'super_admin') {
+      return reply.status(403).send({
+        success: false,
+        error: { message: 'Only a super-admin can create another super-admin' },
+      });
+    }
 
     const [existing] = await sql`SELECT id FROM public.app_users WHERE email = ${email}`;
     if (existing) {
@@ -154,6 +477,23 @@ export default async function adminRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: { message: 'No updates provided' } });
     }
 
+    if (role === 'super_admin' && req.user.role !== 'super_admin') {
+      return reply.status(403).send({
+        success: false,
+        error: { message: 'Only a super-admin can grant super-admin access' },
+      });
+    }
+
+    if ((role && role !== 'super_admin') || is_active === false) {
+      const wouldRemoveLastSuperAdmin = await isLastActiveSuperAdmin(id);
+      if (wouldRemoveLastSuperAdmin) {
+        return reply.status(400).send({
+          success: false,
+          error: { message: 'At least one active super-admin must remain' },
+        });
+      }
+    }
+
     const [updated] = await sql`
       UPDATE public.app_users
       SET
@@ -172,6 +512,14 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.delete('/users/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+
+    const wouldRemoveLastSuperAdmin = await isLastActiveSuperAdmin(id);
+    if (wouldRemoveLastSuperAdmin) {
+      return reply.status(400).send({
+        success: false,
+        error: { message: 'At least one active super-admin must remain' },
+      });
+    }
 
     const [updated] = await sql`
       UPDATE public.app_users
@@ -392,6 +740,186 @@ export default async function adminRoutes(app: FastifyInstance) {
       .send({ success: allOk, data: { results } });
   });
 
+  // ---- Measure Promotion Governance ----
+
+  app.get('/measure-promotion-configs', async (req, reply) => {
+    const { measure_code, limit } = req.query as { measure_code?: string; limit?: string };
+    const parsedLimit = limit === undefined ? undefined : positiveInt(limit);
+    if (limit !== undefined && parsedLimit === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'limit must be a positive integer' },
+      });
+    }
+
+    const configs = await listMeasurePromotionConfigs({
+      measureCode: measure_code,
+      limit: parsedLimit ?? undefined,
+    });
+    return reply.send({ success: true, data: { configs } });
+  });
+
+  app.patch('/measure-promotion-configs/:measureCode', async (req, reply) => {
+    const { measureCode } = req.params as { measureCode: string };
+    const body = req.body as {
+      promotionMode?: string;
+      tolerance?: number;
+      evaluatorSource?: string;
+      requireReconciliationAgreement?: boolean;
+      metadata?: Record<string, unknown>;
+    };
+
+    if (body.promotionMode !== undefined && !PROMOTION_MODES.includes(body.promotionMode as MeasurePromotionMode)) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Unsupported promotionMode' },
+      });
+    }
+    const parsedTolerance = body.tolerance === undefined ? undefined : nonnegativeInt(body.tolerance);
+    if (body.tolerance !== undefined && parsedTolerance === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'tolerance must be a non-negative integer' },
+      });
+    }
+
+    try {
+      const config = await updateMeasurePromotionConfig({
+        measureCode,
+        promotionMode: body.promotionMode as MeasurePromotionMode | undefined,
+        tolerance: parsedTolerance ?? undefined,
+        evaluatorSource: body.evaluatorSource,
+        requireReconciliationAgreement: body.requireReconciliationAgreement,
+        metadata: body.metadata,
+      });
+      await req.auditLog('measure_promotion_config_update', 'measure_promotion_config', measureCode, {
+        promotionMode: config.promotionMode,
+        tolerance: config.tolerance,
+        authoritativeSource: config.authoritativeSource,
+      });
+      return reply.send({ success: true, data: { config } });
+    } catch (err) {
+      return mapMeasurePromotionError(err, reply);
+    }
+  });
+
+  app.post('/measure-promotion-configs/:measureCode/promote-cql-authoritative', async (req, reply) => {
+    const { measureCode } = req.params as { measureCode: string };
+    const body = req.body as {
+      reconciliationRunId?: number;
+      measureReportId?: number;
+      qdmRunId?: string | null;
+      dryRun?: boolean;
+      requireFullPopulation?: boolean;
+      statementTimeoutMs?: number;
+    };
+    const reconciliationRunId = positiveInt(body.reconciliationRunId);
+    const measureReportId = positiveInt(body.measureReportId);
+    if (reconciliationRunId === null || measureReportId === null) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'reconciliationRunId and measureReportId must be positive integers',
+        },
+      });
+    }
+    const parsedStatementTimeoutMs = body.statementTimeoutMs === undefined
+      ? undefined
+      : positiveInt(body.statementTimeoutMs);
+    if (body.statementTimeoutMs !== undefined && parsedStatementTimeoutMs === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'statementTimeoutMs must be a positive integer' },
+      });
+    }
+
+    try {
+      const promotion = await promoteMeasureToCqlAuthoritative({
+        measureCode,
+        reconciliationRunId,
+        measureReportId,
+        actorId: req.user.sub,
+        qdmRunId: body.qdmRunId,
+        dryRun: body.dryRun,
+        requireFullPopulation: body.requireFullPopulation,
+        statementTimeoutMs: parsedStatementTimeoutMs ?? undefined,
+      });
+      if (!promotion.dryRun) {
+        await req.auditLog('measure_promotion_cql_authoritative', 'measure_promotion_config', measureCode, {
+          reconciliationRunId,
+          measureReportId,
+          rowsPromoted: promotion.rowsPromoted,
+        });
+      }
+      return reply.send({ success: true, data: { promotion } });
+    } catch (err) {
+      return mapMeasurePromotionError(err, reply);
+    }
+  });
+
+  app.post('/measure-promotion-configs/:measureCode/semantic-drift-dossier', async (req, reply) => {
+    const { measureCode } = req.params as { measureCode: string };
+    const body = (req.body ?? {}) as {
+      reconciliationRunId?: number;
+      measureReportId?: number;
+      patientSampleLimit?: number;
+      persist?: boolean;
+    };
+    const reconciliationRunId =
+      body.reconciliationRunId === undefined ? undefined : positiveInt(body.reconciliationRunId);
+    const measureReportId =
+      body.measureReportId === undefined ? undefined : positiveInt(body.measureReportId);
+    const patientSampleLimit =
+      body.patientSampleLimit === undefined ? undefined : positiveInt(body.patientSampleLimit);
+    if (
+      (body.reconciliationRunId !== undefined && reconciliationRunId === null) ||
+      (body.measureReportId !== undefined && measureReportId === null) ||
+      (body.patientSampleLimit !== undefined && patientSampleLimit === null)
+    ) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'reconciliationRunId, measureReportId, and patientSampleLimit must be positive integers when provided',
+        },
+      });
+    }
+    if (body.persist !== undefined && typeof body.persist !== 'boolean') {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'persist must be a boolean when provided' },
+      });
+    }
+
+    try {
+      const dossier = await generateMeasureSemanticDriftDossier({
+        measureCode,
+        reconciliationRunId: reconciliationRunId ?? undefined,
+        measureReportId: measureReportId ?? undefined,
+        patientSampleLimit: patientSampleLimit ?? undefined,
+        persist: body.persist,
+        actorId: req.user.sub,
+      });
+      await req.auditLog(
+        'measure_semantic_drift_dossier_generate',
+        'measure_semantic_drift_dossier',
+        dossier.dossierId == null ? measureCode : String(dossier.dossierId),
+        {
+          measureCode,
+          reconciliationRunId: dossier.reconciliationRunId,
+          measureReportId: dossier.measureReportId,
+          persisted: dossier.persisted,
+          patientRowsPersisted: dossier.patientsPersisted,
+          patientRowsReturned: dossier.patientRowsReturned,
+        },
+      );
+      return reply.send({ success: true, data: { dossier } });
+    } catch (err) {
+      return mapMeasurePromotionError(err, reply);
+    }
+  });
+
   // ---- Refresh Measure Results ----
 
   app.post('/refresh-measures', async (req, reply) => {
@@ -424,6 +952,243 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get('/measure-promotion-configs/:measureCode/semantic-drift-worklist', async (req, reply) => {
+    const { measureCode } = req.params as { measureCode: string };
+    const query = req.query as {
+      dossierId?: string;
+      denominatorDrift?: string;
+      numeratorDrift?: string;
+      exclusionDrift?: string;
+      patientId?: string;
+      limit?: string;
+      offset?: string;
+    };
+    const dossierId = query.dossierId === undefined ? undefined : positiveInt(query.dossierId);
+    const patientId = query.patientId === undefined ? undefined : positiveInt(query.patientId);
+    const limit = query.limit === undefined ? undefined : positiveInt(query.limit);
+    const offset = query.offset === undefined ? undefined : nonnegativeInt(query.offset);
+    if (
+      (query.dossierId !== undefined && dossierId === null) ||
+      (query.patientId !== undefined && patientId === null) ||
+      (query.limit !== undefined && limit === null) ||
+      (query.offset !== undefined && offset === null)
+    ) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'dossierId, patientId, and limit must be positive integers; offset must be non-negative',
+        },
+      });
+    }
+
+    try {
+      const worklist = await listMeasureSemanticDriftWorklist({
+        measureCode,
+        dossierId: dossierId ?? undefined,
+        denominatorDrift: query.denominatorDrift,
+        numeratorDrift: query.numeratorDrift,
+        exclusionDrift: query.exclusionDrift,
+        patientId: patientId ?? undefined,
+        limit: limit ?? undefined,
+        offset: offset ?? undefined,
+      });
+      await req.auditLog(
+        'measure_semantic_drift_worklist_view',
+        'measure_semantic_drift_dossier',
+        String(worklist.dossierId),
+        {
+          measureCode,
+          dossierId: worklist.dossierId,
+          filters: {
+            denominatorDrift: worklist.filters.denominatorDrift,
+            numeratorDrift: worklist.filters.numeratorDrift,
+            exclusionDrift: worklist.filters.exclusionDrift,
+            hasPatientFilter: worklist.filters.patientId !== null,
+          },
+          pagination: {
+            limit: worklist.pagination.limit,
+            offset: worklist.pagination.offset,
+            returned: worklist.pagination.returned,
+            total: worklist.pagination.total,
+          },
+        },
+      );
+      return reply.send({ success: true, data: { worklist } });
+    } catch (err) {
+      return mapMeasurePromotionError(err, reply);
+    }
+  });
+
+  app.get('/measure-promotion-configs/:measureCode/semantic-drift-worklist/:dossierPatientId', async (req, reply) => {
+    const { measureCode, dossierPatientId: rawDossierPatientId } = req.params as {
+      measureCode: string;
+      dossierPatientId: string;
+    };
+    const dossierPatientId = positiveInt(rawDossierPatientId);
+    if (dossierPatientId === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'dossierPatientId must be a positive integer' },
+      });
+    }
+
+    try {
+      const detail = await getMeasureSemanticDriftDetail({ measureCode, dossierPatientId });
+      await req.auditLog(
+        'measure_semantic_drift_detail_view',
+        'measure_semantic_drift_patient',
+        String(detail.dossierPatientId),
+        {
+          measureCode,
+          dossierId: detail.dossierId,
+          dossierPatientId: detail.dossierPatientId,
+          patientId: detail.worklistRow.patientId,
+          patientRef: detail.worklistRow.patientRef,
+          measureReportEvidenceId: detail.measureReportEvidence?.id ?? null,
+          qdmEvidenceCount: detail.measureReportEvidence?.qdmEvidenceCount ?? 0,
+          fhirSubjectReportPresent:
+            detail.measureReportEvidence?.fhirSubjectReportPresent ?? false,
+        },
+      );
+      return reply.send({ success: true, data: { detail } });
+    } catch (err) {
+      return mapMeasurePromotionError(err, reply);
+    }
+  });
+
+  // ---- QDM Bridge Operations ----
+
+  app.get('/qdm-bridge/status', async (req, reply) => {
+    const query = req.query as { measureCode?: string };
+    try {
+      const status = await getQdmBridgeOperationalStatus(query.measureCode);
+      await req.auditLog(
+        'qdm_bridge_status_view',
+        'qdm_bridge_run',
+        query.measureCode ?? 'all',
+        {
+          measureCode: query.measureCode ?? null,
+          returned: status.length,
+        },
+      );
+      return reply.send({ success: true, data: { status } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message },
+      });
+    }
+  });
+
+  app.get('/qdm-bridge/runs', async (req, reply) => {
+    const query = req.query as {
+      measureCode?: string;
+      operation?: string;
+      status?: string;
+      limit?: string;
+      offset?: string;
+    };
+    const operation = optionalEnum(query.operation, QDM_BRIDGE_OPERATIONS);
+    const status = optionalEnum(query.status, QDM_BRIDGE_RUN_STATUSES);
+    const limit = query.limit === undefined ? undefined : positiveInt(query.limit);
+    const offset = query.offset === undefined ? undefined : nonnegativeInt(query.offset);
+    if (operation === null || status === null || limit === null || offset === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Invalid QDM bridge run filters' },
+      });
+    }
+
+    try {
+      const runs = await listQdmBridgeRuns({
+        measureCode: query.measureCode,
+        operation,
+        status,
+        limit,
+        offset,
+      });
+      await req.auditLog(
+        'qdm_bridge_runs_view',
+        'qdm_bridge_run',
+        query.measureCode ?? 'all',
+        {
+          measureCode: query.measureCode ?? null,
+          operation: operation ?? null,
+          status: status ?? null,
+          pagination: {
+            limit: limit ?? null,
+            offset: offset ?? null,
+            returned: runs.length,
+          },
+        },
+      );
+      return reply.send({ success: true, data: { runs } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message },
+      });
+    }
+  });
+
+  app.get('/qdm-bridge/issues', async (req, reply) => {
+    const query = req.query as {
+      measureCode?: string;
+      runId?: string;
+      severity?: string;
+      status?: string;
+      limit?: string;
+      offset?: string;
+    };
+    const severity = optionalEnum(query.severity, QDM_BRIDGE_ISSUE_SEVERITIES);
+    const status = optionalEnum(query.status, QDM_BRIDGE_ISSUE_STATUSES);
+    const limit = query.limit === undefined ? undefined : positiveInt(query.limit);
+    const offset = query.offset === undefined ? undefined : nonnegativeInt(query.offset);
+    if (severity === null || status === null || limit === null || offset === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Invalid QDM bridge issue filters' },
+      });
+    }
+
+    try {
+      const issues = await listQdmBridgeIssues({
+        measureCode: query.measureCode,
+        runId: query.runId,
+        severity,
+        status,
+        limit,
+        offset,
+      });
+      await req.auditLog(
+        'qdm_bridge_issues_view',
+        'qdm_bridge_issue',
+        query.measureCode ?? query.runId ?? 'all',
+        {
+          measureCode: query.measureCode ?? null,
+          hasRunFilter: Boolean(query.runId),
+          severity: severity ?? null,
+          status: status ?? null,
+          pagination: {
+            limit: limit ?? null,
+            offset: offset ?? null,
+            returned: issues.length,
+          },
+        },
+      );
+      return reply.send({ success: true, data: { issues } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message },
+      });
+    }
+  });
+
   // ---- Analytics Overview (legacy endpoint — kept for backwards compatibility) ----
 
   app.get('/analytics/overview', async () => {
@@ -434,7 +1199,17 @@ export default async function adminRoutes(app: FastifyInstance) {
         SELECT COUNT(*) AS count FROM phm_edw.encounter
         WHERE encounter_datetime >= NOW() - INTERVAL '30 days'
       `,
-      sql`SELECT COUNT(DISTINCT measure_key) AS count FROM phm_star.fact_measure_result`,
+      sql`
+        SELECT COUNT(DISTINCT fmr.measure_key) AS count
+        FROM phm_star.fact_measure_result fmr
+        JOIN phm_star.dim_measure dm
+          ON dm.measure_key = fmr.measure_key
+        LEFT JOIN phm_edw.measure_promotion_config mpc
+          ON mpc.measure_code = dm.measure_code
+        WHERE fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')
+          AND fmr.evaluation_scope = 'full_population'
+          AND fmr.reconciliation_status = 'authoritative'
+      `,
     ]);
 
     return {

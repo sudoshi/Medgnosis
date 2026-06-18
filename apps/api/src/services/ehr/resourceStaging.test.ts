@@ -5,12 +5,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FhirBundle, FhirResource } from './types.js';
 
-const { mockSql } = vi.hoisted(() => {
+const { mockSql, normalizeStagedRunToQdm } = vi.hoisted(() => {
   const fn = vi.fn();
   (fn as unknown as { json: (v: unknown) => unknown }).json = (v: unknown) => v;
-  return { mockSql: fn };
+  const normalizeStagedRunToQdm = vi.fn();
+  return { mockSql: fn, normalizeStagedRunToQdm };
 });
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
+vi.mock('./qdmBridge.js', () => ({ normalizeStagedRunToQdm }));
 
 import {
   stableFhirResourceHash,
@@ -85,6 +87,9 @@ describe('stageFhirResource', () => {
     });
 
     const values = mockSql.mock.calls[0]!.slice(1);
+    const statement = String(mockSql.mock.calls[0]![0]);
+    expect(statement).toContain('source_version_id = EXCLUDED.source_version_id');
+    expect(statement).toContain('content_hash = EXCLUDED.content_hash');
     expect(values).toEqual(
       expect.arrayContaining([
         7,
@@ -168,7 +173,9 @@ describe('stageFhirResources', () => {
 
     expect(result.receivedCount).toBe(2);
     expect(result.staged.map((resource) => resource.resourceType)).toEqual(['Patient', 'Observation']);
+    expect(result.qdm).toBeNull();
     expect(mockSql).toHaveBeenCalledTimes(2);
+    expect(normalizeStagedRunToQdm).not.toHaveBeenCalled();
 
     const secondValues = mockSql.mock.calls[1]!.slice(1);
     expect(secondValues).toEqual(
@@ -208,8 +215,93 @@ describe('stageFhirResources', () => {
     });
 
     expect(result.staged[0]?.resourceId).toBe('obs-from-full-url');
+    expect(result.qdm).toBeNull();
     const values = mockSql.mock.calls[0]!.slice(1);
     expect(values).toEqual(expect.arrayContaining(['Observation', 'obs-from-full-url']));
+  });
+
+  it('can normalize the staged run into QDM after all resources are staged', async () => {
+    const qdmResult = {
+      resourcesSeen: 2,
+      resourcesNormalized: 2,
+      resourcesSkipped: 0,
+      resourcesFailed: 0,
+      eventsUpserted: 2,
+      errors: [],
+    };
+    normalizeStagedRunToQdm.mockResolvedValueOnce(qdmResult);
+    const observation: FhirResource = {
+      resourceType: 'Observation',
+      id: 'obs-1',
+      subject: { reference: 'Patient/pat-1' },
+    };
+
+    mockSql
+      .mockResolvedValueOnce([
+        stagingRow(patientResource, {
+          resource_type: 'Patient',
+          resource_id: 'pat-1',
+          patient_ref: 'Patient/pat-1',
+        }),
+      ])
+      .mockResolvedValueOnce([
+        stagingRow(observation, {
+          id: 100,
+          resource_type: 'Observation',
+          resource_id: 'obs-1',
+          patient_ref: 'Patient/pat-1',
+        }),
+      ]);
+
+    const result = await stageFhirResources({
+      orgId: 7,
+      ehrTenantId: 42,
+      ingestRunId: runId,
+      source: [patientResource, observation],
+      normalizeToQdm: {
+        enabled: true,
+        limit: 50,
+        sourceSystem: 'unit-test-staging',
+      },
+    });
+
+    expect(result.qdm).toEqual(qdmResult);
+    expect(mockSql).toHaveBeenCalledTimes(2);
+    expect(normalizeStagedRunToQdm).toHaveBeenCalledWith({
+      ingestRunId: runId,
+      ehrTenantId: 42,
+      orgId: 7,
+      limit: 50,
+      sourceSystem: 'unit-test-staging',
+    });
+  });
+
+  it('can fail fast when opt-in QDM normalization reports failed resources', async () => {
+    normalizeStagedRunToQdm.mockResolvedValueOnce({
+      resourcesSeen: 1,
+      resourcesNormalized: 0,
+      resourcesSkipped: 0,
+      resourcesFailed: 1,
+      eventsUpserted: 0,
+      errors: [{ stagingId: 99, resourceType: 'Observation', resourceId: 'obs-1', message: 'bad' }],
+    });
+    mockSql.mockResolvedValueOnce([
+      stagingRow(patientResource, {
+        resource_type: 'Patient',
+        resource_id: 'pat-1',
+        patient_ref: 'Patient/pat-1',
+      }),
+    ]);
+
+    await expect(
+      stageFhirResources({
+        orgId: 7,
+        ehrTenantId: 42,
+        ingestRunId: runId,
+        source: [patientResource],
+        normalizeToQdm: { enabled: true, failOnError: true },
+      }),
+    ).rejects.toThrow('QDM normalization failed');
   });
 });
 

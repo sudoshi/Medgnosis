@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { streamTick } from '../../services/surveillance.js';
+import { isAdminRole } from '../../services/auth/permissions.js';
 
 export default async function surveillanceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -60,7 +61,7 @@ export default async function surveillanceRoutes(fastify: FastifyInstance): Prom
 
   // POST /surveillance/tick — manual streamer tick (demo; admin only)
   fastify.post('/tick', async (request, reply) => {
-    if (request.user.role !== 'admin') {
+    if (!isAdminRole(request.user.role)) {
       return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
     }
     const result = await streamTick();

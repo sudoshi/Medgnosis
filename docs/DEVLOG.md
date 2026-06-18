@@ -4,6 +4,8 @@
 > **Objective:** Modernize Medgnosis from Laravel 11 (PHP) + Next.js 14 to a TypeScript-native Turborepo monorepo matching (and exceeding) MindLog's architecture.
 > **Decisions:** Clean cutover to Fastify API, Vite+React SPA, no mobile this phase, preserve 54+ UI components' look and feel.
 
+> **Current closeout:** See `docs/superpowers/devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md` for the detailed FHIR/QDM dimensional bridge devlog, including migrations 068-079, CMS122 shadow CQL reconciliation, semantic drift governance, bridge operations, validation evidence, and deployment readiness.
+
 ---
 
 ## Table of Contents

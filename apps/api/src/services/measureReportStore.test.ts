@@ -7,13 +7,28 @@ import type { FhirMeasureReport } from './fhir/cqlEngineClient.js';
 
 const { mockSql } = vi.hoisted(() => {
   const fn = vi.fn();
+  type SqlMock = typeof fn & {
+    json: (v: unknown) => unknown;
+    unsafe: (query: string, parameters?: readonly unknown[]) => Promise<unknown>;
+    begin: (cb: (tx: SqlMock) => Promise<void>) => Promise<void>;
+  };
+  const sqlMock = fn as SqlMock;
   // postgres.js sql.json() wrapper — identity is fine for assertions.
-  (fn as unknown as { json: (v: unknown) => unknown }).json = (v: unknown) => v;
-  return { mockSql: fn };
+  sqlMock.json = (v: unknown) => v;
+  sqlMock.unsafe = async (query, parameters = []) =>
+    fn([query] as unknown as TemplateStringsArray, ...parameters);
+  sqlMock.begin = async (cb) => {
+    await cb(sqlMock);
+  };
+  return { mockSql: sqlMock };
 });
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 
-import { persistMeasureReport, latestMeasureReport } from './measureReportStore.js';
+import {
+  latestMeasureReport,
+  persistMeasureEvidenceRows,
+  persistMeasureReport,
+} from './measureReportStore.js';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -89,5 +104,61 @@ describe('latestMeasureReport', () => {
     mockSql.mockResolvedValueOnce([]);
     const row = await latestMeasureReport('CMS999v1');
     expect(row).toBeNull();
+  });
+});
+
+describe('persistMeasureEvidenceRows', () => {
+  it('upserts row-level patient evidence beside a MeasureReport', async () => {
+    mockSql.mockResolvedValueOnce([{ id: 701 }]);
+
+    const result = await persistMeasureEvidenceRows(7, [
+      {
+        measureCode: 'CMS122v12',
+        patientId: 42,
+        patientKey: 5001,
+        measureKey: 12,
+        periodStart: '2026-01-01',
+        periodEnd: '2026-12-31',
+        denominatorFlag: true,
+        numeratorFlag: false,
+        exclusionFlag: false,
+        source: 'cql',
+        qdmEvidence: [{ qdmEventId: 99, populationRole: 'denominator' }],
+        fhirSubjectReport: { resourceType: 'MeasureReport', status: 'complete', measure: 'CMS122FHIR' },
+      },
+    ]);
+
+    expect(result).toEqual({ rowCount: 1, ids: [701] });
+    const values = mockSql.mock.calls[0]!.slice(1);
+    expect(values).toEqual(
+      expect.arrayContaining([
+        7,
+        'CMS122v12',
+        42,
+        5001,
+        12,
+        '2026-01-01',
+        '2026-12-31',
+        true,
+        false,
+        'cql',
+      ]),
+    );
+    expect(values[13]).toEqual([{ qdmEventId: 99, populationRole: 'denominator' }]);
+    expect(values[14]).toEqual({ resourceType: 'MeasureReport', status: 'complete', measure: 'CMS122FHIR' });
+  });
+
+  it('rejects evidence rows without a patient identity before writing', async () => {
+    await expect(
+      persistMeasureEvidenceRows(7, [
+        {
+          measureCode: 'CMS122v12',
+          periodStart: '2026-01-01',
+          periodEnd: '2026-12-31',
+        },
+      ]),
+    ).rejects.toThrow('patientId or patientRef');
+
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,15 @@ function optionalBool(key: string, fallback: boolean): boolean {
   return val === 'true';
 }
 
+function optionalList(key: string, fallback: string[]): string[] {
+  const val = process.env[key];
+  if (!val) return fallback;
+  return val
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export const config = {
   // Server
   port: Number(optional('API_PORT', '3000')),
@@ -41,6 +50,22 @@ export const config = {
   jwtAccessExpiry: optional('JWT_ACCESS_EXPIRY', '15m'),
   jwtRefreshExpiry: optional('JWT_REFRESH_EXPIRY', '7d'),
   publicRegistrationEnabled: optionalBool('PUBLIC_REGISTRATION_ENABLED', false),
+  localAuthEnabled: optionalBool('LOCAL_AUTH_ENABLED', true),
+  oidcEnabled: optionalBool('OIDC_ENABLED', false),
+  oidcLabel: optional('OIDC_LABEL', 'Authentik'),
+  oidcDiscoveryUrl: process.env['OIDC_DISCOVERY_URL'] ?? '',
+  oidcClientId: process.env['OIDC_CLIENT_ID'] ?? '',
+  oidcClientSecret: process.env['OIDC_CLIENT_SECRET'] ?? '',
+  oidcClientSecretRef: optional('OIDC_CLIENT_SECRET_REF', 'OIDC_CLIENT_SECRET'),
+  oidcRedirectUri: optional(
+    'OIDC_REDIRECT_URI',
+    'http://localhost:3000/api/v1/auth/oidc/callback',
+  ),
+  oidcScopes: optionalList('OIDC_SCOPES', ['openid', 'profile', 'email', 'groups']),
+  oidcAllowedGroups: optionalList('OIDC_ALLOWED_GROUPS', ['Medgnosis Admins']),
+  oidcAdminGroups: optionalList('OIDC_ADMIN_GROUPS', ['Medgnosis Admins']),
+  oidcStateTtlSeconds: Number(optional('OIDC_STATE_TTL_SECONDS', '300')),
+  oidcExchangeTtlSeconds: Number(optional('OIDC_EXCHANGE_TTL_SECONDS', '60')),
 
   // Redis
   redisUrl: optional('REDIS_URL', 'redis://localhost:6379'),

@@ -3,6 +3,10 @@
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
+import {
+  normalizeStagedRunToQdm,
+  type NormalizeStagedRunToQdmResult,
+} from './qdmBridge.js';
 
 export type EhrIngestRunMode = 'incremental' | 'backfill' | 'bulk' | 'manual';
 export type EhrIngestRunStatus = 'running' | 'succeeded' | 'failed' | 'canceled';
@@ -40,16 +44,31 @@ export interface StartEhrIngestRunInput {
 
 export interface FinishEhrIngestRunInput {
   id: string;
+  orgId?: number | null;
+  ehrTenantId?: number;
   resourcesReceived?: number;
   resourcesStaged?: number;
   resourcesUpdated?: number;
   errorCount?: number;
   metadata?: JsonObject;
+  qdmBridge?: FinishEhrIngestRunQdmBridgeOptions;
 }
 
 export interface FailEhrIngestRunInput extends FinishEhrIngestRunInput {
   errorMessage: string;
   errors?: unknown[];
+}
+
+export interface FinishEhrIngestRunQdmBridgeOptions {
+  enabled: boolean;
+  limit?: number;
+  sourceSystem?: string;
+  failOnError?: boolean;
+}
+
+export interface FinishEhrIngestRunResult {
+  run: EhrIngestRun;
+  qdmBridge: NormalizeStagedRunToQdmResult | null;
 }
 
 interface EhrIngestRunRow {
@@ -176,10 +195,23 @@ export async function startIngestRun(input: StartEhrIngestRunInput): Promise<Ehr
 }
 
 export async function finishIngestRun(input: FinishEhrIngestRunInput): Promise<EhrIngestRun> {
+  return finishIngestRunWithQdmBridge(input).then((result) => result.run);
+}
+
+export async function finishIngestRunWithQdmBridge(
+  input: FinishEhrIngestRunInput,
+): Promise<FinishEhrIngestRunResult> {
   const resourcesReceived = countOrNull(input.resourcesReceived);
   const resourcesStaged = countOrNull(input.resourcesStaged);
   const resourcesUpdated = countOrNull(input.resourcesUpdated);
   const errorCount = countOrNull(input.errorCount);
+  const qdmBridgeResult = await maybeNormalizeQdm(input);
+  const metadata = qdmBridgeResult
+    ? {
+        ...(input.metadata ?? {}),
+        qdmBridge: qdmBridgeResult,
+      }
+    : (input.metadata ?? {});
 
   const rows = await sql<EhrIngestRunRow[]>`
     UPDATE phm_edw.ehr_ingest_run
@@ -190,7 +222,7 @@ export async function finishIngestRun(input: FinishEhrIngestRunInput): Promise<E
         resources_updated = COALESCE(${resourcesUpdated}::integer, resources_updated),
         error_count = COALESCE(${errorCount}::integer, error_count),
         error_message = NULL,
-        metadata = metadata || ${sql.json(asSqlJson(input.metadata ?? {}))},
+        metadata = metadata || ${sql.json(asSqlJson(metadata))},
         updated_at = NOW()
     WHERE id = ${input.id}::uuid
     RETURNING id::text AS id,
@@ -212,7 +244,10 @@ export async function finishIngestRun(input: FinishEhrIngestRunInput): Promise<E
               created_at::text AS created_at,
               updated_at::text AS updated_at
   `;
-  return requireReturnedRun(rows, 'finish');
+  return {
+    run: requireReturnedRun(rows, 'finish'),
+    qdmBridge: qdmBridgeResult,
+  };
 }
 
 export async function failIngestRun(input: FailEhrIngestRunInput): Promise<EhrIngestRun> {
@@ -255,4 +290,24 @@ export async function failIngestRun(input: FailEhrIngestRunInput): Promise<EhrIn
               updated_at::text AS updated_at
   `;
   return requireReturnedRun(rows, 'fail');
+}
+
+async function maybeNormalizeQdm(
+  input: FinishEhrIngestRunInput,
+): Promise<NormalizeStagedRunToQdmResult | null> {
+  if (input.qdmBridge?.enabled !== true) return null;
+
+  const result = await normalizeStagedRunToQdm({
+    ingestRunId: input.id,
+    ehrTenantId: input.ehrTenantId,
+    orgId: input.orgId,
+    limit: input.qdmBridge.limit,
+    sourceSystem: input.qdmBridge.sourceSystem,
+  });
+
+  if (input.qdmBridge.failOnError === true && result.resourcesFailed > 0) {
+    throw new Error(`QDM normalization failed for ${result.resourcesFailed} staged FHIR resource(s)`);
+  }
+
+  return result;
 }

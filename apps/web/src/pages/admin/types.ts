@@ -13,7 +13,7 @@ export interface AdminStats {
 }
 
 export interface AdminUser {
-  id: number;
+  id: string;
   email: string;
   first_name: string;
   last_name: string | null;
@@ -23,6 +23,177 @@ export interface AdminUser {
   last_login_at: string | null;
   provider_first_name: string | null;
   provider_last_name: string | null;
+}
+
+export interface AuthProviderSetting {
+  provider_type: string;
+  display_name: string;
+  enabled: boolean;
+  settings: Record<string, unknown>;
+  updated_at: string;
+}
+
+export interface SystemHealth {
+  api: { status: string; node_env: string };
+  database: { status: string; error?: string };
+  redis: { status: string; error?: string };
+  solr: { status: string; enabled: boolean };
+  auth: { local_enabled: boolean; oidc_enabled: boolean };
+  duration_ms: number;
+}
+
+export interface MeasurePromotionConfig {
+  measureCode: string;
+  promotionMode: string;
+  authoritativeSource: string;
+  tolerance: number;
+  evaluatorSource: string | null;
+  requireReconciliationAgreement: boolean;
+  metadata: {
+    latestShadowMaterialization?: {
+      sqlCounts?: PopulationCounts;
+      cqlCounts?: PopulationCounts;
+      deltas?: PopulationCounts;
+      evaluationScope?: string;
+      measureReportId?: number;
+      reconciliationRunId?: number;
+      reconciliationStatus?: string;
+      source?: string;
+    };
+    [key: string]: unknown;
+  };
+  latestReconciliationRun?: {
+    id: number;
+    status: string;
+    agree: boolean;
+    promotionEligible: boolean;
+    evaluationScope: string;
+    deltas: PopulationCounts;
+    computedAt: string;
+  } | null;
+}
+
+export interface PopulationCounts {
+  denominator: number;
+  numerator: number;
+  exclusion: number;
+}
+
+export interface DriftFlags {
+  denominator: boolean;
+  numerator: boolean;
+  exclusion: boolean;
+}
+
+export interface SemanticDriftWorklistRow {
+  dossierPatientId: number;
+  patientId: number | null;
+  patientRef: string | null;
+  patientKey: number | null;
+  sql: DriftFlags;
+  cql: DriftFlags;
+  localGapStatus: string | null;
+  denominatorDrift: string;
+  numeratorDrift: string;
+  exclusionDrift: string;
+  classification: Record<string, unknown>;
+  evidenceSummary: Record<string, unknown>;
+  cqlPopulationCounts: Record<string, number>;
+  hasSubjectReport: boolean;
+  reviewBuckets: {
+    localGap: string;
+    hba1c: string;
+    qdmEvidenceVolume: string;
+    denominatorPrerequisites: string;
+    cqlSubjectPopulation: string;
+  };
+  reviewPriority: number;
+  reviewHint: string;
+  createdAt: string;
+}
+
+export interface SemanticDriftWorklist {
+  measureCode: string;
+  dossierId: number;
+  sourceMeasureCode: string | null;
+  reconciliationRunId: number | null;
+  measureReportId: number | null;
+  period: { start: string; end: string };
+  semanticRelationship: string;
+  generatedAt: string;
+  filters: {
+    denominatorDrift: string | null;
+    numeratorDrift: string | null;
+    exclusionDrift: string | null;
+    patientId: number | null;
+  };
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+  classificationCounts: Record<string, unknown>;
+  rows: SemanticDriftWorklistRow[];
+}
+
+export interface SemanticDriftDetail {
+  measureCode: string;
+  dossierId: number;
+  dossierPatientId: number;
+  sourceMeasureCode: string | null;
+  reconciliationRunId: number | null;
+  measureReportId: number | null;
+  period: { start: string; end: string };
+  semanticRelationship: string;
+  generatedAt: string;
+  worklistRow: SemanticDriftWorklistRow;
+  measureReportEvidence: {
+    id: number;
+    measureReportId: number;
+    source: string;
+    period: { start: string; end: string };
+    flags: DriftFlags;
+    measureValue: number | null;
+    computedAt: string;
+    qdmEvidenceCount: number;
+    fhirSubjectReportPresent: boolean;
+    qdmEvidence: unknown[];
+    fhirSubjectReport: Record<string, unknown> | null;
+  } | null;
+}
+
+export interface QdmBridgeOperationalStatus {
+  operation: string;
+  measureCode: string | null;
+  latestRunId: string;
+  latestStatus: string;
+  latestStartedAt: string;
+  latestCompletedAt: string | null;
+  openIssueCount: number;
+  openBlockingIssueCount: number;
+  latestResult: Record<string, unknown>;
+  latestError: Record<string, unknown> | null;
+}
+
+export interface QdmBridgeIssue {
+  id: string;
+  runId: string | null;
+  issueType: string;
+  severity: string;
+  status: string;
+  measureCode: string | null;
+  patientId: number | null;
+  patientRef: string | null;
+  qdmEventId: number | null;
+  sourceTable: string | null;
+  sourceId: number | null;
+  message: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
 }
 
 export interface FhirEndpoint {

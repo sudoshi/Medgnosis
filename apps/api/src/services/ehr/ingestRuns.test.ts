@@ -4,16 +4,25 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockSql } = vi.hoisted(() => {
+const { mockSql, normalizeStagedRunToQdm } = vi.hoisted(() => {
   const fn = vi.fn();
   (fn as unknown as { json: (v: unknown) => unknown }).json = (v: unknown) => v;
-  return { mockSql: fn };
+  const normalizeStagedRunToQdm = vi.fn();
+  return { mockSql: fn, normalizeStagedRunToQdm };
 });
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
+vi.mock('./qdmBridge.js', () => ({ normalizeStagedRunToQdm }));
 
-import { failIngestRun, finishIngestRun, startIngestRun } from './ingestRuns.js';
+import {
+  failIngestRun,
+  finishIngestRun,
+  finishIngestRunWithQdmBridge,
+  startIngestRun,
+} from './ingestRuns.js';
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 const runId = '00000000-0000-4000-8000-000000000063';
 
@@ -110,6 +119,74 @@ describe('finishIngestRun', () => {
 
     const values = mockSql.mock.calls[0]!.slice(1);
     expect(values).toEqual(expect.arrayContaining([10, 9, 1, 0, { pageCount: 2 }, runId]));
+    expect(normalizeStagedRunToQdm).not.toHaveBeenCalled();
+  });
+
+  it('optionally normalizes staged FHIR into QDM before marking the run succeeded', async () => {
+    const qdmResult = {
+      resourcesSeen: 3,
+      resourcesNormalized: 2,
+      resourcesSkipped: 1,
+      resourcesFailed: 0,
+      eventsUpserted: 2,
+      errors: [],
+    };
+    normalizeStagedRunToQdm.mockResolvedValueOnce(qdmResult);
+    mockSql.mockResolvedValueOnce([
+      {
+        ...runRow,
+        status: 'succeeded',
+        finished_at: '2026-06-16 12:05:00+00',
+        metadata: { qdmBridge: qdmResult },
+      },
+    ]);
+
+    const result = await finishIngestRunWithQdmBridge({
+      id: runId,
+      orgId: 7,
+      ehrTenantId: 42,
+      resourcesReceived: 3,
+      resourcesStaged: 3,
+      metadata: { pageCount: 1 },
+      qdmBridge: {
+        enabled: true,
+        limit: 25,
+        sourceSystem: 'unit-test',
+      },
+    });
+
+    expect(result.run.status).toBe('succeeded');
+    expect(result.qdmBridge).toEqual(qdmResult);
+    expect(normalizeStagedRunToQdm).toHaveBeenCalledWith({
+      ingestRunId: runId,
+      ehrTenantId: 42,
+      orgId: 7,
+      limit: 25,
+      sourceSystem: 'unit-test',
+    });
+
+    const values = mockSql.mock.calls[0]!.slice(1);
+    expect(values).toEqual(expect.arrayContaining([{ pageCount: 1, qdmBridge: qdmResult }]));
+  });
+
+  it('can fail fast when opt-in QDM normalization reports failed resources', async () => {
+    normalizeStagedRunToQdm.mockResolvedValueOnce({
+      resourcesSeen: 1,
+      resourcesNormalized: 0,
+      resourcesSkipped: 0,
+      resourcesFailed: 1,
+      eventsUpserted: 0,
+      errors: [{ stagingId: 99, resourceType: 'Observation', resourceId: 'obs-1', message: 'bad' }],
+    });
+
+    await expect(
+      finishIngestRunWithQdmBridge({
+        id: runId,
+        qdmBridge: { enabled: true, failOnError: true },
+      }),
+    ).rejects.toThrow('QDM normalization failed');
+
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });
 

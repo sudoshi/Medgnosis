@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { runRiskModels } from '../../services/runRiskModels.js';
+import { isAdminRole } from '../../services/auth/permissions.js';
 
 export default async function riskModelRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -44,7 +45,7 @@ export default async function riskModelRoutes(fastify: FastifyInstance): Promise
 
   // POST /risk-models/run — recompute now (admin only)
   fastify.post('/run', async (request, reply) => {
-    if (request.user.role !== 'admin') {
+    if (!isAdminRole(request.user.role)) {
       return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
     }
     const result = await runRiskModels();

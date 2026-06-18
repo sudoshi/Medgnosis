@@ -13,6 +13,7 @@
     "ehr:keygen": "node --import tsx/esm src/scripts/generate-ehr-backend-key.ts",
     "ehr:onboard": "node --env-file=../../.env --import tsx/esm src/scripts/onboard-ehr-tenant.ts",
     "ehr:profile": "node --env-file=../../.env --import tsx/esm src/scripts/ehr-onboarding-profile.ts",
+    "qdm:shadow-refresh": "node --env-file=../../.env --import tsx/esm src/scripts/qdm-bridge-shadow-run.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

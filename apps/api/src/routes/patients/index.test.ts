@@ -95,6 +95,17 @@ describe('patient route authorization', () => {
       mockSql.mock.calls.some(([strings]) => strings.join('').includes('fmr.numerator_flag = TRUE')),
     ).toBe(true);
     expect(
+      mockSql.mock.calls.some(([strings]) => strings.join('').includes('measure_promotion_config')),
+    ).toBe(true);
+    expect(
+      mockSql.mock.calls.some(([strings]) =>
+        strings.join('').includes("fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')"),
+      ),
+    ).toBe(true);
+    expect(
+      mockSql.mock.calls.some(([strings]) => strings.join('').includes("fmr.evaluation_scope = 'full_population'")),
+    ).toBe(true);
+    expect(
       mockSql.mock.calls.some(([, ...values]) => values.includes('COL130')),
     ).toBe(true);
     await app.close();

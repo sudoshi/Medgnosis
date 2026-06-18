@@ -96,6 +96,7 @@ function InviteUserModal({ onClose, onSuccess }: { onClose(): void; onSuccess():
                 <SelectItem value="analyst">Analyst</SelectItem>
                 <SelectItem value="care_coordinator">Care Coordinator</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="super_admin">Super Admin</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -131,7 +132,7 @@ export function UsersTab() {
   const users = (usersData as { data?: { users: AdminUser[] } })?.data?.users ?? [];
 
   const deactivate = useMutation({
-    mutationFn: (id: number) => api.delete(`/admin/users/${id}`),
+    mutationFn: (id: string) => api.delete(`/admin/users/${id}`),
     onSuccess: () => {
       toast.success('User deactivated');
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });

@@ -29,6 +29,10 @@ export const QICORE = {
   observationLab: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-observation-lab',
   medicationRequest:
     'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-medicationrequest',
+  medicationAdministration:
+    'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-medicationadministration',
+  procedure: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-procedure',
+  device: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-device',
 } as const;
 
 export const US_CORE_EXT = {

@@ -21,6 +21,8 @@ import {
   type EhrOnboardingClientInput,
   type EhrOnboardingRegistrationInput,
 } from '../../services/ehr/onboardingRegistration.js';
+import { normalizeStagedRunToQdm } from '../../services/ehr/qdmBridge.js';
+import { loadQdmEventsToCqlEngine } from '../../services/qdm/index.js';
 
 const VENDORS = new Set<EhrVendor>(['epic', 'oracle_cerner', 'smart_generic', 'hapi', 'other']);
 const ENVIRONMENTS = new Set<EhrEnvironment>(['sandbox', 'staging', 'production']);
@@ -83,6 +85,38 @@ interface UpsertTenantBody {
 
 interface TenantIdParams {
   id: string;
+}
+
+interface IngestRunQdmParams extends TenantIdParams {
+  runId: string;
+}
+
+interface IngestRunQdmBody {
+  limit?: unknown;
+  sourceSystem?: unknown;
+  source_system?: unknown;
+}
+
+interface TenantQdmCqlLoadBody {
+  ingestRunId?: unknown;
+  ingest_run_id?: unknown;
+  qdmEventIds?: unknown;
+  qdm_event_ids?: unknown;
+  patientIds?: unknown;
+  patient_ids?: unknown;
+  patientRefs?: unknown;
+  patient_refs?: unknown;
+  qdmDatatypes?: unknown;
+  qdm_datatypes?: unknown;
+  periodStart?: unknown;
+  period_start?: unknown;
+  periodEnd?: unknown;
+  period_end?: unknown;
+  engineBaseUrl?: unknown;
+  engine_base_url?: unknown;
+  includePatientRecords?: unknown;
+  include_patient_records?: unknown;
+  limit?: unknown;
 }
 
 export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void> {
@@ -215,6 +249,16 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
   app.get<{ Params: TenantIdParams }>('/tenants/:id/diagnostics', async (request, reply) =>
     sendTenantDiagnostics(request, reply),
   );
+
+  app.post<{ Params: IngestRunQdmParams; Body: IngestRunQdmBody }>(
+    '/tenants/:id/ingest-runs/:runId/qdm-normalization',
+    async (request, reply) => sendQdmNormalizationReplay(request, reply),
+  );
+
+  app.post<{ Params: TenantIdParams; Body: TenantQdmCqlLoadBody }>(
+    '/tenants/:id/qdm/cql-load',
+    async (request, reply) => sendTenantQdmCqlLoad(request, reply),
+  );
 }
 
 async function sendTenantDiagnostics(
@@ -263,6 +307,103 @@ async function sendTenantDiagnostics(
       },
     });
   }
+}
+
+async function sendQdmNormalizationReplay(
+  request: FastifyRequest<{ Params: IngestRunQdmParams; Body: IngestRunQdmBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const runId = parseUuid(request.params.runId);
+  if (!runId) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Ingest run id must be a UUID' },
+    });
+  }
+
+  const parsedBody = parseQdmReplayBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const result = await normalizeStagedRunToQdm({
+    ingestRunId: runId,
+    ehrTenantId: tenant.id,
+    orgId: tenant.orgId,
+    limit: parsedBody.input.limit,
+    sourceSystem: parsedBody.input.sourceSystem ?? 'ehr-admin-qdm-replay',
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      ingestRunId: runId,
+      qdm: result,
+    },
+  });
+}
+
+async function sendTenantQdmCqlLoad(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: TenantQdmCqlLoadBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parseQdmCqlLoadBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const result = await loadQdmEventsToCqlEngine({
+    ...parsedBody.input,
+    ehrTenantId: tenant.id,
+    orgId: tenant.orgId,
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      qdmCqlLoad: result,
+    },
+  });
 }
 
 function parseUpsertTenantBody(
@@ -417,6 +558,79 @@ function parseOnboardingProfileQuery(
   };
 }
 
+function parseQdmReplayBody(
+  body: IngestRunQdmBody,
+): { input: { limit?: number; sourceSystem?: string } } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const limit = optionalPositiveInt(body.limit);
+  if (body.limit !== undefined && limit === undefined) {
+    return { error: 'limit must be a positive integer' };
+  }
+
+  const sourceSystem = optionalString(body.sourceSystem ?? body.source_system);
+  const input: { limit?: number; sourceSystem?: string } = {};
+  if (limit !== undefined) input.limit = limit;
+  if (sourceSystem !== undefined) input.sourceSystem = sourceSystem;
+  return { input };
+}
+
+function parseQdmCqlLoadBody(
+  body: TenantQdmCqlLoadBody,
+): { input: NonNullable<Parameters<typeof loadQdmEventsToCqlEngine>[0]> } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const limit = optionalPositiveInt(body.limit);
+  if (body.limit !== undefined && limit === undefined) {
+    return { error: 'limit must be a positive integer' };
+  }
+
+  const ingestRunId = optionalString(body.ingestRunId ?? body.ingest_run_id);
+  if (ingestRunId !== undefined && !parseUuid(ingestRunId)) {
+    return { error: 'ingestRunId must be a UUID' };
+  }
+
+  const qdmEventIds = optionalPositiveIntList(body.qdmEventIds ?? body.qdm_event_ids, 'qdmEventIds');
+  if ('error' in qdmEventIds) return qdmEventIds;
+  const patientIds = optionalPositiveIntList(body.patientIds ?? body.patient_ids, 'patientIds');
+  if ('error' in patientIds) return patientIds;
+  const patientRefs = optionalStringList(body.patientRefs ?? body.patient_refs, 'patientRefs');
+  if ('error' in patientRefs) return patientRefs;
+  const qdmDatatypes = optionalStringList(body.qdmDatatypes ?? body.qdm_datatypes, 'qdmDatatypes');
+  if ('error' in qdmDatatypes) return qdmDatatypes;
+
+  const periodStart = optionalDateString(body.periodStart ?? body.period_start, 'periodStart');
+  if ('error' in periodStart) return periodStart;
+  const periodEnd = optionalDateString(body.periodEnd ?? body.period_end, 'periodEnd');
+  if ('error' in periodEnd) return periodEnd;
+  if (periodStart.value && periodEnd.value && periodEnd.value < periodStart.value) {
+    return { error: 'periodEnd must be on or after periodStart' };
+  }
+
+  const engineBaseUrl = optionalHttpUrl(body.engineBaseUrl ?? body.engine_base_url, 'engineBaseUrl');
+  if ('error' in engineBaseUrl) return engineBaseUrl;
+  const includePatientRecords = optionalBoolean(body.includePatientRecords ?? body.include_patient_records);
+  if (
+    (body.includePatientRecords !== undefined || body.include_patient_records !== undefined) &&
+    includePatientRecords === undefined
+  ) {
+    return { error: 'includePatientRecords must be a boolean' };
+  }
+
+  const input: NonNullable<Parameters<typeof loadQdmEventsToCqlEngine>[0]> = {};
+  if (limit !== undefined) input.limit = limit;
+  if (ingestRunId !== undefined) input.ingestRunId = ingestRunId;
+  if (qdmEventIds.value !== undefined) input.qdmEventIds = qdmEventIds.value;
+  if (patientIds.value !== undefined) input.patientIds = patientIds.value;
+  if (patientRefs.value !== undefined) input.patientRefs = patientRefs.value;
+  if (qdmDatatypes.value !== undefined) input.qdmDatatypes = qdmDatatypes.value;
+  if (periodStart.value !== undefined) input.periodStart = periodStart.value;
+  if (periodEnd.value !== undefined) input.periodEnd = periodEnd.value;
+  if (engineBaseUrl.value !== undefined) input.engineBaseUrl = engineBaseUrl.value;
+  if (includePatientRecords !== undefined) input.includePatientRecords = includePatientRecords;
+  return { input };
+}
+
 function parseTenantListFilter(
   query: TenantListQuery,
 ): { filter: ListEhrTenantsFilter } | { error: string } {
@@ -453,6 +667,12 @@ function parseTenantId(value: string): number | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseUuid(value: string): string | undefined {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : undefined;
 }
 
 function positiveQueryInt(value: string | undefined): number | null {
@@ -502,6 +722,63 @@ function optionalStringArray(value: unknown): { value: string[] | undefined } | 
   if (!Array.isArray(value)) return { error: 'redirectUris must be an array of strings' };
   const parsed = value.map((item) => optionalString(item)).filter((item): item is string => Boolean(item));
   return { value: parsed };
+}
+
+function optionalPositiveIntList(
+  value: unknown,
+  label: string,
+): { value: number[] | undefined } | { error: string } {
+  if (value === undefined) return { value: undefined };
+  if (!Array.isArray(value)) return { error: `${label} must be an array of positive integers` };
+  const parsed: number[] = [];
+  for (const item of value) {
+    const next = optionalPositiveInt(item);
+    if (next === undefined) return { error: `${label} must be an array of positive integers` };
+    parsed.push(next);
+  }
+  return { value: Array.from(new Set(parsed)) };
+}
+
+function optionalStringList(
+  value: unknown,
+  label: string,
+): { value: string[] | undefined } | { error: string } {
+  if (value === undefined) return { value: undefined };
+  const raw = typeof value === 'string' ? value.split(',') : value;
+  if (!Array.isArray(raw)) return { error: `${label} must be an array of strings` };
+  const parsed = raw.map((item) => optionalString(item)).filter((item): item is string => Boolean(item));
+  if (parsed.length !== raw.length) return { error: `${label} must be an array of strings` };
+  return { value: Array.from(new Set(parsed)) };
+}
+
+function optionalDateString(
+  value: unknown,
+  label: string,
+): { value: string | undefined } | { error: string } {
+  if (value === undefined) return { value: undefined };
+  const parsed = optionalString(value);
+  if (!parsed || !/^\d{4}-\d{2}-\d{2}$/.test(parsed)) {
+    return { error: `${label} must be a YYYY-MM-DD date` };
+  }
+  return { value: parsed };
+}
+
+function optionalHttpUrl(
+  value: unknown,
+  label: string,
+): { value: string | undefined } | { error: string } {
+  if (value === undefined) return { value: undefined };
+  const parsed = optionalString(value);
+  if (!parsed) return { error: `${label} must be an absolute http(s) URL` };
+  try {
+    const url = new URL(parsed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { error: `${label} must be an absolute http(s) URL` };
+    }
+    return { value: parsed };
+  } catch {
+    return { error: `${label} must be an absolute http(s) URL` };
+  }
 }
 
 function optionalJsonObject(value: unknown): { value: JsonObject | undefined } | { error: string } {

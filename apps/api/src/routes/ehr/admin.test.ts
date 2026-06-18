@@ -7,13 +7,17 @@ import Fastify, {
 import type { JwtPayload } from '../../plugins/auth.js';
 import type { FetchLike } from '../../services/ehr/types.js';
 
-const { mockSql } = vi.hoisted(() => {
+const { mockSql, normalizeStagedRunToQdm, loadQdmEventsToCqlEngine } = vi.hoisted(() => {
   const fn = vi.fn();
   (fn as unknown as { json: (value: unknown) => unknown }).json = (value: unknown) => value;
-  return { mockSql: fn };
+  const normalizeStagedRunToQdm = vi.fn();
+  const loadQdmEventsToCqlEngine = vi.fn();
+  return { mockSql: fn, normalizeStagedRunToQdm, loadQdmEventsToCqlEngine };
 });
 
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
+vi.mock('../../services/ehr/qdmBridge.js', () => ({ normalizeStagedRunToQdm }));
+vi.mock('../../services/qdm/index.js', () => ({ loadQdmEventsToCqlEngine }));
 
 import ehrRoutes from './index.js';
 
@@ -92,6 +96,8 @@ const fetchMock = vi.fn<FetchLike>();
 
 beforeEach(() => {
   mockSql.mockReset();
+  normalizeStagedRunToQdm.mockReset();
+  loadQdmEventsToCqlEngine.mockReset();
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -484,6 +490,179 @@ describe('EHR admin routes', () => {
       error: { code: 'NOT_FOUND' },
     });
     expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('replays QDM normalization for a tenant ingest run', async () => {
+    const qdm = {
+      resourcesSeen: 3,
+      resourcesNormalized: 2,
+      resourcesSkipped: 1,
+      resourcesFailed: 0,
+      eventsUpserted: 2,
+      errors: [],
+    };
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    normalizeStagedRunToQdm.mockResolvedValueOnce(qdm);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/ingest-runs/00000000-0000-4000-8000-000000000068/qdm-normalization',
+      payload: {
+        limit: 25,
+        sourceSystem: 'admin-test',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        tenant: { id: 42, orgId: 7 },
+        ingestRunId: '00000000-0000-4000-8000-000000000068',
+        qdm,
+      },
+    });
+    expect(normalizeStagedRunToQdm).toHaveBeenCalledWith({
+      ingestRunId: '00000000-0000-4000-8000-000000000068',
+      ehrTenantId: 42,
+      orgId: 7,
+      limit: 25,
+      sourceSystem: 'admin-test',
+    });
+    await app.close();
+  });
+
+  it('rejects invalid QDM replay inputs before tenant lookup', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/ingest-runs/00000000-0000-4000-8000-000000000068/qdm-normalization',
+      payload: { limit: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'limit must be a positive integer' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(normalizeStagedRunToQdm).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('returns 404 for QDM replay against an unknown tenant', async () => {
+    mockSql.mockResolvedValueOnce([]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/999/ingest-runs/00000000-0000-4000-8000-000000000068/qdm-normalization',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(normalizeStagedRunToQdm).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('loads tenant-scoped QDM events into the CQL engine', async () => {
+    const qdmCqlLoad = {
+      qdmEventsSelected: 2,
+      qdmEventsIncluded: 3,
+      qdmEventsProjected: 3,
+      qdmEventsSkipped: 0,
+      bundleEntries: 3,
+      load: { total: 3, created: 1, ok: 3, failed: 0 },
+    };
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    loadQdmEventsToCqlEngine.mockResolvedValueOnce(qdmCqlLoad);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/qdm/cql-load',
+      payload: {
+        ingestRunId: '00000000-0000-4000-8000-000000000068',
+        qdmEventIds: [88, 89, 88],
+        patientRefs: ['Patient/pat-1'],
+        qdmDatatypes: ['Laboratory Test, Performed'],
+        periodStart: '2026-01-01',
+        periodEnd: '2026-12-31',
+        includePatientRecords: true,
+        engineBaseUrl: 'http://engine.example.test/fhir',
+        limit: 25,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        tenant: { id: 42, orgId: 7 },
+        qdmCqlLoad,
+      },
+    });
+    expect(loadQdmEventsToCqlEngine).toHaveBeenCalledWith({
+      ehrTenantId: 42,
+      orgId: 7,
+      ingestRunId: '00000000-0000-4000-8000-000000000068',
+      qdmEventIds: [88, 89],
+      patientRefs: ['Patient/pat-1'],
+      qdmDatatypes: ['Laboratory Test, Performed'],
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      includePatientRecords: true,
+      engineBaseUrl: 'http://engine.example.test/fhir',
+      limit: 25,
+    });
+    await app.close();
+  });
+
+  it('rejects invalid QDM CQL load inputs before tenant lookup', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/qdm/cql-load',
+      payload: {
+        periodStart: '2026-12-31',
+        periodEnd: '2026-01-01',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'periodEnd must be on or after periodStart' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(loadQdmEventsToCqlEngine).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('returns 404 for QDM CQL load against an unknown tenant', async () => {
+    mockSql.mockResolvedValueOnce([]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/999/qdm/cql-load',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(loadQdmEventsToCqlEngine).not.toHaveBeenCalled();
     await app.close();
   });
 });

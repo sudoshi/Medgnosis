@@ -161,7 +161,7 @@ function WsIndicator() {
 
 export function AppShell() {
   const navigate = useNavigate();
-  const { user, clearAuth } = useAuthStore();
+  const { user, clearAuth, isAdmin } = useAuthStore();
   const { sidebarOpen, toggleSidebar, toggleSearch } = useUiStore();
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -274,7 +274,7 @@ export function AppShell() {
         {/* ── Bottom section ──────────────────────────────────────── */}
         <div className="px-2 pt-3 pb-2 border-t border-edge/25 space-y-0.5 flex-shrink-0">
           {/* Admin — visible only to admin role */}
-          {(user as { role?: string } | null)?.role === 'admin' && (
+          {isAdmin() && (
             <NavLink
               to="/admin"
               end

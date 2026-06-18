@@ -847,8 +847,13 @@ async function pgPatientList(
           FROM phm_star.dim_patient dp
           JOIN phm_star.fact_measure_result fmr ON fmr.patient_key = dp.patient_key
           JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+          LEFT JOIN phm_edw.measure_promotion_config mpc
+            ON mpc.measure_code = dm.measure_code
           WHERE dp.patient_id = p.patient_id
             AND LOWER(dm.measure_code) = LOWER(${measure})
+            AND fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')
+            AND fmr.evaluation_scope = 'full_population'
+            AND fmr.reconciliation_status = 'authoritative'
             ${measureCohort === 'eligible' ? sql`AND fmr.denominator_flag = TRUE` : sql``}
             ${measureCohort === 'compliant' ? sql`AND fmr.numerator_flag = TRUE` : sql``}
             ${measureCohort === 'noncompliant' ? sql`AND fmr.denominator_flag = TRUE AND fmr.numerator_flag = FALSE` : sql``}
@@ -879,8 +884,13 @@ async function pgPatientList(
           FROM phm_star.dim_patient dp
           JOIN phm_star.fact_measure_result fmr ON fmr.patient_key = dp.patient_key
           JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+          LEFT JOIN phm_edw.measure_promotion_config mpc
+            ON mpc.measure_code = dm.measure_code
           WHERE dp.patient_id = p.patient_id
             AND LOWER(dm.measure_code) = LOWER(${measure})
+            AND fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')
+            AND fmr.evaluation_scope = 'full_population'
+            AND fmr.reconciliation_status = 'authoritative'
             ${measureCohort === 'eligible' ? sql`AND fmr.denominator_flag = TRUE` : sql``}
             ${measureCohort === 'compliant' ? sql`AND fmr.numerator_flag = TRUE` : sql``}
             ${measureCohort === 'noncompliant' ? sql`AND fmr.denominator_flag = TRUE AND fmr.numerator_flag = FALSE` : sql``}

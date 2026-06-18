@@ -30,8 +30,9 @@ export interface MeasureSummaryRow {
 }
 
 /**
- * Refresh fact_measure_result AND fact_measure_strata in one transaction —
- * a failed INSERT rolls back both TRUNCATEs; facts and strata never diverge.
+ * Refresh SQL-source fact_measure_result AND fact_measure_strata in one
+ * transaction — a failed INSERT rolls back the replacement; facts and strata
+ * never diverge. CQL/QDM shadow rows are preserved by source.
  * SET LOCAL scopes the statement timeout to the transaction — no pool leak.
  */
 export async function refreshMeasureResults(): Promise<RefreshResult> {
@@ -39,12 +40,18 @@ export async function refreshMeasureResults(): Promise<RefreshResult> {
 
   const result = await sql.begin(async (tx) => {
     await tx.unsafe("SET LOCAL statement_timeout = '60s'");
-    await tx.unsafe('TRUNCATE phm_star.fact_measure_result');
+    await tx.unsafe(`
+      DELETE FROM phm_star.fact_measure_result_evidence fmre
+      USING phm_star.fact_measure_result fmr
+      WHERE fmre.measure_result_key = fmr.measure_result_key
+        AND fmr.source = 'sql_bundle'
+    `);
+    await tx.unsafe("DELETE FROM phm_star.fact_measure_result WHERE source = 'sql_bundle'");
     const inserted = await tx.unsafe(`
       INSERT INTO phm_star.fact_measure_result
         (patient_key, measure_key, date_key_period,
          denominator_flag, numerator_flag, exclusion_flag,
-         measure_value, count_measure)
+         measure_value, count_measure, source, evaluation_scope, reconciliation_status)
       SELECT
         d.patient_key,
         d.measure_key,
@@ -53,8 +60,38 @@ export async function refreshMeasureResults(): Promise<RefreshResult> {
         LOWER(d.gap_status) = 'closed',
         LOWER(d.gap_status) = 'excluded',
         NULL,
-        1
+        1,
+        'sql_bundle',
+        'full_population',
+        'authoritative'
       FROM phm_star.fact_patient_bundle_detail d
+    `);
+    const aliasInserted = await tx.unsafe(`
+      INSERT INTO phm_star.fact_measure_result
+        (patient_key, measure_key, date_key_period,
+         denominator_flag, numerator_flag, exclusion_flag,
+         measure_value, count_measure, source, evaluation_scope, reconciliation_status)
+      SELECT
+        d.patient_key,
+        target_dm.measure_key,
+        (SELECT date_key FROM phm_star.dim_date WHERE full_date = CURRENT_DATE),
+        LOWER(d.gap_status) IN ('open', 'closed'),
+        LOWER(d.gap_status) = 'closed',
+        LOWER(d.gap_status) = 'excluded',
+        NULL,
+        1,
+        'sql_bundle',
+        'full_population',
+        'authoritative'
+      FROM phm_star.fact_patient_bundle_detail d
+      JOIN phm_star.dim_measure source_dm
+        ON source_dm.measure_key = d.measure_key
+      JOIN phm_edw.measure_sql_baseline_alias alias
+        ON alias.source_measure_code = source_dm.measure_code
+       AND alias.active_ind = TRUE
+      JOIN phm_star.dim_measure target_dm
+        ON target_dm.measure_code = alias.target_measure_code
+      WHERE target_dm.measure_key <> source_dm.measure_key
     `);
 
     // Single-pass stratification: GROUPING(a, b) sets a bit per UN-grouped
@@ -98,6 +135,9 @@ export async function refreshMeasureResults(): Promise<RefreshResult> {
         FROM phm_star.fact_measure_result fmr
         JOIN phm_star.dim_patient dp
           ON dp.patient_key = fmr.patient_key AND dp.is_current
+        WHERE fmr.source = 'sql_bundle'
+          AND fmr.evaluation_scope = 'full_population'
+          AND fmr.reconciliation_status = 'authoritative'
       ) c
       GROUP BY GROUPING SETS (
         (c.measure_key, c.date_key_period),
@@ -106,13 +146,15 @@ export async function refreshMeasureResults(): Promise<RefreshResult> {
       )
     `);
 
-    return inserted;
+    return { count: (inserted.count ?? 0) + (aliasInserted.count ?? 0) };
   });
 
   const durationMs = Math.round(performance.now() - t0);
   const rowCount = result.count ?? 0;
 
-  console.info(`[measure-calc-v2] Refreshed fact_measure_result: ${rowCount} rows in ${durationMs}ms`);
+  console.info(
+    `[measure-calc-v2] Refreshed fact_measure_result: ${rowCount} rows in ${durationMs}ms`,
+  );
   return { rowCount, durationMs };
 }
 
@@ -135,6 +177,11 @@ export async function getMeasureSummary(): Promise<MeasureSummaryRow[]> {
       ) AS performance_rate
     FROM phm_star.fact_measure_result fmr
     JOIN phm_star.dim_measure dm ON dm.measure_key = fmr.measure_key
+    LEFT JOIN phm_edw.measure_promotion_config mpc
+      ON mpc.measure_code = dm.measure_code
+    WHERE fmr.source = COALESCE(NULLIF(mpc.authoritative_source, ''), 'sql_bundle')
+      AND fmr.evaluation_scope = 'full_population'
+      AND fmr.reconciliation_status = 'authoritative'
     GROUP BY dm.measure_key, dm.measure_code, dm.measure_name
     ORDER BY dm.measure_code
   `;
