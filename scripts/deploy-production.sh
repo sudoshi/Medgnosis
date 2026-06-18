@@ -17,6 +17,10 @@ echo ""
 # Step 1: Build
 echo "[1/3] Building all workspaces..."
 npm run build
+if [ -d apps/web/dist ]; then
+    find apps/web/dist -type d -exec chmod 755 {} +
+    find apps/web/dist -type f -exec chmod 644 {} +
+fi
 echo "    Build complete."
 echo ""
 
