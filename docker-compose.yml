@@ -193,19 +193,45 @@ services:
   # Phase 1 (see docs/EMPI-SANTEMPI-SETUP.md). Off by default; start with:
   #   docker compose --profile mpi up -d santempi
   # and set MPI_ENABLED=true (+ MPI_BASE_URL/MPI_MASTER_ID_SYSTEM) on the api.
+  #
+  # Dedicated Postgres, isolated from the application/prod database. The
+  # credentials below are a throwaway for this internal-only sidecar (the port
+  # is not published); SanteDB creates and maintains the santedb + audit schemas.
+  santedb-db:
+    container_name: medgnosis-santedb-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: santedb
+      POSTGRES_PASSWORD: SanteDB123
+      POSTGRES_DB: santedb
+    volumes:
+      - santedb_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    profiles:
+      - mpi
+    networks:
+      - medgnosis
+
   santempi:
     container_name: medgnosis-santempi
     image: santesuite/santedb-mpi:latest
+    depends_on:
+      - santedb-db
     environment:
-      # SanteDB connection / FHIR are configured via the mounted config volume;
-      # see the setup doc for matching weights (HL7 Identity Matching IG) and the
-      # master-authority OID that MPI_MASTER_ID_SYSTEM must equal.
-      SDB_FEATURE: "FHIR;MPI"
+      # Feature set for a FHIR-exposed MPI with the weighted matching engine + MDM.
+      SDB_FEATURE: "LOG;DATA_POLICY;AUDIT_REPO;ADO;PUBSUB_ADO;RAMCACHE;SEC;SWAGGER;OPENID;FHIR;HDSI;AMI;BIS;MDM;MATCHING;IHE_PIXM;IHE_PDQM;IHE_PMIR"
+      SDB_MATCHING_MODE: "WEIGHTED"
+      SDB_MDM_RESOURCE: "Patient"
+      SDB_DATA_POLICY_ACTION: "HIDE"
+      SDB_DELAY_START: "5000"
+      SDB_DB_MAIN_PROVIDER: "Npgsql"
+      SDB_DB_AUDIT_PROVIDER: "Npgsql"
+      SDB_DB_MAIN: "server=santedb-db;port=5432;database=santedb;user id=santedb;password=SanteDB123;pooling=true;MinPoolSize=5;MaxPoolSize=15;Timeout=60;"
+      SDB_DB_AUDIT: "server=santedb-db;port=5432;database=auditdb;user id=santedb;password=SanteDB123;pooling=true;MinPoolSize=5;MaxPoolSize=15;Timeout=60;"
     volumes:
-      - santempi_data:/santedb/data
-      - santempi_config:/santedb/config
+      - santempi_data:/santedb
     ports:
-      - "8085:8080" # FHIR base at http://localhost:8085/fhir (host); santempi:8080 in-network
+      - "8099:8080" # FHIR base at http://localhost:8099/fhir (host); santempi:8080 in-network
     restart: unless-stopped
     profiles:
       - mpi
@@ -221,7 +247,7 @@ volumes:
   redis_data:
   solr_data:
   santempi_data:
-  santempi_config:
+  santedb_db_data:
 
 networks:
   medgnosis:

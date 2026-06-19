@@ -29,10 +29,12 @@ SanteMPI owns the probabilistic (Fellegi-Sunter) scoring and tuning; Medgnosis o
 
 ## Turn it on
 
-1. **Start the sidecar** (it's behind the `mpi` compose profile, so it never starts by default):
+1. **Start the sidecar** (behind the `mpi` compose profile — never starts by default). This brings up both SanteMPI and its dedicated, internal-only Postgres (`santedb-db`, isolated from the app/prod database):
    ```bash
-   docker compose --profile mpi up -d santempi
+   docker compose --profile mpi up -d santedb-db   # wait for pg_isready
+   docker compose --profile mpi up -d santempi      # first run installs schema (~40s)
    ```
+   SanteMPI creates the `santedb` + `auditdb` schemas on first start, exposes FHIR at host `http://localhost:8099/fhir` (in-network `http://santempi:8080/fhir`), and an OAuth2 token service at `/auth`. **All FHIR endpoints require auth** (the `SEC`/`OPENID` features) — an unauthenticated request returns `403 Missing Authorization header`. Obtain a token from `/auth/oauth2_token` and set it as `MPI_ACCESS_TOKEN` (below) before enabling.
 2. **Configure SanteMPI** (see next section) — matching weights + master-authority OID.
 3. **Point the API at it** (env / `.env`):
    ```
@@ -78,11 +80,24 @@ Tune thresholds against a labeled sample; the `MPI_AUTO_THRESHOLD` / `MPI_REVIEW
 
 ---
 
-## Verification (when enabled)
+## Verification
+
+Container health (no auth needed):
 ```bash
-# MPI reachable + $match responds
-curl -s -X POST http://localhost:8085/fhir/Patient/\$match \
-  -H 'content-type: application/fhir+json' \
+docker compose ps santempi                       # Up
+curl -s -o /dev/null -w '%{http_code}\n' \
+  http://localhost:8099/fhir/metadata            # 403 = up + auth-gated (expected)
+```
+
+`$match` (needs an OAuth token — FHIR is auth-gated):
+```bash
+TOKEN=$(curl -s http://localhost:8099/auth/oauth2_token \
+  -d grant_type=password -d username=<admin> -d password=<pw> \
+  -d scope='*' -u '<client_id>:<client_secret>' | jq -r .access_token)
+curl -s -X POST http://localhost:8099/fhir/Patient/\$match \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/fhir+json' \
   -d '{"resourceType":"Parameters","parameter":[{"name":"resource","resource":{"resourceType":"Patient","name":[{"family":"Hopper","given":["Grace"]}],"birthDate":"1906-12-09","gender":"female"}}]}'
 ```
 Then confirm Medgnosis routes through it: ingest a near-duplicate and check `phm_edw.identity_review_queue` for a new row (mid-confidence) or a shared `person_id` (high-confidence).
+
+> **Deployed state (2026-06-19):** container verified Up — `santedb` + `auditdb` created, schema installed (94 tables), OAuth2 on `/auth`, FHIR auth-gated, ~577 MiB idle. `MPI_ENABLED` remains `false` (no app behavior change). Remaining before enabling: OAuth credentials/token, matching weights, and the index feed (above).
