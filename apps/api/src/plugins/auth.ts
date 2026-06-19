@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
+import { sql } from '@medgnosis/db';
 import { config } from '../config.js';
 import type { AuthPermission, UserRole } from '@medgnosis/shared';
 import {
@@ -32,6 +33,7 @@ export interface JwtPayload {
   permissions?: AuthPermission[];
   org_id: string;
   provider_id?: number; // phm_edw.provider.provider_id — null for admin/non-provider users
+  session_id?: string;
   mfa_pending?: boolean;
   must_change_password?: boolean;
 }
@@ -76,6 +78,33 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
         });
+        return;
+      }
+
+      if (request.user.mfa_pending) {
+        await reply.status(401).send({
+          success: false,
+          error: { code: 'MFA_PENDING', message: 'Complete MFA verification before accessing this resource' },
+        });
+        return;
+      }
+
+      if (request.user.session_id) {
+        const [session] = await sql<{ id: string }[]>`
+          SELECT id
+          FROM public.refresh_tokens
+          WHERE id = ${request.user.session_id}::uuid
+            AND user_id = ${request.user.sub}::uuid
+            AND revoked = FALSE
+            AND expires_at > NOW()
+        `;
+
+        if (!session) {
+          await reply.status(401).send({
+            success: false,
+            error: { code: 'SESSION_REVOKED', message: 'Session has been revoked or expired' },
+          });
+        }
       }
     },
   );

@@ -16,6 +16,7 @@ import { loopsQueue, riskQueue, type LoopsJobData, type RiskJobData } from './cl
 import { ampQueue, mtmQueue, autoOrdersQueue, type AnticipatoryJobData } from './anticipatory.js';
 import { recomputeClinicalExclusions } from '../services/exclusionEngine.js';
 import { dqQueue, cohortFlagsQueue, type DqJobData } from './data-quality.js';
+import { enqueueDueEhrBulkExports } from './ehr-bulk-import.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -107,6 +108,14 @@ async function processNightlyJob(): Promise<void> {
   await dqQueue.add('nightly-dq', { triggeredBy: 'nightly_batch' } satisfies DqJobData);
   await cohortFlagsQueue.add('nightly-cohort-flags', { triggeredBy: 'nightly_batch' } satisfies DqJobData);
   console.info('[nightly] Enqueued DQ scan + cohort flags');
+
+  // 9. EHR Bulk Data tenant schedules
+  const bulkSchedules = await enqueueDueEhrBulkExports();
+  console.info(
+    '[nightly] EHR Bulk schedules: ' +
+      `examined=${bulkSchedules.examined} enqueued=${bulkSchedules.enqueued} ` +
+      `skipped=${bulkSchedules.skipped} failed=${bulkSchedules.failed}`,
+  );
 
   console.info('[nightly] Nightly batch complete.');
 }

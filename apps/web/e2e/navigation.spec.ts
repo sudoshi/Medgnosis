@@ -3,10 +3,12 @@
 // =============================================================================
 
 import { test, expect } from '@playwright/test';
+import { mockAuthProviderDiscovery } from './support/api-mocks.js';
 
 test.describe('Navigation', () => {
-  // NOTE: These tests require a running API with valid test credentials.
-  // In CI, a test login helper should be used.
+  test.beforeEach(async ({ page }) => {
+    await mockAuthProviderDiscovery(page);
+  });
 
   test('login page renders with branding', async ({ page }) => {
     await page.goto('/login');

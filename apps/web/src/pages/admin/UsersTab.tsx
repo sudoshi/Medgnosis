@@ -5,13 +5,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  ClipboardCopy,
   UserPlus,
   Trash2,
   CheckCircle2,
   XCircle,
+  Mail,
+  Ban,
 } from 'lucide-react';
 import { useToast } from '../../stores/ui.js';
-import { api } from '../../services/api.js';
+import { api, apiErrorMessage } from '../../services/api.js';
 import { RoleBadge, fmtDate } from './helpers.js';
 import type { AdminUser } from './types.js';
 import { Button } from '@/components/ui/button';
@@ -39,9 +42,34 @@ import {
 } from '@/components/ui/table';
 import { ConfirmModal } from '../../components/ConfirmModal.js';
 
+interface InviteDelivery {
+  user: {
+    id: string;
+    email: string;
+    first_name: string;
+    last_name?: string | null;
+    role: string;
+    is_active: boolean;
+  };
+  invite: {
+    id: string;
+    expires_at: string;
+    activation_url: string;
+    email_sent: boolean;
+  };
+}
+
 // ─── Modal: Invite User ───────────────────────────────────────────────────────
 
-function InviteUserModal({ onClose, onSuccess }: { onClose(): void; onSuccess(): void }) {
+function InviteUserModal({
+  onClose,
+  onSuccess,
+  onInviteCreated,
+}: {
+  onClose(): void;
+  onSuccess(): void;
+  onInviteCreated(delivery: InviteDelivery): void;
+}) {
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -49,13 +77,16 @@ function InviteUserModal({ onClose, onSuccess }: { onClose(): void; onSuccess():
   const [role, setRole] = useState('provider');
 
   const create = useMutation({
-    mutationFn: (body: object) => api.post('/admin/users', body),
-    onSuccess: () => {
-      toast.success('User invited successfully');
+    mutationFn: (body: object) => api.post<InviteDelivery>('/admin/users', body),
+    onSuccess: (res) => {
+      if (res.data) {
+        onInviteCreated(res.data);
+      }
+      toast.success(res.data?.invite.email_sent ? 'Invite email sent' : 'Invite created');
       onSuccess();
       onClose();
     },
-    onError: () => toast.error('Failed to create user'),
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create user')),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -115,6 +146,73 @@ function InviteUserModal({ onClose, onSuccess }: { onClose(): void; onSuccess():
   );
 }
 
+function InviteDeliveryModal({
+  delivery,
+  onClose,
+}: {
+  delivery: InviteDelivery;
+  onClose(): void;
+}) {
+  const toast = useToast();
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(delivery.invite.activation_url);
+      toast.success('Activation link copied');
+    } catch {
+      toast.error('Could not copy activation link');
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Invite ready</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-bright">
+              {delivery.user.first_name} {delivery.user.last_name ?? ''}
+            </p>
+            <p className="font-data text-xs text-dim">{delivery.user.email}</p>
+          </div>
+
+          <div className="rounded-input border border-edge/50 bg-s1 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-dim">
+                {delivery.invite.email_sent ? 'Email sent' : 'Manual delivery required'}
+              </span>
+              <span className="font-data text-[11px] text-ghost">
+                Expires {fmtDate(delivery.invite.expires_at)}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={delivery.invite.activation_url}
+                className="font-data text-xs"
+                aria-label="Activation link"
+              />
+              <Button type="button" size="sm" variant="secondary" onClick={copyLink}>
+                <ClipboardCopy />
+                Copy
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="button" size="sm" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── UsersTab ─────────────────────────────────────────────────────────────────
 
 export function UsersTab() {
@@ -122,6 +220,8 @@ export function UsersTab() {
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<AdminUser | null>(null);
+  const [revokeInviteTarget, setRevokeInviteTarget] = useState<AdminUser | null>(null);
+  const [inviteDelivery, setInviteDelivery] = useState<InviteDelivery | null>(null);
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -138,6 +238,27 @@ export function UsersTab() {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
     onError: () => toast.error('Failed to deactivate user'),
+  });
+
+  const resendInvite = useMutation({
+    mutationFn: (id: string) => api.post<InviteDelivery>(`/admin/users/${id}/resend-invite`),
+    onSuccess: (res) => {
+      if (res.data) {
+        setInviteDelivery(res.data);
+      }
+      toast.success(res.data?.invite.email_sent ? 'Invite email resent' : 'Invite link created');
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to resend invite')),
+  });
+
+  const revokeInvite = useMutation({
+    mutationFn: (id: string) => api.post(`/admin/users/${id}/revoke-invite`),
+    onSuccess: () => {
+      toast.success('Invite revoked');
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to revoke invite')),
   });
 
   return (
@@ -179,8 +300,14 @@ export function UsersTab() {
             {users.map((u) => {
               const initials = `${u.first_name[0] ?? ''}${u.last_name?.[0] ?? ''}`.toUpperCase();
               const fullName = `${u.first_name} ${u.last_name ?? ''}`.trim();
+              const inviteStatus = u.pending_invite?.status;
+              const inactiveLabel = inviteStatus === 'expired'
+                ? 'Invite expired'
+                : inviteStatus === 'pending'
+                  ? 'Invite pending'
+                  : 'Inactive';
               return (
-                <TableRow key={u.id} className={!u.is_active ? 'opacity-45' : ''}>
+                <TableRow key={u.id} className={!u.is_active ? 'bg-s1/25' : ''}>
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-full bg-[var(--primary-bg)] text-[var(--primary)] text-xs font-semibold flex items-center justify-center flex-shrink-0">
@@ -193,20 +320,58 @@ export function UsersTab() {
                   <TableCell><RoleBadge role={u.role} /></TableCell>
                   <TableCell><span className="font-data text-xs text-ghost">{fmtDate(u.last_login_at)}</span></TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center gap-1 text-xs ${u.is_active ? 'text-emerald' : 'text-ghost'}`}>
-                      {u.is_active ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                      {u.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    {u.is_active ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald">
+                        <CheckCircle2 size={12} />
+                        Active
+                      </span>
+                    ) : (
+                      <div className="space-y-0.5">
+                        <span className={`inline-flex items-center gap-1 text-xs ${inviteStatus === 'expired' ? 'text-amber' : 'text-ghost'}`}>
+                          {inviteStatus === 'pending' ? <Mail size={12} /> : <XCircle size={12} />}
+                          {inactiveLabel}
+                        </span>
+                        {u.pending_invite && (
+                          <p className="font-data text-[11px] text-ghost">
+                            Expires {fmtDate(u.pending_invite.expires_at)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
-                    {u.is_active && (
+                    {u.is_active ? (
                       <button
                         onClick={() => setDeactivateTarget(u)}
                         className="text-ghost hover:text-crimson transition-colors p-1 rounded"
                         title="Deactivate user"
+                        aria-label={`Deactivate ${fullName}`}
                       >
                         <Trash2 size={14} />
                       </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => resendInvite.mutate(u.id)}
+                          className="text-ghost hover:text-teal transition-colors p-1 rounded disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Resend invite"
+                          aria-label={`Resend invite to ${fullName}`}
+                          disabled={resendInvite.isPending}
+                        >
+                          <Mail size={14} />
+                        </button>
+                        {u.pending_invite && (
+                          <button
+                            onClick={() => setRevokeInviteTarget(u)}
+                            className="text-ghost hover:text-crimson transition-colors p-1 rounded disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Revoke invite"
+                            aria-label={`Revoke invite for ${fullName}`}
+                            disabled={revokeInvite.isPending}
+                          >
+                            <Ban size={14} />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -220,6 +385,14 @@ export function UsersTab() {
         <InviteUserModal
           onClose={() => setShowInvite(false)}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
+          onInviteCreated={setInviteDelivery}
+        />
+      )}
+
+      {inviteDelivery && (
+        <InviteDeliveryModal
+          delivery={inviteDelivery}
+          onClose={() => setInviteDelivery(null)}
         />
       )}
 
@@ -234,6 +407,19 @@ export function UsersTab() {
           setDeactivateTarget(null);
         }}
         onCancel={() => setDeactivateTarget(null)}
+      />
+
+      <ConfirmModal
+        open={revokeInviteTarget !== null}
+        title={`Revoke invite for ${`${revokeInviteTarget?.first_name ?? ''} ${revokeInviteTarget?.last_name ?? ''}`.trim()}?`}
+        body="The current activation link will stop working immediately. You can create a fresh link with resend invite."
+        confirmLabel="Revoke invite"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (revokeInviteTarget) revokeInvite.mutate(revokeInviteTarget.id);
+          setRevokeInviteTarget(null);
+        }}
+        onCancel={() => setRevokeInviteTarget(null)}
       />
     </div>
   );

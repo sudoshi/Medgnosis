@@ -17,6 +17,7 @@ import {
   failIngestRun,
   finishIngestRun,
   finishIngestRunWithQdmBridge,
+  listIngestRuns,
   startIngestRun,
 } from './ingestRuns.js';
 
@@ -188,6 +189,37 @@ describe('finishIngestRun', () => {
 
     expect(mockSql).not.toHaveBeenCalled();
   });
+
+  it('adds non-fatal QDM normalization failures to the persisted error count', async () => {
+    const qdmResult = {
+      resourcesSeen: 2,
+      resourcesNormalized: 1,
+      resourcesSkipped: 0,
+      resourcesFailed: 1,
+      eventsUpserted: 1,
+      errors: [{ stagingId: 99, resourceType: 'Observation', resourceId: 'obs-1', message: 'bad' }],
+    };
+    normalizeStagedRunToQdm.mockResolvedValueOnce(qdmResult);
+    mockSql.mockResolvedValueOnce([
+      {
+        ...runRow,
+        status: 'succeeded',
+        finished_at: '2026-06-16 12:05:00+00',
+        error_count: 3,
+        metadata: { qdmBridge: qdmResult },
+      },
+    ]);
+
+    const result = await finishIngestRunWithQdmBridge({
+      id: runId,
+      errorCount: 2,
+      qdmBridge: { enabled: true, failOnError: false },
+    });
+
+    expect(result.run.errorCount).toBe(3);
+    const values = mockSql.mock.calls[0]!.slice(1);
+    expect(values).toEqual(expect.arrayContaining([3, { qdmBridge: qdmResult }, runId]));
+  });
 });
 
 describe('failIngestRun', () => {
@@ -227,5 +259,47 @@ describe('failIngestRun', () => {
     ).rejects.toThrow('counts must be non-negative integers');
 
     expect(mockSql).not.toHaveBeenCalled();
+  });
+});
+
+describe('listIngestRuns', () => {
+  it('lists recent tenant ingest runs with optional filters and a bounded limit', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        ...runRow,
+        status: 'succeeded',
+        finished_at: '2026-06-16 12:05:00+00',
+        resources_received: 8,
+        resources_staged: 8,
+      },
+    ]);
+
+    const runs = await listIngestRuns({
+      ehrTenantId: 42,
+      status: 'succeeded',
+      mode: 'manual',
+      resourceType: ' Observation ',
+      limit: 250,
+    });
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      ehrTenantId: 42,
+      status: 'succeeded',
+      resourcesReceived: 8,
+      resourcesStaged: 8,
+    });
+    expect(mockSql.mock.calls[0]!.slice(1)).toEqual(
+      expect.arrayContaining([
+        42,
+        'succeeded',
+        'succeeded',
+        'manual',
+        'manual',
+        'Observation',
+        'Observation',
+        100,
+      ]),
+    );
   });
 });

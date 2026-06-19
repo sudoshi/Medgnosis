@@ -1,5 +1,25 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
+  cancelBulkExportJobWithBackendServices,
+  listBulkJobs,
+  type BulkExportLevel,
+  type BulkJobStatus,
+} from '../../services/ehr/bulkData.js';
+import {
+  listIngestRuns,
+  type EhrIngestRunMode,
+  type EhrIngestRunStatus,
+  type ListEhrIngestRunsInput,
+} from '../../services/ehr/ingestRuns.js';
+import {
+  BulkScheduleOwnershipError,
+  listBulkSchedules,
+  MAX_BULK_SCHEDULE_INTERVAL_MINUTES,
+  MIN_BULK_SCHEDULE_INTERVAL_MINUTES,
+  upsertBulkSchedule,
+  type BulkScheduleSinceMode,
+} from '../../services/ehr/bulkSchedules.js';
+import {
   getLatestCapabilitySnapshot,
   getTenant,
   listClientRegistrations,
@@ -23,9 +43,16 @@ import {
 } from '../../services/ehr/onboardingRegistration.js';
 import { normalizeStagedRunToQdm } from '../../services/ehr/qdmBridge.js';
 import { loadQdmEventsToCqlEngine } from '../../services/qdm/index.js';
+import { enqueueEhrBulkExport, enqueueEhrBulkImport } from '../../workers/ehr-bulk-import.js';
+import { enqueueSmartPatientContextRefresh } from '../../workers/ehr-patient-context-refresh.js';
 
 const VENDORS = new Set<EhrVendor>(['epic', 'oracle_cerner', 'smart_generic', 'hapi', 'other']);
 const ENVIRONMENTS = new Set<EhrEnvironment>(['sandbox', 'staging', 'production']);
+const BULK_JOB_STATUSES = new Set<BulkJobStatus>(['accepted', 'in_progress', 'completed', 'failed', 'canceled']);
+const BULK_EXPORT_LEVELS = new Set<BulkExportLevel>(['system', 'group', 'patient']);
+const BULK_SCHEDULE_SINCE_MODES = new Set<BulkScheduleSinceMode>(['none', 'fixed', 'last_success']);
+const INGEST_RUN_STATUSES = new Set<EhrIngestRunStatus>(['running', 'succeeded', 'failed', 'canceled']);
+const INGEST_RUN_MODES = new Set<EhrIngestRunMode>(['incremental', 'backfill', 'bulk', 'manual']);
 const AUTH_METHODS = new Set<EhrClientAuthMethod>([
   'public_pkce',
   'client_secret_post',
@@ -48,6 +75,19 @@ interface TenantListQuery {
   vendor?: string | string[];
   environment?: string | string[];
   status?: string | string[];
+}
+
+interface IngestRunListQuery {
+  status?: string | string[];
+  mode?: string | string[];
+  resourceType?: string | string[];
+  resource_type?: string | string[];
+  limit?: string | string[];
+}
+
+interface BulkJobListQuery {
+  status?: string | string[];
+  limit?: string | string[];
 }
 
 interface OnboardingProfileQuery {
@@ -87,6 +127,10 @@ interface TenantIdParams {
   id: string;
 }
 
+interface BulkJobActionParams extends TenantIdParams {
+  bulkJobId: string;
+}
+
 interface IngestRunQdmParams extends TenantIdParams {
   runId: string;
 }
@@ -117,6 +161,57 @@ interface TenantQdmCqlLoadBody {
   includePatientRecords?: unknown;
   include_patient_records?: unknown;
   limit?: unknown;
+}
+
+interface PatientContextRefreshBody {
+  patientResourceId?: unknown;
+  patient_resource_id?: unknown;
+  localPatientId?: unknown;
+  local_patient_id?: unknown;
+  requestedSince?: unknown;
+  requested_since?: unknown;
+  resourceTypes?: unknown;
+  resource_types?: unknown;
+  pageSize?: unknown;
+  page_size?: unknown;
+  maxPages?: unknown;
+  max_pages?: unknown;
+}
+
+interface BulkImportBody {
+  bulkJobId?: unknown;
+  bulk_job_id?: unknown;
+  maxResourcesPerFile?: unknown;
+  max_resources_per_file?: unknown;
+  resumeFailedOnly?: unknown;
+  resume_failed_only?: unknown;
+}
+
+interface BulkExportBody {
+  exportLevel?: unknown;
+  export_level?: unknown;
+  resourceTypes?: unknown;
+  resource_types?: unknown;
+  groupId?: unknown;
+  group_id?: unknown;
+  patientId?: unknown;
+  patient_id?: unknown;
+  since?: unknown;
+  typeFilters?: unknown;
+  type_filters?: unknown;
+  maxResourcesPerFile?: unknown;
+  max_resources_per_file?: unknown;
+}
+
+interface BulkScheduleBody extends BulkExportBody {
+  id?: unknown;
+  enabled?: unknown;
+  intervalMinutes?: unknown;
+  interval_minutes?: unknown;
+  sinceMode?: unknown;
+  since_mode?: unknown;
+  nextRunAt?: unknown;
+  next_run_at?: unknown;
 }
 
 export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void> {
@@ -250,6 +345,11 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
     sendTenantDiagnostics(request, reply),
   );
 
+  app.get<{ Params: TenantIdParams; Querystring: IngestRunListQuery }>(
+    '/tenants/:id/ingest-runs',
+    async (request, reply) => sendTenantIngestRuns(request, reply),
+  );
+
   app.post<{ Params: IngestRunQdmParams; Body: IngestRunQdmBody }>(
     '/tenants/:id/ingest-runs/:runId/qdm-normalization',
     async (request, reply) => sendQdmNormalizationReplay(request, reply),
@@ -258,6 +358,41 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
   app.post<{ Params: TenantIdParams; Body: TenantQdmCqlLoadBody }>(
     '/tenants/:id/qdm/cql-load',
     async (request, reply) => sendTenantQdmCqlLoad(request, reply),
+  );
+
+  app.post<{ Params: TenantIdParams; Body: PatientContextRefreshBody }>(
+    '/tenants/:id/patient-context-refresh',
+    async (request, reply) => sendTenantPatientContextRefresh(request, reply),
+  );
+
+  app.get<{ Params: TenantIdParams; Querystring: BulkJobListQuery }>(
+    '/tenants/:id/bulk-jobs',
+    async (request, reply) => sendTenantBulkJobs(request, reply),
+  );
+
+  app.get<{ Params: TenantIdParams }>(
+    '/tenants/:id/bulk-schedules',
+    async (request, reply) => sendTenantBulkSchedules(request, reply),
+  );
+
+  app.post<{ Params: TenantIdParams; Body: BulkScheduleBody }>(
+    '/tenants/:id/bulk-schedules',
+    async (request, reply) => sendTenantBulkScheduleUpsert(request, reply),
+  );
+
+  app.post<{ Params: TenantIdParams; Body: BulkExportBody }>(
+    '/tenants/:id/bulk-exports',
+    async (request, reply) => sendTenantBulkExport(request, reply),
+  );
+
+  app.post<{ Params: TenantIdParams; Body: BulkImportBody }>(
+    '/tenants/:id/bulk-imports',
+    async (request, reply) => sendTenantBulkImport(request, reply),
+  );
+
+  app.post<{ Params: BulkJobActionParams }>(
+    '/tenants/:id/bulk-jobs/:bulkJobId/cancel',
+    async (request, reply) => sendTenantBulkJobCancel(request, reply),
   );
 }
 
@@ -307,6 +442,50 @@ async function sendTenantDiagnostics(
       },
     });
   }
+}
+
+async function sendTenantIngestRuns(
+  request: FastifyRequest<{ Params: TenantIdParams; Querystring: IngestRunListQuery }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedQuery = parseIngestRunListQuery(request.query);
+  if ('error' in parsedQuery) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedQuery.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const ingestRuns = await listIngestRuns({
+    ehrTenantId: tenant.id,
+    ...parsedQuery.filter,
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      ingestRuns,
+      latest: ingestRuns[0] ?? null,
+      count: ingestRuns.length,
+    },
+  });
 }
 
 async function sendQdmNormalizationReplay(
@@ -402,6 +581,356 @@ async function sendTenantQdmCqlLoad(
     data: {
       tenant,
       qdmCqlLoad: result,
+    },
+  });
+}
+
+async function sendTenantPatientContextRefresh(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: PatientContextRefreshBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parsePatientContextRefreshBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const refresh = await enqueueSmartPatientContextRefresh({
+    ehrTenantId: tenant.id,
+    orgId: tenant.orgId,
+    triggeredBy: 'manual',
+    ...parsedBody.input,
+  });
+
+  return reply.status(refresh.enqueued ? 202 : 200).send({
+    success: true,
+    data: {
+      tenant,
+      refresh,
+    },
+  });
+}
+
+async function sendTenantBulkJobs(
+  request: FastifyRequest<{ Params: TenantIdParams; Querystring: BulkJobListQuery }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedQuery = parseBulkJobListQuery(request.query);
+  if ('error' in parsedQuery) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedQuery.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const bulkJobs = await listBulkJobs({
+    ehrTenantId: tenant.id,
+    ...parsedQuery.filter,
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      bulkJobs,
+      latest: bulkJobs[0] ?? null,
+      count: bulkJobs.length,
+    },
+  });
+}
+
+async function sendTenantBulkSchedules(
+  request: FastifyRequest<{ Params: TenantIdParams }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const bulkSchedules = await listBulkSchedules({ ehrTenantId: tenant.id });
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      bulkSchedules,
+      latest: bulkSchedules[0] ?? null,
+      count: bulkSchedules.length,
+    },
+  });
+}
+
+async function sendTenantBulkScheduleUpsert(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: BulkScheduleBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parseBulkScheduleBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  let bulkSchedule: Awaited<ReturnType<typeof upsertBulkSchedule>>;
+  try {
+    bulkSchedule = await upsertBulkSchedule({
+      ehrTenantId: tenant.id,
+      orgId: tenant.orgId,
+      ...parsedBody.input,
+    });
+  } catch (error) {
+    if (error instanceof BulkScheduleOwnershipError) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Bulk schedule not found for tenant' },
+      });
+    }
+    throw error;
+  }
+  await request.auditLog('ehr_bulk_schedule_upsert', 'ehr_bulk_schedule', bulkSchedule.id, {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    enabled: bulkSchedule.enabled,
+    exportLevel: bulkSchedule.exportLevel,
+    resourceTypes: bulkSchedule.resourceTypes,
+    hasGroupId: Boolean(bulkSchedule.groupId),
+    hasPatientId: Boolean(bulkSchedule.patientId),
+    sinceMode: bulkSchedule.sinceMode,
+    intervalMinutes: bulkSchedule.intervalMinutes,
+    typeFilterCount: bulkSchedule.typeFilters.length,
+  });
+
+  return reply.status(201).send({
+    success: true,
+    data: {
+      tenant,
+      bulkSchedule,
+    },
+  });
+}
+
+async function sendTenantBulkExport(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: BulkExportBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parseBulkExportBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const bulkExport = await enqueueEhrBulkExport({
+    ehrTenantId: tenant.id,
+    orgId: tenant.orgId,
+    vendor: tenant.vendor,
+    triggeredBy: 'manual',
+    ...parsedBody.input,
+  });
+  await request.auditLog('ehr_bulk_export_enqueue', 'ehr_tenant', String(tenant.id), {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    vendor: tenant.vendor,
+    exportLevel: parsedBody.input.exportLevel,
+    resourceTypes: parsedBody.input.resourceTypes,
+    hasGroupId: Boolean(parsedBody.input.groupId),
+    hasPatientId: Boolean(parsedBody.input.patientId),
+    sinceProvided: Boolean(parsedBody.input.since),
+    typeFilterCount: parsedBody.input.typeFilters?.length ?? 0,
+    maxResourcesPerFile: parsedBody.input.maxResourcesPerFile ?? null,
+    enqueued: bulkExport.enqueued,
+    queueName: bulkExport.queueName,
+    queueJobId: bulkExport.jobId ?? null,
+    reason: bulkExport.reason ?? null,
+  });
+
+  return reply.status(bulkExport.enqueued ? 202 : 200).send({
+    success: true,
+    data: {
+      tenant,
+      bulkExport,
+    },
+  });
+}
+
+async function sendTenantBulkImport(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: BulkImportBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parseBulkImportBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const bulkImport = await enqueueEhrBulkImport({
+    ehrTenantId: tenant.id,
+    orgId: tenant.orgId,
+    triggeredBy: 'manual',
+    ...parsedBody.input,
+  });
+  await request.auditLog('ehr_bulk_import_enqueue', 'ehr_bulk_job', parsedBody.input.bulkJobId, {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    resumeFailedOnly: parsedBody.input.resumeFailedOnly ?? false,
+    maxResourcesPerFile: parsedBody.input.maxResourcesPerFile ?? null,
+    enqueued: bulkImport.enqueued,
+    queueName: bulkImport.queueName,
+    queueJobId: bulkImport.jobId ?? null,
+    reason: bulkImport.reason ?? null,
+  });
+
+  return reply.status(bulkImport.enqueued ? 202 : 200).send({
+    success: true,
+    data: {
+      tenant,
+      bulkImport,
+    },
+  });
+}
+
+async function sendTenantBulkJobCancel(
+  request: FastifyRequest<{ Params: BulkJobActionParams }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const bulkJobId = request.params.bulkJobId.trim();
+  if (!parseUuid(bulkJobId)) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'bulkJobId must be a UUID' },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const bulkCancel = await cancelBulkExportJobWithBackendServices({
+    ehrTenantId: tenant.id,
+    bulkJobId,
+    metadata: { triggeredBy: 'manual' },
+  });
+  await request.auditLog('ehr_bulk_cancel', 'ehr_bulk_job', bulkJobId, {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    status: bulkCancel.job.status,
+    tokenMetadataId: bulkCancel.tokenMetadataId ?? null,
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      bulkCancel,
     },
   });
 }
@@ -631,6 +1160,219 @@ function parseQdmCqlLoadBody(
   return { input };
 }
 
+function parsePatientContextRefreshBody(
+  body: PatientContextRefreshBody,
+): { input: Omit<Parameters<typeof enqueueSmartPatientContextRefresh>[0], 'ehrTenantId' | 'orgId' | 'triggeredBy'> } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const patientResourceId = requiredString(
+    body.patientResourceId ?? body.patient_resource_id,
+    'patientResourceId',
+  );
+  if ('error' in patientResourceId) return patientResourceId;
+
+  const localPatientId = optionalPositiveInt(body.localPatientId ?? body.local_patient_id);
+  if ((body.localPatientId !== undefined || body.local_patient_id !== undefined) && localPatientId === undefined) {
+    return { error: 'localPatientId must be a positive integer' };
+  }
+
+  const requestedSince = optionalTimestampString(
+    body.requestedSince ?? body.requested_since,
+    'requestedSince',
+  );
+  if ('error' in requestedSince) return requestedSince;
+
+  const resourceTypes = optionalStringList(body.resourceTypes ?? body.resource_types, 'resourceTypes');
+  if ('error' in resourceTypes) return resourceTypes;
+
+  const pageSize = optionalPositiveInt(body.pageSize ?? body.page_size);
+  if ((body.pageSize !== undefined || body.page_size !== undefined) && pageSize === undefined) {
+    return { error: 'pageSize must be a positive integer' };
+  }
+
+  const maxPages = optionalPositiveInt(body.maxPages ?? body.max_pages);
+  if ((body.maxPages !== undefined || body.max_pages !== undefined) && maxPages === undefined) {
+    return { error: 'maxPages must be a positive integer' };
+  }
+
+  const input: Omit<Parameters<typeof enqueueSmartPatientContextRefresh>[0], 'ehrTenantId' | 'orgId' | 'triggeredBy'> = {
+    patientResourceId: patientResourceId.value,
+  };
+  if (localPatientId !== undefined) input.localPatientId = localPatientId;
+  if (requestedSince.value !== undefined) input.requestedSince = requestedSince.value;
+  if (resourceTypes.value !== undefined) input.resourceTypes = resourceTypes.value;
+  if (pageSize !== undefined) input.pageSize = pageSize;
+  if (maxPages !== undefined) input.maxPages = maxPages;
+  return { input };
+}
+
+function parseBulkJobListQuery(
+  query: BulkJobListQuery,
+): { filter: { status?: BulkJobStatus; limit?: number } } | { error: string } {
+  const status = singleQueryValue(query.status);
+  const limitValue = singleQueryValue(query.limit);
+  const filter: { status?: BulkJobStatus; limit?: number } = {};
+
+  if (status) {
+    if (!BULK_JOB_STATUSES.has(status as BulkJobStatus)) {
+      return { error: `Unsupported Bulk Data job status '${status}'` };
+    }
+    filter.status = status as BulkJobStatus;
+  }
+  if (limitValue !== undefined) {
+    const limit = positiveQueryInt(limitValue);
+    if (limit === null) return { error: 'limit must be a positive integer' };
+    filter.limit = Math.min(limit, 50);
+  }
+  return { filter };
+}
+
+function parseBulkExportBody(
+  body: BulkExportBody,
+): { input: Omit<Parameters<typeof enqueueEhrBulkExport>[0], 'ehrTenantId' | 'orgId' | 'vendor' | 'triggeredBy'> } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const exportLevel = requiredString(body.exportLevel ?? body.export_level, 'exportLevel');
+  if ('error' in exportLevel) return exportLevel;
+  if (!BULK_EXPORT_LEVELS.has(exportLevel.value as BulkExportLevel)) {
+    return { error: `Unsupported Bulk Data exportLevel '${exportLevel.value}'` };
+  }
+
+  const resourceTypes = optionalStringList(body.resourceTypes ?? body.resource_types, 'resourceTypes');
+  if ('error' in resourceTypes) return resourceTypes;
+  if (!resourceTypes.value || resourceTypes.value.length === 0) {
+    return { error: 'resourceTypes is required' };
+  }
+  const invalidResourceType = resourceTypes.value.find((value) => !/^[A-Z][A-Za-z0-9]+$/.test(value));
+  if (invalidResourceType) {
+    return { error: `Invalid FHIR resource type '${invalidResourceType}'` };
+  }
+
+  const groupId = optionalString(body.groupId ?? body.group_id);
+  const patientId = optionalString(body.patientId ?? body.patient_id);
+  if (exportLevel.value === 'group' && !groupId) return { error: 'groupId is required for group exports' };
+  if (exportLevel.value === 'patient' && !patientId) return { error: 'patientId is required for patient exports' };
+  if (exportLevel.value === 'system' && (groupId || patientId)) {
+    return { error: 'groupId and patientId are not allowed for system exports' };
+  }
+
+  const since = optionalTimestampString(body.since, 'since');
+  if ('error' in since) return since;
+  const typeFilters = optionalStringList(body.typeFilters ?? body.type_filters, 'typeFilters');
+  if ('error' in typeFilters) return typeFilters;
+  const maxResourcesPerFile = optionalPositiveInt(body.maxResourcesPerFile ?? body.max_resources_per_file);
+  if (
+    (body.maxResourcesPerFile !== undefined || body.max_resources_per_file !== undefined) &&
+    maxResourcesPerFile === undefined
+  ) {
+    return { error: 'maxResourcesPerFile must be a positive integer' };
+  }
+
+  const input: Omit<Parameters<typeof enqueueEhrBulkExport>[0], 'ehrTenantId' | 'orgId' | 'vendor' | 'triggeredBy'> = {
+    exportLevel: exportLevel.value as BulkExportLevel,
+    resourceTypes: resourceTypes.value,
+  };
+  if (groupId !== undefined) input.groupId = groupId;
+  if (patientId !== undefined) input.patientId = patientId;
+  if (since.value !== undefined) input.since = since.value;
+  if (typeFilters.value !== undefined) input.typeFilters = typeFilters.value;
+  if (maxResourcesPerFile !== undefined) input.maxResourcesPerFile = maxResourcesPerFile;
+  return { input };
+}
+
+function parseBulkScheduleBody(
+  body: BulkScheduleBody,
+): { input: Omit<Parameters<typeof upsertBulkSchedule>[0], 'ehrTenantId' | 'orgId'> } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const exportBody = parseBulkExportBody(body);
+  if ('error' in exportBody) return exportBody;
+
+  const id = optionalString(body.id);
+  if (id !== undefined && !parseUuid(id)) {
+    return { error: 'id must be a UUID' };
+  }
+
+  const enabled = optionalBoolean(body.enabled);
+  if (body.enabled !== undefined && enabled === undefined) {
+    return { error: 'enabled must be a boolean' };
+  }
+
+  const intervalMinutes = optionalPositiveInt(body.intervalMinutes ?? body.interval_minutes);
+  if (
+    (body.intervalMinutes !== undefined || body.interval_minutes !== undefined) &&
+    intervalMinutes === undefined
+  ) {
+    return { error: 'intervalMinutes must be a positive integer' };
+  }
+  if (intervalMinutes === undefined) {
+    return { error: 'intervalMinutes is required' };
+  }
+  if (intervalMinutes < MIN_BULK_SCHEDULE_INTERVAL_MINUTES) {
+    return { error: `intervalMinutes must be at least ${MIN_BULK_SCHEDULE_INTERVAL_MINUTES}` };
+  }
+  if (intervalMinutes > MAX_BULK_SCHEDULE_INTERVAL_MINUTES) {
+    return { error: `intervalMinutes must be at most ${MAX_BULK_SCHEDULE_INTERVAL_MINUTES}` };
+  }
+
+  const sinceModeValue = optionalString(body.sinceMode ?? body.since_mode);
+  const sinceMode = sinceModeValue ?? 'last_success';
+  if (!BULK_SCHEDULE_SINCE_MODES.has(sinceMode as BulkScheduleSinceMode)) {
+    return { error: `Unsupported Bulk Data sinceMode '${sinceMode}'` };
+  }
+  if (sinceMode === 'fixed' && exportBody.input.since === undefined) {
+    return { error: 'since is required when sinceMode is fixed' };
+  }
+
+  const nextRunAt = optionalTimestampString(body.nextRunAt ?? body.next_run_at, 'nextRunAt');
+  if ('error' in nextRunAt) return nextRunAt;
+
+  return {
+    input: {
+      ...exportBody.input,
+      ...(id !== undefined ? { id } : {}),
+      ...(enabled !== undefined ? { enabled } : {}),
+      intervalMinutes,
+      sinceMode: sinceMode as BulkScheduleSinceMode,
+      ...(nextRunAt.value !== undefined ? { nextRunAt: nextRunAt.value } : {}),
+    },
+  };
+}
+
+function parseBulkImportBody(
+  body: BulkImportBody,
+): { input: Omit<Parameters<typeof enqueueEhrBulkImport>[0], 'ehrTenantId' | 'orgId' | 'triggeredBy'> } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+
+  const bulkJobId = requiredString(body.bulkJobId ?? body.bulk_job_id, 'bulkJobId');
+  if ('error' in bulkJobId) return bulkJobId;
+  if (!parseUuid(bulkJobId.value)) {
+    return { error: 'bulkJobId must be a UUID' };
+  }
+
+  const maxResourcesPerFile = optionalPositiveInt(body.maxResourcesPerFile ?? body.max_resources_per_file);
+  if (
+    (body.maxResourcesPerFile !== undefined || body.max_resources_per_file !== undefined) &&
+    maxResourcesPerFile === undefined
+  ) {
+    return { error: 'maxResourcesPerFile must be a positive integer' };
+  }
+  const resumeFailedOnly = optionalBoolean(body.resumeFailedOnly ?? body.resume_failed_only);
+  if (
+    (body.resumeFailedOnly !== undefined || body.resume_failed_only !== undefined) &&
+    resumeFailedOnly === undefined
+  ) {
+    return { error: 'resumeFailedOnly must be a boolean' };
+  }
+
+  const input: Omit<Parameters<typeof enqueueEhrBulkImport>[0], 'ehrTenantId' | 'orgId' | 'triggeredBy'> = {
+    bulkJobId: bulkJobId.value,
+  };
+  if (maxResourcesPerFile !== undefined) input.maxResourcesPerFile = maxResourcesPerFile;
+  if (resumeFailedOnly !== undefined) input.resumeFailedOnly = resumeFailedOnly;
+  return { input };
+}
+
 function parseTenantListFilter(
   query: TenantListQuery,
 ): { filter: ListEhrTenantsFilter } | { error: string } {
@@ -661,6 +1403,36 @@ function parseTenantListFilter(
   return {
     filter,
   };
+}
+
+function parseIngestRunListQuery(
+  query: IngestRunListQuery,
+): { filter: Omit<ListEhrIngestRunsInput, 'ehrTenantId'> } | { error: string } {
+  const status = singleQueryValue(query.status);
+  const mode = singleQueryValue(query.mode);
+  const resourceType = singleQueryValue(query.resourceType) ?? singleQueryValue(query.resource_type);
+  const limitValue = singleQueryValue(query.limit);
+
+  const filter: Omit<ListEhrIngestRunsInput, 'ehrTenantId'> = {};
+  if (status) {
+    if (!INGEST_RUN_STATUSES.has(status as EhrIngestRunStatus)) {
+      return { error: `Unsupported ingest run status '${status}'` };
+    }
+    filter.status = status as EhrIngestRunStatus;
+  }
+  if (mode) {
+    if (!INGEST_RUN_MODES.has(mode as EhrIngestRunMode)) {
+      return { error: `Unsupported ingest run mode '${mode}'` };
+    }
+    filter.mode = mode as EhrIngestRunMode;
+  }
+  if (resourceType) filter.resourceType = resourceType;
+  if (limitValue !== undefined) {
+    const limit = positiveQueryInt(limitValue);
+    if (limit === null) return { error: 'limit must be a positive integer' };
+    filter.limit = Math.min(limit, 100);
+  }
+  return { filter };
 }
 
 function parseTenantId(value: string): number | undefined {
@@ -761,6 +1533,18 @@ function optionalDateString(
     return { error: `${label} must be a YYYY-MM-DD date` };
   }
   return { value: parsed };
+}
+
+function optionalTimestampString(
+  value: unknown,
+  label: string,
+): { value: string | undefined } | { error: string } {
+  if (value === undefined) return { value: undefined };
+  const parsed = optionalString(value);
+  if (!parsed || Number.isNaN(new Date(parsed).getTime())) {
+    return { error: `${label} must be a valid timestamp` };
+  }
+  return { value: new Date(parsed).toISOString() };
 }
 
 function optionalHttpUrl(

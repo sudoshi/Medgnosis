@@ -14,7 +14,10 @@ import { useUiStore } from './stores/ui.js';
 
 const LoginPage = lazy(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/RegisterPage.js').then((m) => ({ default: m.RegisterPage })));
+const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage.js').then((m) => ({ default: m.AcceptInvitePage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage.js').then((m) => ({ default: m.ResetPasswordPage })));
 const OidcCallbackPage = lazy(() => import('./pages/OidcCallbackPage.js').then((m) => ({ default: m.OidcCallbackPage })));
+const SmartLaunchCompletePage = lazy(() => import('./pages/SmartLaunchCompletePage.js').then((m) => ({ default: m.SmartLaunchCompletePage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.js').then((m) => ({ default: m.DashboardPage })));
 const PatientsPage = lazy(() => import('./pages/PatientsPage.js').then((m) => ({ default: m.PatientsPage })));
 const PatientDetailPage = lazy(() => import('./pages/PatientDetailPage.js').then((m) => ({ default: m.PatientDetailPage })));
@@ -62,6 +65,9 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth/callback" element={<OidcCallbackPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/ehr/complete" element={<SmartLaunchCompletePage />} />
 
           {/* Protected - requires authenticated session */}
           <Route element={<AuthGuard />}>

@@ -1,65 +1,47 @@
 # Medgnosis EHR Integration Devlog - Current State
 
-**Date:** 2026-06-17  
-**Scope:** Epic, Oracle Cerner, SMART Health IT, generic SMART/FHIR, CDS Hooks, Backend Services, and Bulk Data integration work  
-**Repository:** `/home/smudoshi/Github/Medgnosis`  
-**Primary plan:** `docs/superpowers/plans/2026-06-16-ehr-integration-implementation-plan.md`
+- **Date:** 2026-06-17
+- **Last assessed:** 2026-06-19
+- **Scope:** Epic, Oracle Cerner, SMART Health IT, generic SMART/FHIR, CDS Hooks, Backend Services, Bulk Data, and the follow-on FHIR/QDM bridge integration work
+- **Repository:** `/home/smudoshi/Github/Medgnosis`
+- **Primary plan:** `docs/superpowers/plans/2026-06-16-ehr-integration-implementation-plan.md`
+- **Related bridge closeout:** `docs/superpowers/devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md`
 
 ## Executive Summary
 
-Medgnosis now has the foundation of a vendor-neutral EHR integration platform. The local platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI, and a first Bulk Data job ledger plus kickoff/poll/manifest parsing service.
+Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with recent ingest, Bulk job/file/schedule status, completed-job import replay, and active-job cancellation, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, automatic completed-job NDJSON import, and a QDM/CQL shadow-governance path for staged FHIR evidence.
 
-The work is still uncommitted and the worktree is intentionally dirty because the broader EHR implementation spans many new files, migrations, scripts, and route/service modules. Root validation gates are currently passing. Migration 067 was applied locally, and `db:migrate:list` reported no pending migrations after application.
+The earlier EHR implementation tranche is no longer an uncommitted dirty worktree. The vendor integration foundation was committed as `e56ec76`, production deployment support landed in `c514a9f`, and the FHIR/QDM governance bridge landed in `95252ba`. Before this document refresh, `git status --short --untracked-files=all` was clean. `db:migrate:list` against `.env.production` reports 78 applied migrations and no pending migrations, with `079_qdm_bridge_operations.sql` as the latest migration on disk.
 
 Current completion estimate:
 
-- **Full Epic/Cerner/other-EHR program:** about 55 percent complete.
-- **Local vendor-neutral platform:** about 80 percent complete.
-- **Epic/Cerner production onboarding:** still low, roughly 20-25 percent, because vendor credentials, app registration, sandbox launch evidence, customer scope approval, patient-context sync, monitoring, runbooks, and go-live artifacts remain external or incomplete.
+- **Full Epic/Cerner/other-EHR program:** about 60 percent complete.
+- **Local vendor-neutral platform:** about 88 percent complete.
+- **FHIR/QDM analytics bridge for the scoped CMS122 shadow-governance milestone:** complete.
+- **Epic/Cerner production onboarding:** still low, roughly 20-25 percent, because vendor credentials, app registration, sandbox launch evidence, customer scope approval, broader EDW normalization, durable sync visibility, and go-live artifacts remain external or incomplete.
 
 ## Current Worktree State
 
-The repository is not clean. The EHR integration tranche is spread across tracked modifications and untracked new files.
+Assessment baseline before this document edit:
 
-Tracked files currently modified include:
+- `git status --short --untracked-files=all` returned clean.
+- EHR integration files are tracked.
+- No untracked EHR route, service, migration, script, or admin UI files remain from the original tranche.
+- Current branch: `main`, with `origin/main` at the same HEAD during assessment.
 
-- `.env.example`
-- `package.json`
-- `package-lock.json`
-- `turbo.json`
-- `apps/api/package.json`
-- `apps/api/src/config.ts`
-- `apps/api/src/routes/cds-hooks/feedback.ts`
-- `apps/api/src/routes/cds-hooks/index.ts`
-- `apps/api/src/routes/index.ts`
-- `apps/api/src/services/fhir/capabilityStatement.ts`
-- `apps/web/src/pages/AdminPage.tsx`
-- `apps/web/src/pages/admin/helpers.tsx`
-- `apps/web/src/pages/admin/types.ts`
-- `apps/web/src/stores/announcer.ts`
-- `apps/web/src/stores/announcer.test.ts`
-- `packages/db/package.json`
-- `packages/db/src/migrate.ts`
+Post-assessment note on 2026-06-18:
 
-New untracked EHR integration files include:
+- The current worktree now includes application-completion documentation, auth invite activation, password reset, refresh-token session metadata, and TOTP MFA lifecycle changes outside the EHR integration tranche.
+- Migration dry-run from the host shell now shows 78 applied migrations and eight pending migrations from the application-completion worktree: `080_invite_activation_tokens.sql`, `081_password_reset_tokens.sql`, `082_refresh_token_session_metadata.sql`, `083_totp_mfa_lifecycle.sql`, `084_smart_launch_handoff_binding.sql`, `085_ehr_bulk_import_files.sql`, `086_ehr_bulk_schedules.sql`, and `087_patient_identity_empi.sql`.
+- The EHR-specific status in this devlog is otherwise unchanged.
 
-- `apps/api/src/routes/ehr/`
-- `apps/api/src/scripts/`
-- `apps/api/src/services/cds/fhirAuthorization.ts`
-- `apps/api/src/services/cds/fhirAuthorization.test.ts`
-- `apps/api/src/services/ehr/`
-- `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`
-- `docs/superpowers/plans/2026-06-16-ehr-integration-implementation-plan.md`
-- `packages/db/migrations/060_ehr_tenant_registry.sql`
-- `packages/db/migrations/061_ehr_resource_crosswalk.sql`
-- `packages/db/migrations/063_ehr_ingest_runs.sql`
-- `packages/db/migrations/064_smart_launch_sessions.sql`
-- `packages/db/migrations/065_smart_launch_pkce.sql`
-- `packages/db/migrations/066_ehr_workbook_metadata.sql`
-- `packages/db/migrations/067_ehr_bulk_jobs.sql`
-- `packages/db/src/seed-ehr-sandbox.ts`
+Relevant commits now in history:
 
-No commit has been created for this tranche.
+- `e56ec76 feat(ehr): add vendor integration foundation`
+- `c514a9f fix(deploy): complete EHR production rollout`
+- `95252ba feat: complete FHIR QDM bridge governance`
+- `cad8440 feat(admin): port roadmap kanban from snapshot`
+- `2f45bfd fix(deploy): publish readable web build`
 
 ## Implemented Capabilities
 
@@ -120,6 +102,7 @@ Implemented:
 - `POST /api/v1/ehr/admin/tenants/:id/discover`
 - `GET /api/v1/ehr/admin/tenants/:id/capabilities`
 - `POST /api/v1/ehr/admin/tenants/:id/test-connection`
+- `GET /api/v1/ehr/admin/tenants/:id/ingest-runs`
 - `GET /api/v1/ehr/admin/onboarding-profile`
 
 The diagnostics/discover/test-connection path:
@@ -137,6 +120,12 @@ The tenant detail path returns:
 - Sanitized client registrations.
 - Latest capability snapshot.
 - Per-client readiness status with missing fields.
+
+The tenant ingest-run path returns:
+
+- Recent `ehr_ingest_run` rows for the tenant.
+- Optional `status`, `mode`, `resourceType`, and bounded `limit` filters.
+- The latest run summary for admin sync visibility.
 
 ### 3. SMART Discovery
 
@@ -196,15 +185,23 @@ Implemented callback:
 - Supports public PKCE, client-secret methods, and private-key JWT paths through service code.
 - Extracts patient, encounter, fhirUser, and scope.
 - Persists token metadata with token hashes only.
-- Redirects to the app `return_to` URL with `smart_session_id` when supplied.
+- Redirects to the app `return_to` URL with a short-lived one-time `smart_handoff` code when supplied.
+- Requires and validates EHR launch `iss` and embedded `launch` context.
+- Validates OpenID SMART ID tokens, including signature, issuer, audience, nonce, expiration, issued-at, authorized party, and token-use semantics.
+- Reads the launch Patient from the tenant FHIR API while the raw SMART access token is still only in memory.
+- Starts a manual `Patient` ingest run, stages the raw Patient resource, creates a minimal local `phm_edw.patient` when required demographics are present, and populates tenant-scoped `ehr_resource_crosswalk`.
+- Stages one bounded page each of launch-context `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, and `AllergyIntolerance` resources when granted patient scopes allow those searches, hydrates supported resources into EDW workspace tables, then replays callback-staged resources through the QDM bridge without blocking launch on replay errors.
+- Enqueues a backend-services BullMQ refresh after successful launch patient resolution for broader `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, `AllergyIntolerance`, and `Immunization` patient-context pages, including next-link continuation jobs, without storing SMART launch bearer tokens.
+- Preserves existing non-null Patient crosswalk mappings rather than reassigning patients automatically.
+- Provides an authenticated `/ehr/launch/complete` handoff endpoint that binds the launch to the current Medgnosis session and resolves local patients through launch-context sync status or `ehr_resource_crosswalk`.
 
 Important remaining gaps:
 
-- `iss` is accepted but still needs strict validation against tenant issuer/FHIR base URL.
-- ID token validation is still incomplete.
-- Callback does not yet establish a first-class Medgnosis application session bound to SMART context.
-- EHR user linking and patient crosswalk/import are not complete.
-- Patient-context sync is not queued after launch yet.
+- EHR user linking is not complete.
+- Queued broader patient-context refresh and next-link continuation exist for supported patient-context resource types.
+- Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages, but DocumentReference, DiagnosticReport, medication administration/dispense, delete semantics, and fuller local matching still need EDW normalization.
+- A read-only tenant ingest-run status API, recent-sync panel, Bulk job/file/schedule status panel, completed-job import replay, failed-file-only resume, recurring Bulk schedules, and active-job cancellation exist, but alerts, deeper dead-letter runbooks, automated/tenant EHR audit coverage, and broader patient/resource last-success rollups remain incomplete.
+- Provider access/PCP attribution policy for newly imported launch patients still needs tenant-specific design.
 
 Key implementation files:
 
@@ -317,10 +314,11 @@ Implemented:
 
 Known remaining gaps:
 
-- EDW normalization from staged resources to `phm_edw.patient`, `encounter`, `condition`, `observation`, medications, allergies, procedures, immunizations, and document references is not complete.
-- Crosswalk creation is partially scaffolded but not yet a full normalization contract.
+- EDW normalization from staged resources now covers initial Patient routing plus first-pass workspace rows for `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, `AllergyIntolerance`, and `Immunization`; full all-domain normalization, document references, diagnostic reports, medication dispense/administration, and richer local matching are not complete.
+- The FHIR/QDM bridge now covers the scoped quality-measure path, but it is not a full all-domain EDW normalization contract.
+- EHR resource crosswalks exist, initial SMART launch Patient import now populates Patient crosswalks, and FHIR/QDM source crosswalks exist for the bridge, but broader EDW patient-context normalization still needs a first-class local matching and attribution contract.
 - Data-quality issue rows for unmapped codes/units/statuses remain to be implemented.
-- Patient-context sync is not yet wired after SMART launch.
+- Bounded patient-context staging beyond the launch Patient is wired after SMART launch, hydrated into EDW workspace rows for supported patient-context resource types, automatically replayed into QDM evidence, and extended by a backend-services queued refresh with continuation jobs, but all-domain EDW normalization remains incomplete.
 
 Key implementation files:
 
@@ -364,7 +362,7 @@ Key implementation files:
 
 ### 9. Bulk Data Foundation
 
-A first Bulk Data foundation is implemented. This is intentionally an auditable job boundary, not yet a full NDJSON downloader/importer.
+A first Bulk Data foundation is implemented. It now includes the auditable kickoff/poll/manifest ledger, manual/admin kickoff, tenant-specific recurring schedules, vendor-safe BullMQ polling, automatic import enqueue after completion, manual completed-job import replay, failed-file-only resume, BullMQ retry/failed-job retention for incomplete imports, active-job cancellation, optional manifest checksum/size validation, PHI-safe audit entries for manual Bulk controls, and a completed-job NDJSON import worker. Deleted-output/tombstone handling, deeper dead-letter runbooks, automated worker audit coverage, broader patient/resource last-success rollups, and vendor sandbox proof remain open.
 
 Implemented:
 
@@ -383,6 +381,16 @@ Implemented:
 - Error object persistence.
 - Retry-after seconds and next poll timestamp.
 - PHI-safe operational metadata.
+- Migration `085_ehr_bulk_import_files.sql`.
+- `phm_edw.ehr_bulk_import_file` per-output-file import ledger.
+- Migration `086_ehr_bulk_schedules.sql`.
+- `phm_edw.ehr_bulk_schedule` tenant recurring Bulk schedule table with next-run, last-enqueued, last Bulk job, last-success, and last-failure state.
+- Tenant-scoped admin enqueue endpoint for completed Bulk job imports.
+- Tenant-scoped admin kickoff endpoint for new Bulk exports.
+- Tenant-scoped admin recurring Bulk schedule list/upsert endpoints.
+- Tenant-scoped admin cancel endpoint for active Bulk exports.
+- Read-only tenant Bulk job status endpoint with redacted file-level import status.
+- BullMQ Bulk kickoff/poll/import worker registration in the shared worker entrypoint.
 
 Implemented service logic:
 
@@ -399,22 +407,41 @@ Implemented service logic:
 - Output descriptor parsing.
 - Failure path records structured error metadata.
 - Tests assert raw bearer token is not persisted.
+- Runtime-only backend-services token acquisition for completed-job imports.
+- NDJSON output download for completed manifests.
+- Streaming line parsing rather than whole-file loading.
+- Content-type, resource-type, token-bearing output-origin, and token-scope validation.
+- Existing staging service handoff for imported FHIR resources.
+- Patient crosswalk creation when a Bulk Patient profile has enough demographic identifiers.
+- EDW hydration and QDM replay after successful staging.
+- Runtime backend-services token acquisition for kickoff and polling without storing bearer tokens in queue payloads.
+- Automatic delayed poll re-enqueue for accepted/in-progress jobs.
+- Automatic completed-job import enqueue after polling observes a completed manifest.
+- Active-job cancellation uses runtime backend-services tokens and sends `DELETE` to the vendor Bulk status URL.
+- Vendor adapter min/max polling windows applied around `Retry-After`.
+- Local mock Bulk server integration coverage for kickoff, 202 polling with `Retry-After`, completed manifest fetch, NDJSON import, active-job cancellation, and output-fetch error handling.
+- Failed-file-only resume mode skips previously completed import files and retries failed/pending outputs.
+- Incomplete worker imports now throw after recording file/run status, allowing BullMQ retry attempts and retained failed jobs to act as the dead-letter surface.
+- PHI-safe audit entries are emitted for manual Bulk kickoff, completed-job import replay, failed-file-only resume, and active-job cancellation.
+- Nightly scheduling now enqueues due tenant Bulk schedules and marks last-enqueued, last Bulk job, last-success, and last-failure state without storing bearer tokens or raw NDJSON payloads.
 
 Known remaining gaps:
 
-- No scheduler/worker polls jobs automatically yet.
-- Polling is not yet exponential/backoff-managed by a queue.
-- NDJSON download is not implemented.
-- Content type and line-level NDJSON validation are not implemented.
-- Staging/normalization from Bulk output is not implemented.
-- Local mock Bulk server integration test remains to be added.
+- No dead-letter/replay runbook beyond BullMQ retry retention, manual completed-job replay, and failed-file-only resume.
+- No checksum/size validation when vendors provide file metadata.
+- No Bulk `deleted` tombstone handling.
 - No real Epic/Cerner Bulk Data sandbox job has been run.
 
 Key implementation files:
 
 - `packages/db/migrations/067_ehr_bulk_jobs.sql`
+- `packages/db/migrations/085_ehr_bulk_import_files.sql`
+- `packages/db/migrations/086_ehr_bulk_schedules.sql`
 - `apps/api/src/services/ehr/bulkData.ts`
 - `apps/api/src/services/ehr/bulkData.test.ts`
+- `apps/api/src/services/ehr/bulkSchedules.ts`
+- `apps/api/src/workers/ehr-bulk-import.ts`
+- `apps/api/src/workers/ehr-bulk-import.test.ts`
 
 ### 10. Admin UI
 
@@ -433,12 +460,14 @@ Implemented UI features:
 - Latest capability snapshot display.
 - Diagnostics action.
 - Sanitized display: secret refs are not shown, only readiness booleans.
+- Recent tenant ingest-run status panel.
+- Bulk job status panel with manual export kickoff, schedule save, manual completed-job import replay, active-job cancel, file counts, staged row counts, failures, next poll/request timestamps, schedule next-run/last-success state, and redacted per-file import status.
 
 Known UI gaps:
 
 - No dedicated UI test yet for admin-only EHR visibility or secret redaction.
-- Last sync display is not complete because patient-context sync and scheduled ingestion are not complete.
-- Bulk job status UI is not implemented.
+- Last sync display is not complete because broader patient/resource last-success rollups are not surfaced in the UI.
+- Failed-import resume controls exist for completed jobs with failed file rows, but QDM replay drilldowns are not implemented.
 - Data-quality/unmapped-code review UI is not implemented.
 
 Key implementation files:
@@ -476,9 +505,49 @@ Key implementation files:
 - `apps/api/src/scripts/smoke-ehr-onboarding.ts`
 - `packages/db/src/seed-ehr-sandbox.ts`
 
+### 12. FHIR/QDM Bridge and Measure Governance
+
+After the EHR foundation landed, the follow-on FHIR/QDM bridge work integrated staged FHIR evidence into the quality-measure analytics path. This does not replace the EHR onboarding work; it closes a major downstream gap by giving inbound FHIR resources a governed route into QDM evidence, CQL shadow evaluation, SQL/CQL reconciliation, and star-schema lineage.
+
+Implemented:
+
+- `phm_edw.qdm_event` canonical QDM event spine.
+- `phm_edw.fhir_qdm_crosswalk` source FHIR-to-QDM linkage.
+- `phm_star.bridge_qdm_star_evidence` and `phm_star.fact_measure_result_evidence` evidence ledgers.
+- FHIR-to-QDM normalization replay from staged resources.
+- EDW-to-QDM-to-QI-Core projection for CQL sidecar execution.
+- CQL `MeasureReport` persistence and patient evidence summaries.
+- Source-aware SQL/CQL reconciliation with scoped-vs-full-population promotion controls.
+- CQL shadow star materialization that cannot overwrite SQL authority by accident.
+- Semantic drift dossier and drift worklist.
+- Admin Measure Governance tab with audited evidence detail drilldown.
+- PHI-safe QDM bridge run/issue ledgers and operational status view.
+- `npm run qdm:shadow-refresh` for ledgered shadow refreshes with promotion disabled by default.
+- Operations runbook for replay, rollback, value-set drift, and CQL engine outage procedures.
+
+Current governance state:
+
+- `CMS122v12` remains in `cql_shadow` mode.
+- `sql_bundle` remains authoritative for the current dashboard baseline.
+- Authoritative CQL promotion is intentionally blocked pending semantic drift review.
+- The local `CMS122v12 <- DM-02` SQL baseline alias is documented as a governed surrogate, not a standards-equivalent CMS122 implementation.
+
+Key implementation files:
+
+- `apps/api/src/services/ehr/qdmBridge.ts`
+- `apps/api/src/services/qdm/`
+- `apps/api/src/services/measureReconciliation.ts`
+- `apps/api/src/services/measureSemanticDriftDossier.ts`
+- `apps/api/src/routes/admin/index.ts`
+- `apps/api/src/scripts/qdm-bridge-shadow-run.ts`
+- `apps/web/src/pages/admin/MeasureGovernanceTab.tsx`
+- `docs/superpowers/runbooks/qdm-bridge-operations.md`
+- `packages/db/migrations/068_qdm_bridge_foundation.sql`
+- `packages/db/migrations/079_qdm_bridge_operations.sql`
+
 ## Database State
 
-New migrations in the EHR tranche:
+EHR foundation migrations:
 
 - `060_ehr_tenant_registry.sql`
 - `061_ehr_resource_crosswalk.sql`
@@ -488,11 +557,27 @@ New migrations in the EHR tranche:
 - `066_ehr_workbook_metadata.sql`
 - `067_ehr_bulk_jobs.sql`
 
-Local database status:
+Follow-on bridge/governance migrations:
 
-- Migration 067 was applied successfully.
-- `db:migrate:list` reported 67 applied migrations and no pending migrations.
-- The migration runner still reports one historical applied migration no longer present on disk: `029_solr_cdc_triggers`. This predates the EHR tranche and was not modified here.
+- `068_qdm_bridge_foundation.sql`
+- `069_auth_admin_oidc_foundation.sql`
+- `070_qdm_cql_measure_result_promotion.sql`
+- `071_measure_data_criteria.sql`
+- `072_measure_promotion_reconciliation_governance.sql`
+- `073_measure_promotion_audit_columns.sql`
+- `074_measure_reconciliation_scope.sql`
+- `075_measure_sql_baseline_alias.sql`
+- `076_measure_reconciliation_conservative_legacy_scope.sql`
+- `077_measure_reconciliation_promotion_eligibility_guard.sql`
+- `078_measure_semantic_drift_dossier.sql`
+- `079_qdm_bridge_operations.sql`
+
+Current database status before the auth, SMART handoff, Bulk import-file, and Bulk schedule migrations in this worktree:
+
+- The local `.env` dry-run with `host.docker.internal` rewritten to `127.0.0.1` reports 78 applied migrations.
+- Pending migrations from the host dry-run: `080_invite_activation_tokens.sql`, `081_password_reset_tokens.sql`, `082_refresh_token_session_metadata.sql`, `083_totp_mfa_lifecycle.sql`, `084_smart_launch_handoff_binding.sql`, `085_ehr_bulk_import_files.sql`, `086_ehr_bulk_schedules.sql`, and `087_patient_identity_empi.sql`.
+- Latest migration on disk: `087_patient_identity_empi.sql`.
+- The earlier 067 handoff state is superseded by the 068-079 bridge/governance migration tranche.
 
 CLI note:
 
@@ -502,29 +587,42 @@ CLI note:
 
 ## Validation Evidence
 
-Latest root gates passed after the admin endpoint alias additions:
+Latest recorded full validation after the application-completion continuation work:
 
 - `npm run typecheck`
-- `npm run test`
 - `npm run lint`
-- `npm run build`
 - `git diff --check`
+- `set -a; . ./.env; set +a; DATABASE_URL="${DATABASE_URL/host.docker.internal/127.0.0.1}" npm run db:migrate:dry-run`
+- `npm run test`
+- `npm run build`
+- `npm run test:e2e --workspace=apps/web`
 
-Latest full test summary:
+Latest recorded full test summary:
 
-- API: 70 test files passed, 1 skipped; 427 tests passed, 1 skipped.
-- Web: 24 test files passed; 41 tests passed.
-- Shared: 1 test file passed; 37 tests passed.
-- Solr: 2 test files passed; 18 tests passed.
-- Turbo task summary: all requested tasks successful.
+- API: 93 test files passed; 666 tests passed, 1 skipped.
+- Web: 25 test files passed; 42 tests passed.
+- Shared: 43 tests passed.
+- Solr: 18 tests passed.
+- Migration dry run reported 78 applied migrations and 8 pending migrations through `087_patient_identity_empi.sql`.
+- Build completed successfully.
 
-Focused tests run during this tranche:
+Focused EHR tests covered during the EHR foundation tranche:
 
 - `apps/api/src/routes/ehr/admin.test.ts`
 - `apps/api/src/routes/ehr/launch.test.ts`
 - `apps/api/src/routes/ehr/launch.integration.test.ts`
 - `apps/api/src/services/ehr/smartLaunch.test.ts`
 - `apps/api/src/services/ehr/bulkData.test.ts`
+- `apps/api/src/workers/ehr-bulk-import.test.ts`
+
+Focused bridge/governance tests and smoke coverage added after the EHR tranche:
+
+- `apps/api/src/services/ehr/qdmBridge.test.ts`
+- `apps/api/src/services/qdm/*.test.ts`
+- `apps/api/src/services/measureReconciliation.test.ts`
+- `apps/api/src/services/measureSemanticDriftDossier.test.ts`
+- Admin Measure Governance browser smoke with audited QDM evidence detail drilldown.
+- QDM bridge operational ledger smoke for `CMS122v12`.
 
 Latest live SMART Health IT onboarding smoke:
 
@@ -539,24 +637,31 @@ Latest live SMART Health IT onboarding smoke:
 - SKIP Backend token exchange because no backend-services registration exists.
 - SKIP authenticated FHIR read because no smoke access token/resource was supplied.
 
+Production assessment rechecks on 2026-06-18, before the later application-completion worktree migrations:
+
+- `git status --short --untracked-files=all` returned clean before this document edit.
+- `set -a; . ./.env.production; set +a; npm run db:migrate:list` reported 78 applied migrations and no pending migrations.
+- `https://medgnosis.acumenus.net/health` returned healthy with database up.
+- `http://127.0.0.1:3081/health` returned healthy with database up.
+
 ## Runtime State at Handoff
 
-Local API:
+Production API:
 
-- Running detached on `http://127.0.0.1:3002`.
-- Health check returned HTTP 200.
-- Redis DNS was unavailable in local dev startup, so WebSocket broadcast degraded gracefully.
-- Solr health was unavailable in local dev startup, so API fell back to PostgreSQL.
+- Public health endpoint: `https://medgnosis.acumenus.net/health`.
+- Local systemd/reverse-proxy target health endpoint: `http://127.0.0.1:3081/health`.
+- Both health endpoints returned `{"status":"healthy","version":"1.0.0","services":{"database":"up"}}` during the 2026-06-18 assessment.
 
-Local web:
+Production web/admin:
 
-- Existing Vite/web surface is available on `http://127.0.0.1:5175`.
-- `/admin` returned HTTP 200.
-- EHR Integrations tab is accessible through the Admin Panel for admin users.
+- Apache serves the built web app and proxies API traffic to the production API service.
+- The Admin Panel includes the EHR Integrations tab and the follow-on Measure Governance tab.
+- The latest bridge closeout smoke loaded Measure Governance, QDM evidence detail, and Bridge Ops without browser console errors.
 
 Security note:
 
-- A first detached API startup briefly exposed the local DB URL in the process command line. That process group was terminated and restarted using a safer shell form that computes the DB URL inside the detached shell. Current process listing no longer exposes the local DB URL from the Medgnosis API command.
+- The earlier detached local-dev process that briefly exposed a DB URL was terminated during the original EHR tranche.
+- Current production runtime should continue to rely on `.env.production` and systemd-managed process startup, not DB URLs embedded directly in shell process arguments.
 
 ## Remaining Critical Gaps
 
@@ -579,39 +684,29 @@ These require external credentials, vendor portal access, customer tenant detail
 
 Still needed:
 
-- Strict `iss` validation.
-- ID token validation.
 - User linking between EHR user and Medgnosis user.
-- Patient crosswalk from EHR patient ID to `phm_edw.patient`.
-- Patient-context import when local patient is absent.
-- Medgnosis app session establishment bound to SMART context.
-- Best-page routing after launch.
-- End-to-end launch simulation into patient detail.
+- Tenant-specific patient access/PCP attribution after launch Patient import.
+- Broader patient-context import when local patient history is absent.
+- Audit/rate-limit coverage for launch attempts, denials, callbacks, and handoff consumption.
+- Vendor sandbox launch simulation into patient detail.
 
 ### Patient-Context Sync
 
 Still needed:
 
-- Queue patient-context sync after SMART callback.
-- Fetch and stage `Patient` first.
-- Fetch recent `Encounter`.
-- Fetch active/recent pilot resources: `Condition`, `Observation`, `MedicationRequest`, allergies, procedures, immunizations.
-- Normalize staged resources into EDW tables.
-- Record sync status.
+- Expand active/recent pilot resources to allergies, procedures, immunizations, and other tenant-specific display needs.
+- Normalize additional staged resource families into EDW tables.
+- Record durable sync status beyond ingest-run metadata and BullMQ job state.
 - Show sync status and stale-data warnings in the UI.
 
 ### Bulk Data Import
 
 Still needed:
 
-- Polling worker/queue.
-- Exponential or vendor-safe polling schedule.
-- NDJSON download after completion.
-- NDJSON content type validation.
-- Line-level FHIR JSON validation.
-- Staging by resource type.
-- Resume/replay path.
-- Admin UI for job status and errors.
+- Deeper dead-letter controls and replay runbook.
+- Checksum/size validation when provided by vendors.
+- Bulk `deleted` tombstone handling.
+- Broader patient/resource last-success rollups and alerting.
 - Small approved group export against sandbox/vendor tenant.
 
 ### Observability and Audit
@@ -628,6 +723,13 @@ Still needed:
 - Bulk ingestion dashboard.
 - Alerting for token failures, FHIR 401/403/429 spikes, stuck Bulk jobs, and stale tenant sync.
 
+Now partially covered outside the EHR-specific path:
+
+- QDM bridge run/issue ledgers exist.
+- QDM bridge operational status view exists.
+- Measure Governance raw evidence drilldown is audited.
+- QDM bridge operations runbook exists.
+
 ### Clinical Safety and Governance
 
 Still needed:
@@ -637,6 +739,7 @@ Still needed:
 - Customer/clinical review of care-gap text and workflows.
 - Legal/security review for PHI flows, retention, BAA/customer contracts.
 - Explicit no-writeback default and future writeback feature flags.
+- CMS122 CQL-authoritative promotion remains blocked pending semantic drift governance review.
 
 ## Current Risk Register
 
@@ -650,25 +753,35 @@ Mitigation:
 - Keep live SMART Health IT evidence separate from Epic/Cerner evidence.
 - Do not mark vendor go-live tasks complete until portal/customer validation exists.
 
-### Risk: SMART launch context not yet connected to patient workspace
+### Risk: SMART launch patient workspace is not fully hydrated after bounded callback staging
 
-Launch/callback/token mechanics work, but patient crosswalk and local session binding remain incomplete.
+Launch/callback/token mechanics, authenticated handoff binding, initial Patient import/crosswalk, bounded staging of core launch-context resources, first-pass EDW hydration, automatic QDM replay, and queued backend-services refresh with next-link continuation for core resource pages now work in code. The remaining risk is that newly imported launch patients still lack tenant-specific provider attribution, broader resource history, durable sync visibility, and vendor sandbox proof.
 
 Mitigation:
 
-- Prioritize patient-context sync next.
-- Add end-to-end synthetic launch that opens patient detail.
-- Add patient crosswalk tests before production launch work.
+- Prioritize EDW normalization breadth, durable sync status, and patient access policy next.
+- Add end-to-end vendor/sandbox launch evidence that opens patient detail.
+- Keep Patient import/crosswalk regression tests in the SMART launch suite before production launch work.
 
 ### Risk: Bulk Data incomplete after manifest
 
-Bulk kickoff/poll/manifest persistence exists, but no downloader/importer exists yet.
+Bulk kickoff/poll/manifest persistence, NDJSON downloader/importer, EDW hydration, QDM replay, recurring schedule enqueueing, admin job/file/schedule status visibility, completed-job import replay, failed-file-only resume, BullMQ retry/dead-letter retention, PHI-safe manual-control audit, and active-job cancellation now exist, but the path still lacks checksum/deleted handling, automated worker audit coverage, deeper replay runbooks, broader patient/resource last-success rollups, and vendor sandbox proof.
 
 Mitigation:
 
-- Implement NDJSON download and validation next.
-- Stage files through existing resource staging.
+- Extend Bulk integration coverage as resume/dead-letter, checksum, deleted-output, and vendor-specific behaviors are implemented.
+- Harden dead-letter drilldowns and replay runbooks before relying on Bulk as an operational bootstrap path.
 - Keep Bulk Data explicitly for bootstrap/group use cases, not low-latency UI sync.
+
+### Risk: Semantic drift hidden behind bridge success
+
+The FHIR/QDM bridge engineering path works, but engineering success does not mean a local SQL surrogate is standards-equivalent to a published CQL measure.
+
+Mitigation:
+
+- Keep `CMS122v12` in `cql_shadow` mode.
+- Keep `sql_bundle` authoritative until governance accepts a standards-equivalent path.
+- Use the semantic drift dossier and worklist before any CQL-authoritative promotion.
 
 ### Risk: Secrets and tokens
 
@@ -682,48 +795,60 @@ Mitigation:
 
 ## Recommended Next Development Sequence
 
-1. **Patient-context sync after SMART callback**
-   - Add a sync job/service that takes SMART launch context and fetches/stages `Patient`, `Encounter`, `Condition`, `Observation`, and `MedicationRequest`.
+1. **Patient-context normalization breadth and visibility**
+   - Extend the bounded callback staging, EDW hydration, QDM replay, and backend-services queue path to the remaining patient-detail resource families not yet covered by existing EDW tables.
+   - Broaden EDW normalization into document references, diagnostic reports, medication administration/dispense, and richer local matching where patient detail needs it.
    - Add sync status persistence and admin/clinician-safe error reporting.
 
 2. **EHR patient crosswalk and EDW normalization**
-   - Map EHR patient IDs to local `phm_edw.patient`.
-   - Implement Patient and Encounter normalization first.
-   - Add Observation and Condition next because they drive care gaps and clinical summary value.
+   - Keep launch Patient crosswalks as the routing source of truth.
+   - Implement Encounter normalization first.
+   - Add Observation and Condition next because they drive care gaps, clinical summary value, and the QDM bridge.
 
-3. **Strict SMART security**
-   - Validate `iss`.
-   - Validate ID token when returned.
-   - Add SMART session binding and user linking flow.
+3. **SMART user linking and audit**
+   - Add EHR `fhirUser` to Medgnosis user linking policy.
+   - Add SMART lifecycle audit events and rate limits.
+   - Add vendor sandbox evidence for completed handoff into patient detail.
 
-4. **Bulk Data downloader/importer**
-   - Download NDJSON only after completed manifest.
-   - Validate content type and line-level FHIR JSON.
-   - Stage each resource through `resourceStaging.ts`.
-   - Add local mock Bulk server integration test.
+4. **Bulk Data operational hardening**
+   - Add deeper dead-letter controls and runbooks.
+   - Define deleted-output tombstone behavior when vendors provide it.
+   - Add vendor-specific recurring schedule evidence against an approved sandbox.
 
 5. **Admin UI completion**
    - Add UI test for secret redaction/admin-only access.
-   - Add Bulk job status panel.
-   - Add last sync and resource-level sync errors.
+   - Add broader patient/resource last-success rollups, Bulk replay/dead-letter drilldowns, and resource-level sync errors.
 
-6. **Epic/Cerner vendor readiness**
+6. **EHR observability and runbooks**
+   - Add SMART launch/token/FHIR-read audit coverage.
+   - Add EHR tenant, SMART launch, FHIR API, and Bulk ingestion health panels.
+   - Add stuck-job and token-failure alerting.
+
+7. **Epic/Cerner vendor readiness**
    - Use onboarding profiles to register real sandbox apps.
    - Validate Epic and Oracle Cerner launch/callback/token flows.
    - Validate patient-context reads.
    - Validate system-token flow where approved.
    - Capture evidence and update plan checkboxes only after real validation.
 
+8. **Measure governance follow-through**
+   - Keep CMS122 in shadow mode until semantic drift is clinically reviewed.
+   - Decide whether to replace the DM-02 surrogate, accept a local measure definition, or promote a standards-equivalent CQL path.
+
 ## Current File Landmarks
 
 Planning:
 
 - `docs/superpowers/plans/2026-06-16-ehr-integration-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-17-fhir-qdm-dimensional-bridge-implementation-plan.md`
+- `docs/superpowers/devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md`
+- `docs/superpowers/runbooks/qdm-bridge-operations.md`
 
 Admin API:
 
 - `apps/api/src/routes/ehr/admin.ts`
 - `apps/api/src/routes/ehr/admin.test.ts`
+- `apps/api/src/routes/admin/index.ts`
 
 SMART launch:
 
@@ -749,12 +874,25 @@ Bulk Data:
 
 - `apps/api/src/services/ehr/bulkData.ts`
 - `apps/api/src/services/ehr/bulkData.test.ts`
+- `apps/api/src/services/ehr/bulkSchedules.ts`
 - `packages/db/migrations/067_ehr_bulk_jobs.sql`
+- `packages/db/migrations/085_ehr_bulk_import_files.sql`
+- `packages/db/migrations/086_ehr_bulk_schedules.sql`
 
 Resource staging:
 
 - `apps/api/src/services/ehr/resourceStaging.ts`
 - `apps/api/src/services/ehr/ingestRuns.ts`
+- `apps/api/src/services/ehr/qdmBridge.ts`
+
+QDM bridge and measure governance:
+
+- `apps/api/src/services/qdm/`
+- `apps/api/src/services/measureReconciliation.ts`
+- `apps/api/src/services/measureSemanticDriftDossier.ts`
+- `apps/web/src/pages/admin/MeasureGovernanceTab.tsx`
+- `packages/db/migrations/068_qdm_bridge_foundation.sql`
+- `packages/db/migrations/079_qdm_bridge_operations.sql`
 
 CDS auth:
 
@@ -774,6 +912,7 @@ Scripts:
 - `apps/api/src/scripts/onboard-ehr-tenant.ts`
 - `apps/api/src/scripts/generate-ehr-backend-key.ts`
 - `apps/api/src/scripts/smoke-ehr-onboarding.ts`
+- `apps/api/src/scripts/qdm-bridge-shadow-run.ts`
 - `packages/db/src/seed-ehr-sandbox.ts`
 
 ## Completion Snapshot
@@ -782,18 +921,20 @@ Scripts:
 | --- | --- | --- |
 | Tenant registry | Mostly complete | Needs production secret-manager policy and audit logs |
 | Admin onboarding API | Mostly complete | CRUD/upsert/detail/diagnostics/capabilities/test-connection present |
-| Admin EHR UI | Partial | Tenant onboarding/readiness present; Bulk/sync status missing |
+| Admin EHR UI | Partial | Tenant onboarding/readiness, recent ingest-run sync status, Bulk job/file/schedule status, completed-job import replay, failed-import resume, and active-job cancel present; alerting, dead-letter drilldowns, and broader patient/resource last-success rollups missing |
 | SMART discovery | Partial | Works locally; needs HTTPS enforcement, hash/drift detection |
-| EHR launch | Partial | Launch/callback works; patient session/linking/sync incomplete |
+| EHR launch | Partial | Launch/callback, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, and refresh continuation work; user linking, access attribution, all-domain normalization, durable sync visibility, and vendor evidence remain |
 | Standalone launch | Partial | Route and scope behavior present; end-to-end patient selection evidence pending |
 | Token metadata | Mostly complete | Hash-only persistence present; refresh/reacquisition remains |
 | Backend Services | Partial | Token flow implemented; no real vendor validation |
 | FHIR client | Mostly complete | Reads/search/pagination/retry present; vendor-specific constraints need expansion |
-| Resource staging | Partial | Raw staging works; normalization incomplete |
+| Resource staging | Partial | Raw staging, callback EDW hydration, callback QDM replay, queued supported-resource refresh, and continuation work; all-domain EDW normalization remains incomplete |
+| FHIR/QDM bridge | Mostly complete for scoped milestone | QDM spine, FHIR crosswalk, CQL shadow, reconciliation, semantic drift, and ops ledger present |
+| Measure governance | Partial | Admin tab and audited evidence drilldown present; CMS122 promotion remains governance-blocked |
 | CDS Hooks auth | Partial | JWT/JWKS validation present; production governance incomplete |
-| Bulk Data | Early partial | Kickoff/poll/manifest ledger present; no download/import worker |
+| Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, manual-control audit, EDW hydration, QDM replay, and admin status UI present; deeper dead-letter runbooks, tombstones, automated worker audit, broader patient/resource last-success rollups, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Not complete | Dashboards, alerts, audit lifecycle, runbooks remain |
+| Observability/runbooks | Partial | QDM bridge runbook, bridge ops ledgers, and System Health worker/queue plus EHR Bulk readiness visibility exist; EHR launch/FHIR/CQL/DEQM dashboards and alerts remain |
 
-Overall: the local platform can support the next engineering slices without needing vendor credentials, but actual Epic/Cerner readiness requires external sandbox and customer onboarding work.
+Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.

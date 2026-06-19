@@ -7,7 +7,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomBytes } from 'node:crypto';
 import { sql } from '@medgnosis/db';
-import type { JWK } from 'jose';
+import { createLocalJWKSet, createRemoteJWKSet, jwtVerify } from 'jose';
+import type { JSONWebKeySet, JWK, JWTPayload } from 'jose';
 import {
   createBackendClientAssertion,
   resolvePrivateKeyFromEnvironment,
@@ -21,6 +22,17 @@ import {
   sanitizeTokenResponseMetadata,
   type SmartTokenMetadata,
 } from './tokenStore.js';
+import {
+  enrichLaunchContextWithPatientSync,
+  localPatientIdFromLaunchContext,
+  patientResourceIdFromLaunchContext,
+  syncSmartLaunchPatientContext,
+  type SmartLaunchPatientSyncResult,
+} from './smartPatientSync.js';
+import {
+  enqueueSmartPatientContextRefresh,
+  type EnqueueSmartPatientContextRefreshResult,
+} from '../../workers/ehr-patient-context-refresh.js';
 import type {
   EhrLaunchContext,
   EhrTenantRef,
@@ -38,6 +50,7 @@ export interface SmartLaunchSession {
   ehrTenantId: number;
   orgId: number | null;
   userId: string | null;
+  appSessionId: string | null;
   clientRegistrationId: number | null;
   stateHash: string;
   nonceHash: string;
@@ -51,6 +64,9 @@ export interface SmartLaunchSession {
   status: SmartLaunchStatus;
   expiresAt: string;
   consumedAt: string | null;
+  handoffCodeHash: string | null;
+  handoffExpiresAt: string | null;
+  handoffConsumedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +88,8 @@ export interface SmartLaunchConfig {
   scopesGranted: string;
   authorizationEndpoint: string;
   tokenEndpoint: string;
+  issuer: string | null;
+  idTokenJwksUrl: string | null;
 }
 
 export interface CreateSmartLaunchStateInput {
@@ -141,12 +159,21 @@ export interface SmartTokenExchangeResult {
 export interface CompleteSmartLaunchCallbackInput {
   state: string;
   code: string;
+  now?: Date;
   config: Pick<
     SmartLaunchConfig,
-    'tenant' | 'clientId' | 'tokenEndpoint' | 'authMethod' | 'jwksUrl' | 'privateKeyRef'
+    | 'tenant'
+    | 'clientId'
+    | 'tokenEndpoint'
+    | 'authMethod'
+    | 'jwksUrl'
+    | 'privateKeyRef'
+    | 'issuer'
+    | 'idTokenJwksUrl'
   > & {
     clientSecret?: string | null;
     clientSecretRef?: string | null;
+    idTokenJwks?: JSONWebKeySet | null;
   };
 }
 
@@ -156,11 +183,36 @@ export interface CompleteSmartLaunchCallbackResult {
   tokenMetadata: SmartTokenMetadata;
 }
 
+export interface CreateSmartLaunchHandoffOptions {
+  expiresInSeconds?: number;
+  now?: Date;
+}
+
+export interface CreatedSmartLaunchHandoff {
+  sessionId: string;
+  handoffCode: string;
+  expiresAt: string;
+}
+
+export interface ConsumeSmartLaunchHandoffInput {
+  handoffCode: string;
+  userId: string;
+  orgId?: number | null;
+  appSessionId?: string | null;
+  now?: Date;
+}
+
+export interface ConsumedSmartLaunchHandoff {
+  session: SmartLaunchSession;
+  patientId: number | null;
+}
+
 interface SmartLaunchSessionRow {
   id: string;
   ehr_tenant_id: number;
   org_id: number | null;
   user_id: string | null;
+  app_session_id: string | null;
   client_registration_id: number | null;
   state_hash: string;
   nonce_hash: string;
@@ -174,6 +226,9 @@ interface SmartLaunchSessionRow {
   status: SmartLaunchStatus;
   expires_at: string;
   consumed_at: string | null;
+  handoff_code_hash: string | null;
+  handoff_expires_at: string | null;
+  handoff_consumed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -199,13 +254,35 @@ interface SmartLaunchConfigRow {
 }
 
 interface SmartConfigurationResponse {
+  issuer?: unknown;
   authorization_endpoint?: unknown;
   token_endpoint?: unknown;
+  jwks_uri?: unknown;
   code_challenge_methods_supported?: unknown;
   token_endpoint_auth_methods_supported?: unknown;
 }
 
+interface ParsedSmartConfiguration {
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  issuer: string | null;
+  jwksUri: string | null;
+}
+
+export interface ValidateSmartIdTokenInput {
+  idToken: string;
+  expectedIssuer: string | null | undefined;
+  expectedAudience: string;
+  nonceHash: string;
+  jwksUrl?: string | null;
+  jwks?: JSONWebKeySet | null;
+  now?: Date;
+}
+
 const DEFAULT_LAUNCH_TTL_SECONDS = 10 * 60;
+const DEFAULT_HANDOFF_TTL_SECONDS = 5 * 60;
+const SMART_ID_TOKEN_MAX_AGE = '15m';
+const SMART_ID_TOKEN_CLOCK_TOLERANCE_SECONDS = 60;
 
 function asSqlJson(value: unknown): Parameters<typeof sql.json>[0] {
   return value as Parameters<typeof sql.json>[0];
@@ -225,6 +302,7 @@ function mapSession(row: SmartLaunchSessionRow): SmartLaunchSession {
     ehrTenantId: mapDbNumber(row.ehr_tenant_id),
     orgId: mapNullableDbNumber(row.org_id),
     userId: row.user_id,
+    appSessionId: row.app_session_id ?? null,
     clientRegistrationId: mapNullableDbNumber(row.client_registration_id),
     stateHash: row.state_hash,
     nonceHash: row.nonce_hash,
@@ -238,6 +316,9 @@ function mapSession(row: SmartLaunchSessionRow): SmartLaunchSession {
     status: row.status,
     expiresAt: row.expires_at,
     consumedAt: row.consumed_at,
+    handoffCodeHash: row.handoff_code_hash ?? null,
+    handoffExpiresAt: row.handoff_expires_at ?? null,
+    handoffConsumedAt: row.handoff_consumed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -314,10 +395,15 @@ export async function createSmartLaunchState(
       ${sql.json(asSqlJson(input.launchContext ?? {}))},
       ${expiresAt.toISOString()}
     )
-    RETURNING id, ehr_tenant_id, org_id, user_id, client_registration_id, state_hash,
+    RETURNING id, ehr_tenant_id, org_id, user_id, app_session_id,
+              client_registration_id, state_hash,
               nonce_hash, code_verifier, redirect_uri, app_redirect_url, issuer, launch, requested_scope,
               launch_context, status, expires_at::text AS expires_at,
-              consumed_at::text AS consumed_at, created_at::text AS created_at,
+              consumed_at::text AS consumed_at,
+              handoff_code_hash,
+              handoff_expires_at::text AS handoff_expires_at,
+              handoff_consumed_at::text AS handoff_consumed_at,
+              created_at::text AS created_at,
               updated_at::text AS updated_at
   `;
 
@@ -363,10 +449,15 @@ export async function consumeSmartLaunchState(
     UPDATE phm_edw.smart_launch_session
     SET status = 'consumed', consumed_at = NOW(), updated_at = NOW()
     WHERE id = ${session.id}::uuid AND status = 'pending'
-    RETURNING id, ehr_tenant_id, org_id, user_id, client_registration_id, state_hash,
+    RETURNING id, ehr_tenant_id, org_id, user_id, app_session_id,
+              client_registration_id, state_hash,
               nonce_hash, code_verifier, redirect_uri, app_redirect_url, issuer, launch, requested_scope,
               launch_context, status, expires_at::text AS expires_at,
-              consumed_at::text AS consumed_at, created_at::text AS created_at,
+              consumed_at::text AS consumed_at,
+              handoff_code_hash,
+              handoff_expires_at::text AS handoff_expires_at,
+              handoff_consumed_at::text AS handoff_consumed_at,
+              created_at::text AS created_at,
               updated_at::text AS updated_at
   `;
 
@@ -376,10 +467,15 @@ export async function consumeSmartLaunchState(
 export async function findSmartLaunchSessionByState(state: string): Promise<SmartLaunchSession | null> {
   const stateHash = hashSmartValue(state);
   const rows = await sql<SmartLaunchSessionRow[]>`
-    SELECT id, ehr_tenant_id, org_id, user_id, client_registration_id, state_hash,
+    SELECT id, ehr_tenant_id, org_id, user_id, app_session_id,
+           client_registration_id, state_hash,
            nonce_hash, code_verifier, redirect_uri, app_redirect_url, issuer, launch, requested_scope,
            launch_context, status, expires_at::text AS expires_at,
-           consumed_at::text AS consumed_at, created_at::text AS created_at,
+           consumed_at::text AS consumed_at,
+           handoff_code_hash,
+           handoff_expires_at::text AS handoff_expires_at,
+           handoff_consumed_at::text AS handoff_consumed_at,
+           created_at::text AS created_at,
            updated_at::text AS updated_at
     FROM phm_edw.smart_launch_session
     WHERE state_hash = ${stateHash}
@@ -456,6 +552,8 @@ export async function loadSmartLaunchConfig(
     scopesGranted: row.scopes_granted,
     authorizationEndpoint: smartConfiguration.authorizationEndpoint,
     tokenEndpoint: smartConfiguration.tokenEndpoint,
+    issuer: smartConfiguration.issuer ?? row.issuer ?? null,
+    idTokenJwksUrl: smartConfiguration.jwksUri,
   };
 }
 
@@ -510,10 +608,15 @@ export async function saveSmartLaunchContext(
     UPDATE phm_edw.smart_launch_session
     SET launch_context = ${sql.json(asSqlJson(launchContext))}, updated_at = NOW()
     WHERE id = ${sessionId}::uuid
-    RETURNING id, ehr_tenant_id, org_id, user_id, client_registration_id, state_hash,
+    RETURNING id, ehr_tenant_id, org_id, user_id, app_session_id,
+              client_registration_id, state_hash,
               nonce_hash, code_verifier, redirect_uri, app_redirect_url, issuer, launch, requested_scope,
               launch_context, status, expires_at::text AS expires_at,
-              consumed_at::text AS consumed_at, created_at::text AS created_at,
+              consumed_at::text AS consumed_at,
+              handoff_code_hash,
+              handoff_expires_at::text AS handoff_expires_at,
+              handoff_consumed_at::text AS handoff_consumed_at,
+              created_at::text AS created_at,
               updated_at::text AS updated_at
   `;
   return mapSession(rows[0]!);
@@ -523,7 +626,7 @@ export async function completeSmartLaunchCallback(
   input: CompleteSmartLaunchCallbackInput,
   fetchImpl?: FetchLike,
 ): Promise<CompleteSmartLaunchCallbackResult> {
-  const session = await consumeSmartLaunchState(input.state);
+  const session = await consumeSmartLaunchState(input.state, { now: input.now });
   if (!session) {
     throw new SmartLaunchError('invalid_smart_launch_state', 'SMART launch state is invalid or expired', 400);
   }
@@ -543,11 +646,36 @@ export async function completeSmartLaunchCallback(
       codeVerifier: session.codeVerifier,
       code: input.code,
       redirectUri: session.redirectUri,
+      now: input.now,
     },
     fetchImpl,
   );
 
-  const updatedSession = await saveSmartLaunchContext(session.id, exchange.launchContext);
+  await validateSmartLaunchTokenResponse({
+    tokenResponse: exchange.tokenResponse,
+    session,
+    config: input.config,
+    now: input.now,
+  });
+
+  const patientSync = await syncSmartLaunchPatientContext({
+    session,
+    tenant: input.config.tenant,
+    tokenResponse: exchange.tokenResponse,
+    launchContext: exchange.launchContext,
+    fetchImpl,
+  });
+  const patientContextRefresh = await enqueuePatientContextRefreshForLaunch(
+    session,
+    input.config.tenant,
+    patientSync,
+  );
+  const launchContext = enrichLaunchContextWithPatientSync(exchange.launchContext, patientSync);
+  if (patientContextRefresh) {
+    (launchContext as unknown as JsonObject).patientContextRefresh = patientContextRefresh;
+  }
+
+  const updatedSession = await saveSmartLaunchContext(session.id, launchContext);
   const tokenMetadata = await persistSmartTokenMetadata({
     smartLaunchSessionId: updatedSession.id,
     ehrTenantId: updatedSession.ehrTenantId,
@@ -558,19 +686,215 @@ export async function completeSmartLaunchCallback(
     accessToken: exchange.tokenResponse.access_token,
     refreshToken: exchange.tokenResponse.refresh_token,
     idToken: exchange.tokenResponse.id_token,
-    patientRef: exchange.launchContext.patient ?? null,
-    encounterRef: exchange.launchContext.encounter ?? null,
-    fhirUserRef: exchange.launchContext.fhirUser ?? null,
-    launchContext: exchange.launchContext,
+    patientRef: launchContext.patient ?? null,
+    encounterRef: launchContext.encounter ?? null,
+    fhirUserRef: launchContext.fhirUser ?? null,
+    launchContext,
     tokenResponseMetadata: sanitizeTokenResponseMetadata(exchange.tokenResponse),
     expiresAt: exchange.expiresAt,
   });
 
   return {
     session: updatedSession,
-    launchContext: exchange.launchContext,
+    launchContext,
     tokenMetadata,
   };
+}
+
+async function enqueuePatientContextRefreshForLaunch(
+  session: SmartLaunchSession,
+  tenant: EhrTenantRef & { id: number; orgId: number | null },
+  patientSync: SmartLaunchPatientSyncResult,
+): Promise<JsonObject | null> {
+  if (!patientSync.patientResourceId || patientSync.localPatientId === null) {
+    return null;
+  }
+
+  try {
+    const queued = await enqueueSmartPatientContextRefresh({
+      ehrTenantId: session.ehrTenantId,
+      orgId: tenant.orgId ?? session.orgId,
+      patientResourceId: patientSync.patientResourceId,
+      localPatientId: patientSync.localPatientId,
+      smartLaunchSessionId: session.id,
+      triggeredBy: 'smart_launch',
+    });
+    return queuedRefreshSummary(queued);
+  } catch (err) {
+    return {
+      status: 'enqueue_failed',
+      queueName: 'medgnosis-ehr-patient-context-refresh',
+      message: messageFromError(err, 'SMART patient-context refresh enqueue failed'),
+    };
+  }
+}
+
+function queuedRefreshSummary(result: EnqueueSmartPatientContextRefreshResult): JsonObject | null {
+  if (!result.enqueued && result.reason === 'disabled') return null;
+  return {
+    status: result.enqueued ? 'queued' : 'skipped',
+    queueName: result.queueName,
+    jobId: result.jobId ?? null,
+    reason: result.reason ?? null,
+  };
+}
+
+export async function createSmartLaunchHandoff(
+  sessionId: string,
+  options: CreateSmartLaunchHandoffOptions = {},
+): Promise<CreatedSmartLaunchHandoff> {
+  const handoffCode = generateSmartOpaqueValue(32);
+  const now = options.now ?? new Date();
+  const expiresAt = new Date(
+    now.getTime() + (options.expiresInSeconds ?? DEFAULT_HANDOFF_TTL_SECONDS) * 1000,
+  );
+  const updated = await sql<Pick<SmartLaunchSessionRow, 'id'>[]>`
+    UPDATE phm_edw.smart_launch_session
+    SET handoff_code_hash = ${hashSmartValue(handoffCode)},
+        handoff_expires_at = ${expiresAt.toISOString()},
+        handoff_consumed_at = NULL,
+        updated_at = NOW()
+    WHERE id = ${sessionId}::uuid
+      AND status = 'consumed'
+    RETURNING id
+  `;
+  if (!updated[0]) {
+    throw new SmartLaunchError(
+      'smart_handoff_unavailable',
+      'SMART launch session is not ready for app handoff',
+      409,
+    );
+  }
+
+  return {
+    sessionId,
+    handoffCode,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+export async function consumeSmartLaunchHandoff(
+  input: ConsumeSmartLaunchHandoffInput,
+): Promise<ConsumedSmartLaunchHandoff | null> {
+  const now = input.now ?? new Date();
+  const rows = await sql<SmartLaunchSessionRow[]>`
+    UPDATE phm_edw.smart_launch_session
+    SET handoff_consumed_at = NOW(),
+        app_session_id = ${input.appSessionId ?? null}::uuid,
+        updated_at = NOW()
+    WHERE handoff_code_hash = ${hashSmartValue(input.handoffCode)}
+      AND handoff_consumed_at IS NULL
+      AND handoff_expires_at > ${now.toISOString()}::timestamptz
+      AND status = 'consumed'
+      AND (user_id IS NULL OR user_id = ${input.userId}::uuid)
+      AND (org_id IS NULL OR org_id = ${input.orgId ?? null}::int)
+    RETURNING id, ehr_tenant_id, org_id, user_id, app_session_id,
+              client_registration_id, state_hash,
+              nonce_hash, code_verifier, redirect_uri, app_redirect_url, issuer, launch, requested_scope,
+              launch_context, status, expires_at::text AS expires_at,
+              consumed_at::text AS consumed_at,
+              handoff_code_hash,
+              handoff_expires_at::text AS handoff_expires_at,
+              handoff_consumed_at::text AS handoff_consumed_at,
+              created_at::text AS created_at,
+              updated_at::text AS updated_at
+  `;
+  const session = rows[0] ? mapSession(rows[0]) : null;
+  if (!session) return null;
+
+  return {
+    session,
+    patientId: await resolveLocalPatientIdForLaunch(session),
+  };
+}
+
+async function validateSmartLaunchTokenResponse(input: {
+  tokenResponse: SmartTokenResponse;
+  session: SmartLaunchSession;
+  config: CompleteSmartLaunchCallbackInput['config'];
+  now?: Date;
+}): Promise<void> {
+  const requestedOpenId = scopeContains(input.session.requestedScope, 'openid');
+  if (requestedOpenId && !input.tokenResponse.id_token) {
+    throw new SmartLaunchError(
+      'smart_id_token_missing',
+      'SMART token response omitted id_token for an OpenID launch',
+      502,
+    );
+  }
+
+  if (input.tokenResponse.id_token) {
+    await validateSmartIdToken({
+      idToken: input.tokenResponse.id_token,
+      expectedIssuer: input.config.issuer,
+      expectedAudience: input.config.clientId,
+      nonceHash: input.session.nonceHash,
+      jwksUrl: input.config.idTokenJwksUrl,
+      jwks: input.config.idTokenJwks,
+      now: input.now,
+    });
+  }
+}
+
+export async function validateSmartIdToken(input: ValidateSmartIdTokenInput): Promise<JWTPayload> {
+  const expectedIssuer = normalizeRequiredUrl(input.expectedIssuer, 'SMART issuer');
+  const keySet = input.jwks
+    ? createLocalJWKSet(input.jwks)
+    : createRemoteJWKSet(new URL(normalizeRequiredUrl(input.jwksUrl, 'SMART JWKS URI')));
+
+  let payload: JWTPayload;
+  try {
+    ({ payload } = await jwtVerify(input.idToken, keySet, {
+      issuer: expectedIssuer,
+      audience: input.expectedAudience,
+      clockTolerance: SMART_ID_TOKEN_CLOCK_TOLERANCE_SECONDS,
+      currentDate: input.now,
+      maxTokenAge: SMART_ID_TOKEN_MAX_AGE,
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown validation error';
+    throw new SmartLaunchError(
+      'smart_id_token_invalid',
+      `SMART id_token validation failed: ${message}`,
+      502,
+    );
+  }
+
+  if (typeof payload.exp !== 'number') {
+    throw new SmartLaunchError('smart_id_token_invalid', 'SMART id_token is missing exp', 502);
+  }
+  if (typeof payload.iat !== 'number') {
+    throw new SmartLaunchError('smart_id_token_invalid', 'SMART id_token is missing iat', 502);
+  }
+
+  const nowMs = input.now?.getTime() ?? Date.now();
+  const futureToleranceMs = SMART_ID_TOKEN_CLOCK_TOLERANCE_SECONDS * 1000;
+  if (payload.iat * 1000 > nowMs + futureToleranceMs) {
+    throw new SmartLaunchError('smart_id_token_invalid', 'SMART id_token iat is in the future', 502);
+  }
+
+  if (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== input.expectedAudience) {
+    throw new SmartLaunchError(
+      'smart_id_token_invalid',
+      'SMART id_token azp does not match the launch client',
+      502,
+    );
+  }
+
+  const tokenUse = payload.token_use;
+  if (tokenUse !== undefined && tokenUse !== 'id' && tokenUse !== 'id_token') {
+    throw new SmartLaunchError(
+      'smart_id_token_invalid',
+      'SMART id_token token_use is not an ID token',
+      502,
+    );
+  }
+
+  if (typeof payload.nonce !== 'string' || hashSmartValue(payload.nonce) !== input.nonceHash) {
+    throw new SmartLaunchError('smart_id_token_nonce_mismatch', 'SMART id_token nonce does not match launch state', 400);
+  }
+
+  return payload;
 }
 
 async function applySmartTokenClientAuthentication(
@@ -706,7 +1030,7 @@ async function fetchSmartConfiguration(
   smartConfigurationUrl: string,
   fetchImpl: FetchLike,
   authMethod?: EhrClientAuthMethod,
-): Promise<{ authorizationEndpoint: string; tokenEndpoint: string }> {
+): Promise<ParsedSmartConfiguration> {
   const response = await fetchImpl(smartConfigurationUrl, {
     method: 'GET',
     headers: { accept: 'application/json' },
@@ -738,6 +1062,12 @@ async function fetchSmartConfiguration(
   return {
     authorizationEndpoint: configuration.authorization_endpoint,
     tokenEndpoint: configuration.token_endpoint,
+    issuer: typeof configuration.issuer === 'string' && configuration.issuer.length > 0
+      ? configuration.issuer
+      : null,
+    jwksUri: typeof configuration.jwks_uri === 'string' && configuration.jwks_uri.length > 0
+      ? configuration.jwks_uri
+      : null,
   };
 }
 
@@ -792,6 +1122,52 @@ function optionalStringArray(value: unknown): string[] | null {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function scopeContains(scope: string | null | undefined, expected: string): boolean {
+  if (!scope) return false;
+  return scope.split(/\s+/).some((item) => item === expected);
+}
+
+async function resolveLocalPatientIdForLaunch(session: SmartLaunchSession): Promise<number | null> {
+  const localPatientId = localPatientIdFromLaunchContext(session.launchContext);
+  if (localPatientId !== null) return localPatientId;
+
+  const patientResourceId = patientResourceIdFromLaunchContext(session.launchContext);
+  if (!patientResourceId) return null;
+
+  const rows = await sql<{ patient_id: number | string }[]>`
+    SELECT patient_id
+    FROM phm_edw.ehr_resource_crosswalk
+    WHERE ehr_tenant_id = ${session.ehrTenantId}
+      AND resource_type = 'Patient'
+      AND ehr_resource_id = ${patientResourceId}
+      AND patient_id IS NOT NULL
+    ORDER BY last_seen_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ? Number(rows[0].patient_id) : null;
+}
+
+function normalizeRequiredUrl(value: string | null | undefined, label: string): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed.length === 0) {
+    throw new SmartLaunchError(
+      'smart_configuration_invalid',
+      `${label} is required for SMART id_token validation`,
+      502,
+    );
+  }
+  try {
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    throw new SmartLaunchError(
+      'smart_configuration_invalid',
+      `${label} must be a valid URL`,
+      502,
+    );
+  }
+}
+
 function parseRedirectUris(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
@@ -816,15 +1192,36 @@ function parseSmartTokenResponse(value: unknown): SmartTokenResponse {
   if (typeof response.access_token !== 'string' || response.access_token.length === 0) {
     throw new SmartLaunchError('smart_token_missing_access_token', 'SMART token response omitted access_token', 502);
   }
+  if (typeof response.token_type !== 'string' || response.token_type.toLowerCase() !== 'bearer') {
+    throw new SmartLaunchError(
+      'smart_token_invalid_token_type',
+      'SMART token response must use Bearer token_type',
+      502,
+    );
+  }
+  if (typeof response.expires_in !== 'number' || !Number.isFinite(response.expires_in) || response.expires_in <= 0) {
+    throw new SmartLaunchError(
+      'smart_token_invalid_expires_in',
+      'SMART token response must include a positive expires_in',
+      502,
+    );
+  }
+  if (typeof response.scope !== 'string' || response.scope.trim().length === 0) {
+    throw new SmartLaunchError(
+      'smart_token_missing_scope',
+      'SMART token response omitted scope',
+      502,
+    );
+  }
 
   return {
     ...response,
     access_token: response.access_token,
-    token_type: typeof response.token_type === 'string' ? response.token_type : undefined,
-    expires_in: typeof response.expires_in === 'number' ? response.expires_in : undefined,
+    token_type: response.token_type,
+    expires_in: response.expires_in,
     refresh_token: typeof response.refresh_token === 'string' ? response.refresh_token : undefined,
     id_token: typeof response.id_token === 'string' ? response.id_token : undefined,
-    scope: typeof response.scope === 'string' ? response.scope : undefined,
+    scope: response.scope,
   };
 }
 
@@ -840,4 +1237,8 @@ function tokenErrorMessage(body: unknown, status: number): string {
     }
   }
   return `SMART token exchange failed with HTTP ${status}`;
+}
+
+function messageFromError(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }

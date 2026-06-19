@@ -19,9 +19,9 @@ import { sql } from '@medgnosis/db';
 import { getMeasureEvaluator } from '../../services/measureEvaluator.js';
 import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
 import { config } from '../../config.js';
-import { Redis } from 'ioredis';
 import { fetchOidcDiscovery } from '../../services/auth/oidc/discovery.js';
 import { getOidcProviderConfig } from '../../services/auth/oidc/providerConfig.js';
+import { getSystemHealth } from '../../services/systemHealth.js';
 import {
   listMeasurePromotionConfigs,
   updateMeasurePromotionConfig,
@@ -44,6 +44,12 @@ import {
   type QdmBridgeOperation,
   type QdmBridgeRunStatus,
 } from '../../services/qdm/bridgeOps.js';
+import {
+  createPendingPasswordHash,
+  createUserInvite,
+  sendInviteEmail,
+  type CreatedInvite,
+} from '../../services/auth/invites.js';
 
 interface AuthProviderRow {
   provider_type: string;
@@ -76,6 +82,19 @@ const QDM_BRIDGE_ISSUE_STATUSES: QdmBridgeIssueStatus[] = [
   'resolved',
   'suppressed',
 ];
+const VISIBLE_AUTH_PROVIDER_TYPES = ['local', 'oidc'] as const;
+const MANAGED_AUTH_PROVIDER_TYPES = ['oidc'] as const;
+
+type VisibleAuthProviderType = (typeof VISIBLE_AUTH_PROVIDER_TYPES)[number];
+type ManagedAuthProviderType = (typeof MANAGED_AUTH_PROVIDER_TYPES)[number];
+
+function isVisibleAuthProviderType(value: string): value is VisibleAuthProviderType {
+  return (VISIBLE_AUTH_PROVIDER_TYPES as readonly string[]).includes(value);
+}
+
+function isManagedAuthProviderType(value: string): value is ManagedAuthProviderType {
+  return (MANAGED_AUTH_PROVIDER_TYPES as readonly string[]).includes(value);
+}
 
 function listFromUnknown(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
@@ -191,6 +210,45 @@ async function isLastActiveSuperAdmin(userId: string): Promise<boolean> {
   return Number(remaining?.count ?? 0) === 0;
 }
 
+interface InviteRecipient {
+  email: string;
+  first_name: string;
+}
+
+interface RevokedInviteRow {
+  id: string;
+  user_id: string;
+  expires_at: string;
+  revoked_at: string;
+}
+
+async function sendInviteIfConfigured(
+  app: FastifyInstance,
+  recipient: InviteRecipient,
+  invite: CreatedInvite,
+): Promise<boolean> {
+  try {
+    return await sendInviteEmail({
+      toEmail: recipient.email,
+      firstName: recipient.first_name,
+      activationUrl: invite.activationUrl,
+      expiresAt: invite.invite.expires_at,
+    });
+  } catch (err) {
+    app.log.error({ err, invite_id: invite.invite.id }, 'Failed to send invite email');
+    return false;
+  }
+}
+
+function invitePayload(invite: CreatedInvite, emailSent: boolean) {
+  return {
+    id: invite.invite.id,
+    expires_at: invite.invite.expires_at,
+    activation_url: invite.activationUrl,
+    email_sent: emailSent,
+  };
+}
+
 export default async function adminRoutes(app: FastifyInstance) {
   // Require admin role for all admin routes
   app.addHook('preHandler', app.authenticate);
@@ -205,7 +263,10 @@ export default async function adminRoutes(app: FastifyInstance) {
       ORDER BY provider_type
     `;
 
-    return { success: true, data: { providers: providers.map(maskProvider) } };
+    return {
+      success: true,
+      data: { providers: providers.filter((provider) => isVisibleAuthProviderType(provider.provider_type)).map(maskProvider) },
+    };
   });
 
   app.patch('/auth-providers/:type', { preHandler: app.requireSuperAdmin }, async (req, reply) => {
@@ -216,10 +277,13 @@ export default async function adminRoutes(app: FastifyInstance) {
       settings?: Record<string, unknown>;
     };
 
-    if (!['local', 'oidc', 'ldap', 'oauth2', 'saml2'].includes(type)) {
+    if (!isManagedAuthProviderType(type)) {
       return reply.status(400).send({
         success: false,
-        error: { code: 'INVALID_PROVIDER', message: 'Unsupported auth provider type' },
+        error: {
+          code: 'UNSUPPORTED_PROVIDER',
+          message: 'Only OIDC provider settings are managed here; local auth is environment-controlled',
+        },
       });
     }
 
@@ -298,46 +362,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   // ---- System Health ----
 
   app.get('/system-health', { preHandler: app.requirePermission('admin:system-health') }, async () => {
-    const startedAt = Date.now();
-    const db = await sql`SELECT NOW() AS now`.then(
-      () => ({ status: 'ok' as const }),
-      (err: unknown) => ({ status: 'error' as const, error: String(err) }),
-    );
-
-    const redis = new Redis(config.redisUrl, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
-    });
-    const redisHealth = await redis.connect()
-      .then(() => redis.ping())
-      .then(() => ({ status: 'ok' as const }))
-      .catch((err: unknown) => ({ status: 'error' as const, error: String(err) }))
-      .finally(() => redis.disconnect());
-
-    const solr = getSolrClient();
-    const solrHealth = solr
-      ? {
-          status: isSolrAvailable() ? 'ok' : 'degraded',
-          enabled: config.solrEnabled,
-        }
-      : {
-          status: config.solrEnabled ? 'error' : 'disabled',
-          enabled: config.solrEnabled,
-        };
-
     return {
       success: true,
-      data: {
-        api: { status: 'ok', node_env: config.nodeEnv },
-        database: db,
-        redis: redisHealth,
-        solr: solrHealth,
-        auth: {
-          local_enabled: config.localAuthEnabled,
-          oidc_enabled: (await getOidcProviderConfig()).enabled,
-        },
-        duration_ms: Date.now() - startedAt,
-      },
+      data: await getSystemHealth(),
     };
   });
 
@@ -413,9 +440,31 @@ export default async function adminRoutes(app: FastifyInstance) {
         u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
         u.created_at, u.last_login_at,
         p.first_name AS provider_first_name,
-        p.last_name  AS provider_last_name
+        p.last_name  AS provider_last_name,
+        CASE
+          WHEN pending_invite.id IS NULL THEN NULL
+          ELSE jsonb_build_object(
+            'id', pending_invite.id,
+            'expires_at', pending_invite.expires_at::text,
+            'created_at', pending_invite.created_at::text,
+            'status',
+              CASE
+                WHEN pending_invite.expires_at <= NOW() THEN 'expired'
+                ELSE 'pending'
+              END
+          )
+        END AS pending_invite
       FROM public.app_users u
       LEFT JOIN phm_edw.provider p ON p.email = u.email
+      LEFT JOIN LATERAL (
+        SELECT i.id, i.expires_at, i.created_at
+        FROM public.app_user_invites i
+        WHERE i.user_id = u.id
+          AND i.accepted_at IS NULL
+          AND i.revoked_at IS NULL
+        ORDER BY i.created_at DESC
+        LIMIT 1
+      ) pending_invite ON TRUE
       ORDER BY u.created_at DESC
     `;
     return { success: true, data: { users } };
@@ -428,8 +477,11 @@ export default async function adminRoutes(app: FastifyInstance) {
       last_name?: string;
       role?: string;
     };
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const trimmedFirstName = typeof first_name === 'string' ? first_name.trim() : '';
+    const trimmedLastName = typeof last_name === 'string' ? last_name.trim() : '';
 
-    if (!email || !first_name) {
+    if (!normalizedEmail || !trimmedFirstName) {
       return reply.status(400).send({ success: false, error: { message: 'email and first_name are required' } });
     }
 
@@ -443,25 +495,156 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
 
-    const [existing] = await sql`SELECT id FROM public.app_users WHERE email = ${email}`;
+    const [existing] = await sql`SELECT id FROM public.app_users WHERE lower(email) = ${normalizedEmail}`;
     if (existing) {
       return reply.status(409).send({ success: false, error: { message: 'A user with this email already exists' } });
     }
 
+    const pendingPasswordHash = await createPendingPasswordHash();
     const [user] = await sql`
-      INSERT INTO public.app_users (email, first_name, last_name, role, password_hash, is_active)
+      INSERT INTO public.app_users (email, first_name, last_name, role, password_hash, must_change_password, is_active)
       VALUES (
-        ${email},
-        ${first_name},
-        ${last_name ?? ''},
+        ${normalizedEmail},
+        ${trimmedFirstName},
+        ${trimmedLastName},
         ${resolvedRole},
-        'INVITE_PENDING',
-        TRUE
+        ${pendingPasswordHash},
+        FALSE,
+        FALSE
       )
       RETURNING id, email, first_name, last_name, role, is_active, created_at
     `;
 
-    return { success: true, data: { user } };
+    const invite = await createUserInvite({
+      userId: String(user.id),
+      createdBy: req.user.sub,
+    });
+    const emailSent = await sendInviteIfConfigured(app, {
+      email: String(user.email),
+      first_name: String(user.first_name),
+    }, invite);
+    await req.auditLog('user_invite_create', 'app_user', String(user.id), {
+      invite_id: invite.invite.id,
+      role: user.role,
+      email_sent: emailSent,
+      expires_at: invite.invite.expires_at,
+    });
+
+    return { success: true, data: { user, invite: invitePayload(invite, emailSent) } };
+  });
+
+  app.post('/users/:id/resend-invite', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [user] = await sql<{
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      is_active: boolean;
+    }[]>`
+      SELECT id, email, first_name, last_name, role, is_active
+      FROM public.app_users
+      WHERE id = ${id}::uuid
+    `;
+
+    if (!user) {
+      return reply.status(404).send({ success: false, error: { message: 'User not found' } });
+    }
+
+    if (user.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return reply.status(403).send({
+        success: false,
+        error: { message: 'Only a super-admin can resend a super-admin invite' },
+      });
+    }
+
+    if (user.is_active) {
+      return reply.status(409).send({
+        success: false,
+        error: { message: 'User is already active' },
+      });
+    }
+
+    const invite = await createUserInvite({
+      userId: user.id,
+      createdBy: req.user.sub,
+    });
+    const emailSent = await sendInviteIfConfigured(app, user, invite);
+    await req.auditLog('user_invite_resend', 'app_user', user.id, {
+      invite_id: invite.invite.id,
+      role: user.role,
+      email_sent: emailSent,
+      expires_at: invite.invite.expires_at,
+    });
+
+    return { success: true, data: { user, invite: invitePayload(invite, emailSent) } };
+  });
+
+  app.post('/users/:id/revoke-invite', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [user] = await sql<{
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      is_active: boolean;
+    }[]>`
+      SELECT id, email, first_name, last_name, role, is_active
+      FROM public.app_users
+      WHERE id = ${id}::uuid
+    `;
+
+    if (!user) {
+      return reply.status(404).send({ success: false, error: { message: 'User not found' } });
+    }
+
+    if (user.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return reply.status(403).send({
+        success: false,
+        error: { message: 'Only a super-admin can revoke a super-admin invite' },
+      });
+    }
+
+    if (user.is_active) {
+      return reply.status(409).send({
+        success: false,
+        error: { message: 'User is already active' },
+      });
+    }
+
+    const [invite] = await sql<RevokedInviteRow[]>`
+      UPDATE public.app_user_invites
+      SET revoked_at = NOW(),
+          updated_at = NOW()
+      WHERE id = (
+        SELECT i.id
+        FROM public.app_user_invites i
+        WHERE i.user_id = ${id}::uuid
+          AND i.accepted_at IS NULL
+          AND i.revoked_at IS NULL
+        ORDER BY i.created_at DESC
+        LIMIT 1
+      )
+      RETURNING id, user_id, expires_at::text AS expires_at, revoked_at::text AS revoked_at
+    `;
+
+    if (!invite) {
+      return reply.status(409).send({
+        success: false,
+        error: { message: 'No active invite exists for this user' },
+      });
+    }
+
+    await req.auditLog('user_invite_revoke', 'app_user', user.id, {
+      invite_id: invite.id,
+      role: user.role,
+      expires_at: invite.expires_at,
+      revoked_at: invite.revoked_at,
+    });
+
+    return { success: true, data: { user, invite } };
   });
 
   app.patch('/users/:id', async (req, reply) => {

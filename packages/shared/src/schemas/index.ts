@@ -26,9 +26,31 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'New password must be at least 8 characters'),
 });
 
+export const passwordResetRequestSchema = z.object({
+  email: z.string().trim().email('Invalid email address'),
+});
+
+export const passwordResetConfirmSchema = z.object({
+  token: z.string().trim().min(16, 'Reset token is required').max(256),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+const mfaCodeSchema = z.string().trim().regex(
+  /^(\d{6}|MG-[A-Z2-7]{8}-[A-Z2-7]{8})$/i,
+  'Enter a 6-digit authenticator code or recovery code',
+);
+
+export const mfaSetupConfirmSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, 'MFA code must be 6 digits'),
+});
+
 export const mfaVerifySchema = z.object({
-  code: z.string().length(6, 'MFA code must be 6 digits'),
-  factor_id: z.string().uuid(),
+  code: mfaCodeSchema,
+  mfa_token: z.string().trim().min(16, 'MFA token is required').max(2048),
+});
+
+export const mfaDisableSchema = z.object({
+  code: mfaCodeSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -231,7 +253,11 @@ export const cohortMessageSchema = z.object({
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
+export type PasswordResetRequest = z.infer<typeof passwordResetRequestSchema>;
+export type PasswordResetConfirmRequest = z.infer<typeof passwordResetConfirmSchema>;
+export type MfaSetupConfirmRequest = z.infer<typeof mfaSetupConfirmSchema>;
 export type MfaVerifyRequest = z.infer<typeof mfaVerifySchema>;
+export type MfaDisableRequest = z.infer<typeof mfaDisableSchema>;
 export type PatientSearchParams = z.infer<typeof patientSearchSchema>;
 export type PatientCreateRequest = z.infer<typeof patientCreateSchema>;
 export type CareGapUpdateRequest = z.infer<typeof careGapUpdateSchema>;

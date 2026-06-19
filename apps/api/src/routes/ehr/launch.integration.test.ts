@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 
 const { mockSql } = vi.hoisted(() => {
   const fn = vi.fn();
-  (fn as unknown as { json: (value: unknown) => unknown }).json = (value: unknown) => value;
-  return { mockSql: fn };
+  type SqlMock = typeof fn & {
+    json: (value: unknown) => unknown;
+    unsafe: (query: string, parameters?: readonly unknown[]) => Promise<unknown>;
+    begin: (cb: (tx: SqlMock) => Promise<number>) => Promise<number>;
+  };
+  const sqlMock = fn as SqlMock;
+  sqlMock.json = (value: unknown) => value;
+  sqlMock.unsafe = async (query, parameters = []) =>
+    fn([query] as unknown as TemplateStringsArray, ...parameters);
+  sqlMock.begin = async (cb) => cb(sqlMock);
+  return { mockSql: sqlMock };
 });
 
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
@@ -102,6 +112,90 @@ const tokenMetadataRow = {
   updated_at: '2099-06-16T12:01:00Z',
 };
 
+const patientResource = {
+  resourceType: 'Patient',
+  id: 'pat-1',
+  meta: {
+    versionId: '7',
+    lastUpdated: '2099-06-16T12:01:00Z',
+  },
+  identifier: [
+    {
+      system: 'urn:mrn',
+      value: 'MRN-1',
+      type: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v2-0203', code: 'MR' }] },
+    },
+  ],
+  name: [{ use: 'official', family: 'Launch', given: ['Ehr'] }],
+  birthDate: '1975-04-02',
+  gender: 'female',
+};
+
+const ingestRunRow = {
+  id: '00000000-0000-4000-8000-000000000063',
+  org_id: 7,
+  ehr_tenant_id: 42,
+  resource_type: 'Patient',
+  mode: 'manual',
+  status: 'running',
+  requested_since: null,
+  started_at: '2099-06-16T12:01:00Z',
+  finished_at: null,
+  resources_received: 0,
+  resources_staged: 0,
+  resources_updated: 0,
+  error_count: 0,
+  error_message: null,
+  errors: [],
+  metadata: {},
+  created_at: '2099-06-16T12:01:00Z',
+  updated_at: '2099-06-16T12:01:00Z',
+};
+
+const stagedPatientRow = {
+  id: 99,
+  org_id: 7,
+  ehr_tenant_id: 42,
+  ingest_run_id: ingestRunRow.id,
+  resource_type: 'Patient',
+  resource_id: 'pat-1',
+  patient_ref: 'Patient/pat-1',
+  resource: patientResource,
+  source_version_id: '7',
+  source_last_updated: '2099-06-16T12:01:00Z',
+  content_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  status: 'staged',
+  error_message: null,
+  errors: [],
+  normalized: false,
+  normalization_error: null,
+  received_at: '2099-06-16T12:01:00Z',
+  updated_at: '2099-06-16T12:01:00Z',
+};
+
+const patientSync = {
+  status: 'imported',
+  patientRef: 'Patient/pat-1',
+  patientResourceId: 'pat-1',
+  localPatientId: 123,
+  ingestRunId: ingestRunRow.id,
+  stagedResourceId: 99,
+  qdmBridge: {
+    resourcesSeen: 1,
+    resourcesNormalized: 1,
+    resourcesSkipped: 0,
+    resourcesFailed: 0,
+    eventsUpserted: 1,
+    errors: [],
+  },
+};
+
+const enrichedLaunchContext = {
+  ...launchContext,
+  patientSync,
+  localPatientId: 123,
+};
+
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify();
   await app.register(ehrSmartLaunchRoutes, { prefix: '/ehr/launch' });
@@ -123,27 +217,35 @@ beforeEach(() => {
 
 describe('EHR SMART launch route integration', () => {
   it('runs launch initiation through callback/token exchange without persisting raw tokens', async () => {
+    const idTokenBundle = await createSignedSmartIdToken('nonce-from-route');
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({
         authorization_endpoint: 'https://ehr.example.test/oauth2/authorize',
         token_endpoint: 'https://ehr.example.test/oauth2/token',
+        issuer: 'https://ehr.example.test',
+        jwks_uri: 'https://ehr.example.test/oauth2/jwks',
         code_challenge_methods_supported: ['S256'],
       }))
       .mockResolvedValueOnce(jsonResponse({
         authorization_endpoint: 'https://ehr.example.test/oauth2/authorize',
         token_endpoint: 'https://ehr.example.test/oauth2/token',
+        issuer: 'https://ehr.example.test',
+        jwks_uri: 'https://ehr.example.test/oauth2/jwks',
         code_challenge_methods_supported: ['S256'],
       }))
       .mockResolvedValueOnce(jsonResponse({
         access_token: 'raw-access-token',
         refresh_token: 'raw-refresh-token',
+        id_token: idTokenBundle.idToken,
         token_type: 'Bearer',
         expires_in: 300,
         scope: 'openid fhirUser launch patient/Patient.r',
         patient: 'pat-1',
         encounter: 'enc-1',
         fhirUser: 'Practitioner/doc-1',
-      }));
+      }))
+      .mockResolvedValueOnce(jsonResponse(idTokenBundle.jwks))
+      .mockResolvedValueOnce(jsonResponse(patientResource));
     vi.stubGlobal('fetch', fetchMock);
 
     mockSql
@@ -153,8 +255,43 @@ describe('EHR SMART launch route integration', () => {
       .mockResolvedValueOnce([configRow])
       .mockResolvedValueOnce([baseSessionRow])
       .mockResolvedValueOnce([consumedSessionRow])
-      .mockResolvedValueOnce([{ ...consumedSessionRow, launch_context: launchContext }])
-      .mockResolvedValueOnce([tokenMetadataRow]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([ingestRunRow])
+      .mockResolvedValueOnce([stagedPatientRow])
+      // --- enterprise identity resolution (reconcilePatient) ---
+      .mockResolvedValueOnce([]) // findPersonIdsByIdentifiers -> no match
+      .mockResolvedValueOnce([]) // findPersonIdsByDemographicKey -> no match
+      .mockResolvedValueOnce([{ person_id: 1 }]) // createPerson INSERT person
+      .mockResolvedValueOnce([]) // patient_merge_log INSERT (provisional_created)
+      .mockResolvedValueOnce([]) // attachIdentifiers INSERT patient_identifier (1 strong id)
+      .mockResolvedValueOnce([]) // upsertDemographicKey UPDATE person
+      .mockResolvedValueOnce([]) // findLegacyPatientId -> none
+      .mockResolvedValueOnce([{ patient_id: 123 }]) // insertLegacyPatient INSERT phm_edw.patient
+      .mockResolvedValueOnce([]) // linkLegacyPatient INSERT patient_link
+      // --- end identity resolution ---
+      .mockResolvedValueOnce([{ patient_id: 123, local_id: 123 }])
+      .mockResolvedValueOnce([stagedPatientRow])
+      .mockResolvedValueOnce([{ patient_id: 123 }])
+      .mockResolvedValueOnce([{ id: 77 }])
+      .mockResolvedValueOnce([{ qdm_event_id: 88 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        ...ingestRunRow,
+        status: 'succeeded',
+        finished_at: '2099-06-16T12:01:01Z',
+        resources_received: 1,
+        resources_staged: 1,
+        resources_updated: 1,
+        metadata: { patientSync },
+      }])
+      .mockResolvedValueOnce([{ ...consumedSessionRow, launch_context: enrichedLaunchContext }])
+      .mockResolvedValueOnce([{
+        ...tokenMetadataRow,
+        id_token_hash: hashToken(idTokenBundle.idToken),
+        launch_context: enrichedLaunchContext,
+      }])
+      .mockResolvedValueOnce([{ id: sessionId }]);
 
     const app = await buildApp();
 
@@ -180,10 +317,11 @@ describe('EHR SMART launch route integration', () => {
     });
 
     expect(callbackResponse.statusCode).toBe(302);
-    expect(callbackResponse.headers.location).toBe(
-      `/ehr/complete?smart_session_id=${encodeURIComponent(sessionId)}`,
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const appRedirect = new URL(callbackResponse.headers.location as string, 'https://app.medgnosis.test');
+    expect(appRedirect.pathname).toBe('/ehr/complete');
+    const handoffCode = appRedirect.searchParams.get('smart_handoff');
+    expect(handoffCode).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
 
     const [, tokenRequest] = fetchMock.mock.calls[2]!;
     expect(tokenRequest).toMatchObject({
@@ -198,13 +336,62 @@ describe('EHR SMART launch route integration', () => {
     expect(tokenBody.get('code')).toBe('auth-code');
     expect(tokenBody.get('code_verifier')).toBe('pkce-code-verifier-from-db');
 
+    const [patientReadUrl, patientReadRequest] = fetchMock.mock.calls[4]!;
+    expect(patientReadUrl).toBe('https://ehr.example.test/fhir/R4/Patient/pat-1');
+    expect(patientReadRequest).toMatchObject({
+      method: 'GET',
+      headers: expect.objectContaining({
+        authorization: 'Bearer raw-access-token',
+      }),
+    });
+
     const persistedValues = mockSql.mock.calls.flatMap((call) => call.slice(1));
     expect(persistedValues).toContain(hashSmartValue(state!));
+    expect(persistedValues).toContain(hashSmartValue(handoffCode!));
     expect(persistedValues).toContain(hashToken('raw-access-token'));
     expect(persistedValues).toContain(hashToken('raw-refresh-token'));
+    expect(persistedValues).toContain(hashToken(idTokenBundle.idToken));
     expect(persistedValues).not.toContain('raw-access-token');
     expect(persistedValues).not.toContain('raw-refresh-token');
+    expect(persistedValues).not.toContain(idTokenBundle.idToken);
+    expect(persistedValues).not.toContain(handoffCode);
+    expect(persistedValues).toContain(123);
 
     await app.close();
   });
 });
+
+async function createSignedSmartIdToken(nonce: string): Promise<{
+  idToken: string;
+  jwks: { keys: Array<Record<string, unknown>> };
+}> {
+  const kid = 'smart-id-key-1';
+  const now = Math.floor(Date.now() / 1000);
+  const { publicKey, privateKey } = await generateKeyPair('ES256');
+  const publicJwk = await exportJWK(publicKey);
+  const idToken = await new SignJWT({
+    nonce,
+    token_use: 'id',
+  })
+    .setProtectedHeader({ alg: 'ES256', kid })
+    .setIssuer('https://ehr.example.test')
+    .setAudience('smart-client')
+    .setSubject('Practitioner/doc-1')
+    .setIssuedAt(now)
+    .setExpirationTime(now + 300)
+    .sign(privateKey);
+
+  return {
+    idToken,
+    jwks: {
+      keys: [
+        {
+          ...publicJwk,
+          kid,
+          alg: 'ES256',
+          use: 'sig',
+        },
+      ],
+    },
+  };
+}

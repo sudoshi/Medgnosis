@@ -13,6 +13,8 @@ import { startCloseTheLoopWorker, startRiskModelWorker } from './workers/close-t
 import { startAutoOrdersWorker, startAmpWorker, startMtmWorker } from './workers/anticipatory.js';
 import { startSurveillanceWorker } from './workers/surveillance.js';
 import { startDqWorker, startCohortFlagsWorker } from './workers/data-quality.js';
+import { startEhrBulkImportWorker } from './workers/ehr-bulk-import.js';
+import { startEhrPatientContextRefreshWorker } from './workers/ehr-patient-context-refresh.js';
 
 console.info('[worker] Starting Medgnosis background workers...');
 
@@ -29,6 +31,8 @@ const workers = [
   startSurveillanceWorker(),
   startDqWorker(),
   startCohortFlagsWorker(),
+  startEhrBulkImportWorker(),
+  startEhrPatientContextRefreshWorker(),
   startNightlyScheduler(),
 ];
 

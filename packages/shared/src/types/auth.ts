@@ -41,6 +41,7 @@ export interface JwtPayload {
   permissions?: AuthPermission[];
   org_id: string;
   provider_id?: number;
+  session_id?: string;
   mfa_pending?: boolean;
   must_change_password?: boolean;
 }
@@ -51,6 +52,25 @@ export interface AuthTokens {
   expires_in: number;
 }
 
+export interface MfaChallenge {
+  mfa_required: true;
+  mfa_token: string;
+  expires_in: number;
+  user: Pick<User, 'id' | 'email' | 'first_name' | 'last_name' | 'role'>;
+}
+
+export interface MfaSetupResponse {
+  manual_secret: string;
+  otpauth_url: string;
+  qr_code_data_url: string;
+  expires_in: number;
+}
+
+export interface MfaConfirmResponse {
+  user: User;
+  recovery_codes: string[];
+}
+
 export interface LoginRequest {
   email: string;
   password: string;
@@ -58,11 +78,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   success: boolean;
-  data: {
-    user: User;
-    tokens: AuthTokens;
-    mfa_required?: boolean;
-  };
+  data: ({ user: User; tokens: AuthTokens; mfa_required?: false } | MfaChallenge);
 }
 
 export interface AuthProviderDiscovery {
@@ -74,11 +90,13 @@ export interface AuthProviderDiscovery {
 
 export interface OidcExchangeResponse {
   user: User;
-  tokens: AuthTokens;
+  tokens?: AuthTokens;
   mfa_required?: boolean;
+  mfa_token?: string;
+  expires_in?: number;
 }
 
 export interface MfaVerifyRequest {
   code: string;
-  factor_id: string;
+  mfa_token: string;
 }

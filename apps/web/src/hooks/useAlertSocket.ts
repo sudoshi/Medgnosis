@@ -14,6 +14,8 @@ type AlertMessage = {
   payload: Record<string, unknown>;
 };
 
+const REALTIME_ALERTS_ENABLED = import.meta.env.VITE_REALTIME_ALERTS_ENABLED !== 'false';
+
 export function useAlertSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -23,6 +25,11 @@ export function useAlertSocket() {
   const setStatus = useWsStore((s) => s.setStatus);
 
   const connect = useCallback(() => {
+    if (!REALTIME_ALERTS_ENABLED) {
+      setStatus('disconnected');
+      return;
+    }
+
     if (!isAuthenticated || !tokens?.access_token) return;
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -91,6 +98,13 @@ export function useAlertSocket() {
   }, [isAuthenticated, tokens?.access_token, queryClient, setStatus]);
 
   useEffect(() => {
+    if (!REALTIME_ALERTS_ENABLED) {
+      shouldReconnectRef.current = false;
+      wsRef.current?.close();
+      setStatus('disconnected');
+      return undefined;
+    }
+
     shouldReconnectRef.current = isAuthenticated && Boolean(tokens?.access_token);
     connect();
     return () => {

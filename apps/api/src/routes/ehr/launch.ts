@@ -3,13 +3,16 @@
 // Standalone plugin for SMART launch initiation and callback handling.
 // =============================================================================
 
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   completeSmartLaunchCallback,
+  consumeSmartLaunchHandoff,
+  createSmartLaunchHandoff,
   createSmartLaunchState,
   findSmartLaunchSessionByState,
   loadSmartLaunchConfig,
 } from '../../services/ehr/smartLaunch.js';
+import type { SmartLaunchConfig } from '../../services/ehr/smartLaunch.js';
 
 interface LaunchParams {
   tenantId: string;
@@ -30,15 +33,25 @@ interface CallbackQuery {
   error_description?: string;
 }
 
+interface CompleteBody {
+  smart_handoff?: string;
+}
+
 interface RequestUserRef {
   sub?: string;
   org_id?: string;
+  session_id?: string;
 }
 
 export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Promise<void> {
   const optionalAuth = typeof fastify.optionalAuth === 'function'
     ? fastify.optionalAuth
     : async () => undefined;
+  const requiredAuth = typeof fastify.authenticate === 'function'
+    ? fastify.authenticate
+    : async (_request: FastifyRequest, reply: FastifyReply) => {
+      await sendError(reply, 401, 'UNAUTHORIZED', 'Authentication is required');
+    };
 
   fastify.get<{ Querystring: CallbackQuery }>('/callback', async (request, reply) => {
     const { code, state, error, error_description: errorDescription } = request.query;
@@ -55,19 +68,61 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
       return sendError(reply, consumed.status, consumed.code, consumed.message);
     }
 
+    const handoff = await createSmartLaunchHandoff(consumed.session.id);
     if (consumed.session.appRedirectUrl) {
-      return reply.redirect(appendSessionId(consumed.session.appRedirectUrl, consumed.session.id));
+      return reply.redirect(appendHandoffCode(consumed.session.appRedirectUrl, handoff.handoffCode));
     }
 
     return reply.send({
       success: true,
       data: {
-        session_id: consumed.session.id,
+        smart_handoff: handoff.handoffCode,
+        handoff_expires_at: handoff.expiresAt,
         ehr_tenant_id: consumed.session.ehrTenantId,
+        patient_sync: consumed.session.launchContext['patientSync'] ?? null,
         launch_context: consumed.launchContext,
       },
     });
   });
+
+  fastify.post<{ Body: CompleteBody }>(
+    '/complete',
+    { preHandler: [requiredAuth] },
+    async (request, reply) => {
+      const smartHandoff = typeof request.body?.smart_handoff === 'string'
+        ? request.body.smart_handoff.trim()
+        : '';
+      if (!smartHandoff) {
+        return sendError(reply, 400, 'VALIDATION_ERROR', 'smart_handoff is required');
+      }
+
+      const user = request.user as RequestUserRef | undefined;
+      if (!user?.sub) {
+        return sendError(reply, 401, 'UNAUTHORIZED', 'Authentication is required');
+      }
+
+      const completed = await consumeSmartLaunchHandoff({
+        handoffCode: smartHandoff,
+        userId: user.sub,
+        orgId: parseOrgId(user.org_id),
+        appSessionId: user.session_id ?? null,
+      });
+      if (!completed) {
+        return sendError(reply, 404, 'SMART_HANDOFF_INVALID', 'SMART launch handoff is invalid or expired');
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          smart_session_id: completed.session.id,
+          ehr_tenant_id: completed.session.ehrTenantId,
+          patient_id: completed.patientId,
+          patient_sync: completed.session.launchContext['patientSync'] ?? null,
+          launch_context: completed.session.launchContext,
+        },
+      });
+    },
+  );
 
   fastify.get<{ Params: LaunchParams; Querystring: LaunchQuery }>(
     '/standalone/:tenantId',
@@ -117,6 +172,16 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
     if (userOrgId && config.tenant.orgId && userOrgId !== config.tenant.orgId) {
       return sendError(reply, 403, 'EHR_TENANT_ORG_MISMATCH', 'Authenticated user cannot launch this EHR tenant');
     }
+    const launchContextResult = validateLaunchIssuerAndContext(query, config, options.launchMode);
+    if ('error' in launchContextResult) {
+      return sendError(
+        reply,
+        launchContextResult.status,
+        launchContextResult.code,
+        launchContextResult.message,
+      );
+    }
+
     const orgId = config.tenant.orgId ?? userOrgId;
     const scope = query.scope ?? defaultScopeForLaunchMode(config.scopesRequested, options.launchMode);
 
@@ -130,8 +195,8 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
       fhirBaseUrl: config.tenant.fhirBaseUrl,
       redirectUri: redirectUriResult.redirectUri,
       appRedirectUrl,
-      issuer: query.iss ?? null,
-      launch: options.launchMode === 'ehr' ? query.launch ?? null : null,
+      issuer: launchContextResult.issuer,
+      launch: launchContextResult.launch,
       scope,
     });
 
@@ -179,6 +244,12 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
         status: 404,
       });
     }
+    if (session.clientRegistrationId !== null && session.clientRegistrationId !== config.clientRegistrationId) {
+      throw Object.assign(new Error('SMART launch client registration changed before callback completion'), {
+        code: 'smart_client_registration_mismatch',
+        status: 409,
+      });
+    }
     return {
       tenant: config.tenant,
       clientId: config.clientId,
@@ -187,6 +258,8 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
       clientSecretRef: config.clientSecretRef,
       jwksUrl: config.jwksUrl,
       privateKeyRef: config.privateKeyRef,
+      issuer: config.issuer,
+      idTokenJwksUrl: config.idTokenJwksUrl,
     };
   }
 }
@@ -250,7 +323,90 @@ function defaultScopeForLaunchMode(scope: string, launchMode: 'ehr' | 'standalon
   return normalized.join(' ');
 }
 
-function appendSessionId(url: string, sessionId: string): string {
+function validateLaunchIssuerAndContext(
+  query: LaunchQuery,
+  config: SmartLaunchConfig,
+  launchMode: 'ehr' | 'standalone',
+): { issuer: string | null; launch: string | null } | { error: true; status: number; code: string; message: string } {
+  const expectedIssuers = expectedLaunchIssuers(config);
+  if (launchMode === 'ehr') {
+    if (!query.iss) {
+      return {
+        error: true,
+        status: 400,
+        code: 'SMART_ISSUER_REQUIRED',
+        message: 'EHR-launched SMART requests require iss',
+      };
+    }
+    if (!smartIssuerAllowed(query.iss, expectedIssuers)) {
+      return {
+        error: true,
+        status: 400,
+        code: 'SMART_ISSUER_MISMATCH',
+        message: 'SMART launch issuer is not registered for this EHR tenant',
+      };
+    }
+    if (!query.launch) {
+      return {
+        error: true,
+        status: 400,
+        code: 'SMART_LAUNCH_REQUIRED',
+        message: 'EHR-launched SMART requests require launch',
+      };
+    }
+    return { issuer: query.iss, launch: query.launch };
+  }
+
+  if (query.iss && !smartIssuerAllowed(query.iss, expectedIssuers)) {
+    return {
+      error: true,
+      status: 400,
+      code: 'SMART_ISSUER_MISMATCH',
+      message: 'SMART launch issuer is not registered for this EHR tenant',
+    };
+  }
+  return { issuer: query.iss ?? null, launch: null };
+}
+
+function expectedLaunchIssuers(config: SmartLaunchConfig): string[] {
+  const metadataIssuer = stringMetadataValue(config.tenant.metadata, 'issuer');
+  const metadataAudience = stringMetadataValue(config.tenant.metadata, 'audience');
+  return uniqueStrings([
+    config.issuer,
+    metadataIssuer,
+    metadataAudience,
+    config.tenant.fhirBaseUrl,
+  ]);
+}
+
+function stringMetadataValue(metadata: Record<string, unknown> | undefined, key: string): string | null {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
+}
+
+function smartIssuerAllowed(candidate: string, expectedIssuers: string[]): boolean {
+  const normalizedCandidate = normalizeIssuerForComparison(candidate);
+  if (!normalizedCandidate) return false;
+  return expectedIssuers.some((expected) => normalizeIssuerForComparison(expected) === normalizedCandidate);
+}
+
+function normalizeIssuerForComparison(value: string): string | null {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.search = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed.replace(/\/$/, '') : null;
+  }
+}
+
+function appendHandoffCode(url: string, handoffCode: string): string {
   const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}smart_session_id=${encodeURIComponent(sessionId)}`;
+  return `${url}${separator}smart_handoff=${encodeURIComponent(handoffCode)}`;
 }

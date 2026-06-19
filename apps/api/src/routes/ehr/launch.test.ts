@@ -4,6 +4,8 @@ import type { JwtPayload } from '../../plugins/auth.js';
 
 vi.mock('../../services/ehr/smartLaunch.js', () => ({
   completeSmartLaunchCallback: vi.fn(),
+  consumeSmartLaunchHandoff: vi.fn(),
+  createSmartLaunchHandoff: vi.fn(),
   createSmartLaunchState: vi.fn(),
   findSmartLaunchSessionByState: vi.fn(),
   loadSmartLaunchConfig: vi.fn(),
@@ -12,6 +14,8 @@ vi.mock('../../services/ehr/smartLaunch.js', () => ({
 import ehrSmartLaunchRoutes from './launch.js';
 import {
   completeSmartLaunchCallback,
+  consumeSmartLaunchHandoff,
+  createSmartLaunchHandoff,
   createSmartLaunchState,
   findSmartLaunchSessionByState,
   loadSmartLaunchConfig,
@@ -50,6 +54,8 @@ const launchConfig: SmartLaunchConfig = {
   scopesGranted: 'openid fhirUser launch patient/Patient.r',
   authorizationEndpoint: 'https://ehr.example.test/oauth2/authorize',
   tokenEndpoint: 'https://ehr.example.test/oauth2/token',
+  issuer: 'https://ehr.example.test',
+  idTokenJwksUrl: 'https://ehr.example.test/oauth2/jwks',
 };
 
 const session: SmartLaunchSession = {
@@ -57,6 +63,7 @@ const session: SmartLaunchSession = {
   ehrTenantId: 42,
   orgId: 7,
   userId: PROVIDER_USER.sub,
+  appSessionId: null,
   clientRegistrationId: 5,
   stateHash: 'state-hash',
   nonceHash: 'nonce-hash',
@@ -70,12 +77,18 @@ const session: SmartLaunchSession = {
   status: 'consumed',
   expiresAt: '2026-06-16T12:10:00Z',
   consumedAt: '2026-06-16T12:01:00Z',
+  handoffCodeHash: null,
+  handoffExpiresAt: null,
+  handoffConsumedAt: null,
   createdAt: '2026-06-16T12:00:00Z',
   updatedAt: '2026-06-16T12:01:00Z',
 };
 
 async function buildApp(user: JwtPayload | undefined = PROVIDER_USER): Promise<FastifyInstance> {
   const app = Fastify();
+  app.decorate('authenticate', async (request: FastifyRequest) => {
+    if (user) request.user = { ...user, session_id: '33333333-3333-4333-8333-333333333333' };
+  });
   app.decorate('optionalAuth', async (request: FastifyRequest) => {
     if (user) request.user = user;
   });
@@ -89,6 +102,8 @@ beforeEach(() => {
   vi.mocked(createSmartLaunchState).mockReset();
   vi.mocked(findSmartLaunchSessionByState).mockReset();
   vi.mocked(completeSmartLaunchCallback).mockReset();
+  vi.mocked(createSmartLaunchHandoff).mockReset();
+  vi.mocked(consumeSmartLaunchHandoff).mockReset();
 });
 
 describe('EHR SMART launch routes', () => {
@@ -152,6 +167,60 @@ describe('EHR SMART launch routes', () => {
         scope: 'openid fhirUser patient/Patient.r launch/patient',
       }),
     );
+    await app.close();
+  });
+
+  it('rejects EHR launch requests without an issuer before creating state', async () => {
+    vi.mocked(loadSmartLaunchConfig).mockResolvedValueOnce(launchConfig);
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ehr/launch/42?launch=launch-opaque',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: { code: 'SMART_ISSUER_REQUIRED' },
+    });
+    expect(createSmartLaunchState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects EHR launch requests from an unregistered issuer', async () => {
+    vi.mocked(loadSmartLaunchConfig).mockResolvedValueOnce(launchConfig);
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ehr/launch/42?iss=https%3A%2F%2Fevil.example.test&launch=launch-opaque',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: { code: 'SMART_ISSUER_MISMATCH' },
+    });
+    expect(createSmartLaunchState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects EHR launch requests without the embedded launch token', async () => {
+    vi.mocked(loadSmartLaunchConfig).mockResolvedValueOnce(launchConfig);
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ehr/launch/42?iss=https%3A%2F%2Fehr.example.test',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: { code: 'SMART_LAUNCH_REQUIRED' },
+    });
+    expect(createSmartLaunchState).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -225,6 +294,11 @@ describe('EHR SMART launch routes', () => {
         updatedAt: '2026-06-16T12:00:00Z',
       },
     } satisfies CompleteSmartLaunchCallbackResult);
+    vi.mocked(createSmartLaunchHandoff).mockResolvedValueOnce({
+      sessionId: session.id,
+      handoffCode: 'handoff-code-1',
+      expiresAt: '2026-06-16T12:06:00.000Z',
+    });
     const app = await buildApp(undefined);
 
     const response = await app.inject({
@@ -234,7 +308,7 @@ describe('EHR SMART launch routes', () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe(
-      `/ehr/complete?smart_session_id=${encodeURIComponent(session.id)}`,
+      `/ehr/complete?smart_handoff=${encodeURIComponent('handoff-code-1')}`,
     );
     expect(completeSmartLaunchCallback).toHaveBeenCalledWith({
       state: 'state-1',
@@ -247,7 +321,51 @@ describe('EHR SMART launch routes', () => {
         clientSecretRef: null,
         jwksUrl: null,
         privateKeyRef: null,
+        issuer: 'https://ehr.example.test',
+        idTokenJwksUrl: 'https://ehr.example.test/oauth2/jwks',
       },
+    });
+    expect(createSmartLaunchHandoff).toHaveBeenCalledWith(session.id);
+    await app.close();
+  });
+
+  it('consumes a SMART handoff from an authenticated Medgnosis session', async () => {
+    vi.mocked(consumeSmartLaunchHandoff).mockResolvedValueOnce({
+      session: {
+        ...session,
+        appSessionId: '33333333-3333-4333-8333-333333333333',
+        launchContext: {
+          patient: 'pat-1',
+          encounter: 'enc-1',
+          fhirUser: 'Practitioner/doc-1',
+          scopes: ['openid', 'patient/Patient.r'],
+        },
+      },
+      patientId: 123,
+    });
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ehr/launch/complete',
+      payload: { smart_handoff: 'handoff-code-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      success: true,
+      data: {
+        smart_session_id: session.id,
+        ehr_tenant_id: 42,
+        patient_id: 123,
+        launch_context: { patient: 'pat-1' },
+      },
+    });
+    expect(consumeSmartLaunchHandoff).toHaveBeenCalledWith({
+      handoffCode: 'handoff-code-1',
+      userId: PROVIDER_USER.sub,
+      orgId: 7,
+      appSessionId: '33333333-3333-4333-8333-333333333333',
     });
     await app.close();
   });

@@ -23,6 +23,12 @@ export interface AdminUser {
   last_login_at: string | null;
   provider_first_name: string | null;
   provider_last_name: string | null;
+  pending_invite: {
+    id: string;
+    expires_at: string;
+    created_at: string;
+    status: 'pending' | 'expired';
+  } | null;
 }
 
 export interface AuthProviderSetting {
@@ -38,8 +44,58 @@ export interface SystemHealth {
   database: { status: string; error?: string };
   redis: { status: string; error?: string };
   solr: { status: string; enabled: boolean };
-  auth: { local_enabled: boolean; oidc_enabled: boolean };
+  auth: { local_enabled: boolean; oidc_enabled: boolean; error?: string };
+  workers: {
+    status: string;
+    total_workers: number;
+    counts: QueueCounts;
+    queues: WorkerQueueStatus[];
+  };
+  ehr_bulk: {
+    status: string;
+    queue_enabled: boolean;
+    tenants: {
+      total: number;
+      active: number;
+      with_backend_services: number;
+      with_capability_snapshots: number;
+      ready_for_bulk: number;
+    };
+    schedules: {
+      enabled: number;
+      due: number;
+      failed_24h: number;
+      next_run_at: string | null;
+    };
+    bulk_jobs: {
+      active: number;
+      failed_24h: number;
+      completed_24h: number;
+      latest_completed_at: string | null;
+    };
+    issues: string[];
+    error?: string;
+  };
   duration_ms: number;
+}
+
+export interface QueueCounts {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+}
+
+export interface WorkerQueueStatus {
+  name: string;
+  label: string;
+  role: string;
+  status: string;
+  workers: number;
+  paused: boolean;
+  counts: QueueCounts;
+  repeatable_jobs?: number;
+  error?: string;
 }
 
 export interface MeasurePromotionConfig {
@@ -77,6 +133,60 @@ export interface PopulationCounts {
   denominator: number;
   numerator: number;
   exclusion: number;
+}
+
+export interface MeasureTestDeckCoverage {
+  status: 'passed';
+  testDeck: string;
+  artifactYear: number;
+  subjectCount: number;
+  evidenceSource: string;
+  representativeSubject: string;
+  representativeExpected: {
+    initialPopulation: number;
+    denominator: number;
+    denominatorExclusion: number;
+    numerator: number;
+  };
+  populationSmoke: {
+    initialPopulation: number;
+    denominator: number;
+    denominatorExclusion: number;
+    numerator: number;
+    score: number;
+  };
+  promotionGate: string;
+}
+
+export interface MeasureDossier {
+  measureCode: string;
+  binding: {
+    ecqm_id: string | null;
+    ecqm_version: string | null;
+    fhir_measure_url: string | null;
+    fhir_library_url: string | null;
+    reporting_period_start: string | null;
+    reporting_period_end: string | null;
+    status: string;
+  } | null;
+  components: {
+    fhirLibraryUrl: string | null;
+    fhirMeasureUrl: string | null;
+    elm: string | null;
+    testDeckCoverage: MeasureTestDeckCoverage | null;
+    measureReport: {
+      reportType: string;
+      periodStart: string;
+      periodEnd: string;
+      initialPopulation: number;
+      denominator: number;
+      numerator: number;
+      denominatorExclusion: number;
+      measureScore: number | null;
+      source: string;
+      computedAt: string;
+    } | null;
+  };
 }
 
 export interface DriftFlags {
@@ -212,6 +322,11 @@ export interface FhirEndpoint {
 export type EhrVendor = 'epic' | 'oracle_cerner' | 'smart_generic' | 'hapi' | 'other';
 export type EhrEnvironment = 'sandbox' | 'staging' | 'production';
 export type EhrClientType = 'smart_launch' | 'backend_services' | 'cds_hooks';
+export type EhrIngestRunMode = 'incremental' | 'backfill' | 'bulk' | 'manual';
+export type EhrIngestRunStatus = 'running' | 'succeeded' | 'failed' | 'canceled';
+export type EhrBulkJobStatus = 'accepted' | 'in_progress' | 'completed' | 'failed' | 'canceled';
+export type EhrBulkExportLevel = 'system' | 'group' | 'patient';
+export type EhrBulkScheduleSinceMode = 'none' | 'fixed' | 'last_success';
 export type EhrClientAuthMethod =
   | 'public_pkce'
   | 'client_secret_post'
@@ -292,6 +407,103 @@ export interface EhrTenantDetail {
   readiness: {
     clients: EhrClientReadiness[];
   };
+}
+
+export interface EhrIngestRun {
+  id: string;
+  orgId: number | null;
+  ehrTenantId: number;
+  resourceType: string | null;
+  mode: EhrIngestRunMode;
+  status: EhrIngestRunStatus;
+  requestedSince: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  resourcesReceived: number;
+  resourcesStaged: number;
+  resourcesUpdated: number;
+  errorCount: number;
+  errorMessage: string | null;
+  errors: unknown[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EhrBulkImportFile {
+  id: string;
+  bulkJobId: string;
+  orgId: number | null;
+  ehrTenantId: number;
+  ingestRunId: string | null;
+  resourceType: string;
+  fileUrlHash: string;
+  fileUrlRedacted: string;
+  manifestCount: number | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  rowsRead: number;
+  resourcesStaged: number;
+  errorCount: number;
+  error: Record<string, unknown> | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EhrBulkJob {
+  id: string;
+  orgId: number | null;
+  ehrTenantId: number;
+  ingestRunId: string | null;
+  exportLevel: EhrBulkExportLevel;
+  groupId: string | null;
+  patientId: string | null;
+  status: EhrBulkJobStatus;
+  resourceTypes: string[];
+  since: string | null;
+  typeFilters: string[];
+  requestUrl: string;
+  statusUrl: string;
+  manifest: Record<string, unknown> | null;
+  outputFiles: Array<{ type: string; url: string; count?: number }>;
+  error: Record<string, unknown> | null;
+  retryAfterSeconds: number | null;
+  pollCount: number;
+  requestedAt: string;
+  nextPollAt: string | null;
+  completedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  importFiles: EhrBulkImportFile[];
+}
+
+export interface EhrBulkSchedule {
+  id: string;
+  orgId: number | null;
+  ehrTenantId: number;
+  enabled: boolean;
+  exportLevel: EhrBulkExportLevel;
+  groupId: string | null;
+  patientId: string | null;
+  resourceTypes: string[];
+  sinceMode: EhrBulkScheduleSinceMode;
+  since: string | null;
+  typeFilters: string[];
+  intervalMinutes: number;
+  maxResourcesPerFile: number | null;
+  lastEnqueuedAt: string | null;
+  lastQueueJobId: string | null;
+  lastBulkJobId: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: Record<string, unknown> | null;
+  nextRunAt: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AuditLog {

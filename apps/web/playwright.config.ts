@@ -9,7 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : 4,
   reporter: 'html',
   use: {
     baseURL: 'http://127.0.0.1:5176',
@@ -23,7 +23,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'vite --host 127.0.0.1 --port 5176 --strictPort',
+    command: 'VITE_REALTIME_ALERTS_ENABLED=false vite --host 127.0.0.1 --port 5176 --strictPort',
     url: 'http://127.0.0.1:5176',
     reuseExistingServer: false,
     timeout: 120_000,

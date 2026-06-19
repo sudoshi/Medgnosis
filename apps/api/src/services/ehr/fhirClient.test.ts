@@ -200,6 +200,63 @@ describe('FhirClient.search', () => {
   });
 });
 
+describe('FhirClient.searchFromUrl', () => {
+  it('resumes a search from a tenant-local next URL and follows bounded pages', async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        fhirResponse({
+          resourceType: 'Bundle',
+          type: 'searchset',
+          link: [{ relation: 'next', url: 'Observation?page=3' }],
+          entry: [{ resource: { resourceType: 'Observation', id: 'obs-2' } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        fhirResponse({
+          resourceType: 'Bundle',
+          type: 'searchset',
+          entry: [{ resource: { resourceType: 'Observation', id: 'obs-3' } }],
+        }),
+      );
+    const client = new FhirClient({ fetchImpl: fetchMock });
+
+    const result = await client.searchFromUrl(
+      tenant,
+      token,
+      'Observation',
+      'Observation?page=2&_count=50',
+      { maxPages: 2 },
+    );
+
+    expect(result.resources.map((resource) => resource.id)).toEqual(['obs-2', 'obs-3']);
+    expect(result.nextUrl).toBeUndefined();
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://ehr.example/fhir/Observation?page=2&_count=50');
+    expect(fetchMock.mock.calls[1]![0]).toBe('https://ehr.example/fhir/Observation?page=3');
+    expect(result.audit.searchParamKeys).toEqual(['_count', 'page']);
+  });
+
+  it('rejects a continuation URL outside the tenant FHIR base before sending bearer tokens', async () => {
+    const fetchMock = vi.fn<FetchLike>();
+    const client = new FhirClient({ fetchImpl: fetchMock });
+
+    await expect(
+      client.searchFromUrl(
+        tenant,
+        token,
+        'Observation',
+        'https://attacker.example/fhir/Observation?page=2',
+      ),
+    ).rejects.toMatchObject({
+      outcome: {
+        classification: 'invalid_request',
+        message: 'FHIR search continuation URL points outside the tenant FHIR base URL',
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('parseRetryAfter', () => {
   it('parses seconds and HTTP-date values', () => {
     expect(parseRetryAfter('3')).toBe(3000);

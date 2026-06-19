@@ -177,6 +177,69 @@ export class FhirClient {
     };
   }
 
+  async searchFromUrl<TResource extends FhirResource = FhirResource>(
+    tenant: EhrTenantRef,
+    token: FhirAccessTokenRef,
+    resourceType: string,
+    url: string,
+    options: FhirSearchOptions = {},
+  ): Promise<FhirSearchResult<TResource>> {
+    const adapter = options.adapter ?? getVendorAdapter(tenant.vendor);
+    const maxPages = options.maxPages ?? adapter.paginationPolicy.maxPages;
+    const startUrl = absoluteTenantFhirUrl(url, tenant.fhirBaseUrl);
+    const searchParamKeys = searchParamKeysFromUrl(startUrl);
+    const pages: Array<FhirBundle<TResource>> = [];
+    const requests: FhirRequestAudit[] = [];
+    let nextUrl: string | undefined = startUrl;
+
+    while (nextUrl && pages.length < maxPages) {
+      const result = await this.requestJson(tenant, token, nextUrl, {
+        ...options,
+        adapter,
+        interaction: 'search',
+        resourceType,
+        searchParamKeys,
+      });
+      requests.push(result.audit);
+
+      if (!isFhirBundle<TResource>(result.body)) {
+        throw this.invalidResponseError('FHIR search did not return a Bundle', result.audit, tenant, adapter);
+      }
+
+      pages.push(result.body);
+      nextUrl = nextLink(result.body, tenant.fhirBaseUrl);
+      if (nextUrl && !isTenantFhirUrl(nextUrl, tenant.fhirBaseUrl)) {
+        throw this.invalidResponseError(
+          'FHIR search Bundle next link points outside the tenant FHIR base URL',
+          result.audit,
+          tenant,
+          adapter,
+        );
+      }
+    }
+
+    const resources = pages.flatMap((page) =>
+      (page.entry ?? []).flatMap((entry) => (entry.resource ? [entry.resource] : [])),
+    );
+    const remainingNextUrl = nextUrl;
+    const combinedBundle = combineBundles(pages, resources, remainingNextUrl);
+
+    return {
+      bundle: combinedBundle,
+      pages,
+      resources,
+      nextUrl: remainingNextUrl,
+      audit: {
+        interaction: 'search',
+        resourceType,
+        pageCount: pages.length,
+        requestCount: requests.length,
+        requests,
+        searchParamKeys,
+      } satisfies FhirSearchAudit,
+    };
+  }
+
   private async requestJson(
     tenant: EhrTenantRef,
     token: FhirAccessTokenRef,
@@ -315,6 +378,16 @@ export function search<TResource extends FhirResource = FhirResource>(
   return defaultClient.search<TResource>(tenant, token, resourceType, params, options);
 }
 
+export function searchFromUrl<TResource extends FhirResource = FhirResource>(
+  tenant: EhrTenantRef,
+  token: FhirAccessTokenRef,
+  resourceType: string,
+  url: string,
+  options: FhirSearchOptions = {},
+): Promise<FhirSearchResult<TResource>> {
+  return defaultClient.searchFromUrl<TResource>(tenant, token, resourceType, url, options);
+}
+
 function resourceUrl(
   baseUrl: string,
   resourceType: string,
@@ -369,6 +442,23 @@ function isTenantFhirUrl(url: string, baseUrl: string): boolean {
   if (parsedUrl.origin !== parsedBase.origin) return false;
   if (!basePath || basePath === '/') return true;
   return parsedUrl.pathname === basePath || parsedUrl.pathname.startsWith(`${basePath}/`);
+}
+
+function absoluteTenantFhirUrl(url: string, baseUrl: string): string {
+  const absoluteUrl = new URL(url, `${trimTrailingSlash(baseUrl)}/`).toString();
+  if (!isTenantFhirUrl(absoluteUrl, baseUrl)) {
+    throw new FhirClientError(
+      normalizeOperationOutcome(undefined, {
+        classification: 'invalid_request',
+        fallbackMessage: 'FHIR search continuation URL points outside the tenant FHIR base URL',
+      }),
+    );
+  }
+  return absoluteUrl;
+}
+
+function searchParamKeysFromUrl(url: string): string[] {
+  return [...new URL(url).searchParams.keys()].sort();
 }
 
 function combineBundles<TResource extends FhirResource>(

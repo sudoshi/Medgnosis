@@ -3,6 +3,7 @@ import type { ElementType } from 'react';
 import { Activity, Database, KeyRound, RefreshCw, Search, Server, Wifi } from 'lucide-react';
 import { api } from '../../services/api.js';
 import type { SystemHealth } from './types.js';
+import { fmtDateTime } from './helpers.js';
 import { Button } from '@/components/ui/button';
 
 function StatusPill({ status }: { status: string }) {
@@ -47,6 +48,10 @@ function HealthRow({
   );
 }
 
+function queueCounts(counts: SystemHealth['workers']['counts']) {
+  return `W ${counts.waiting} / A ${counts.active} / D ${counts.delayed} / F ${counts.failed}`;
+}
+
 export function SystemHealthTab() {
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'system-health'],
@@ -89,6 +94,92 @@ export function SystemHealthTab() {
           </>
         )}
       </div>
+
+      {health && (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+          <div className="surface p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-bright">Workers & Queues</h3>
+                <p className="mt-0.5 text-xs text-ghost">
+                  {health.workers.total_workers} workers / {queueCounts(health.workers.counts)}
+                </p>
+              </div>
+              <StatusPill status={health.workers.status} />
+            </div>
+            <div className="divide-y divide-edge/20">
+              {health.workers.queues.map((queue) => (
+                <div key={queue.name} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_8rem_6rem]">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-bright">{queue.label}</p>
+                    <p className="truncate font-data text-xs text-ghost">{queue.name}</p>
+                    {queue.error && <p className="mt-1 truncate text-xs text-crimson">{queue.error}</p>}
+                  </div>
+                  <p className="font-data text-xs text-dim md:text-right">{queueCounts(queue.counts)}</p>
+                  <div className="flex justify-start md:justify-end">
+                    <StatusPill status={queue.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="surface p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-bright">EHR Bulk Readiness</h3>
+                <p className="mt-0.5 text-xs text-ghost">
+                  {health.ehr_bulk.tenants.ready_for_bulk}/{health.ehr_bulk.tenants.active} active tenants ready
+                </p>
+              </div>
+              <StatusPill status={health.ehr_bulk.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                <p className="text-ghost">Schedules</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_bulk.schedules.enabled} enabled / {health.ehr_bulk.schedules.due} due
+                </p>
+              </div>
+              <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                <p className="text-ghost">Bulk jobs</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_bulk.bulk_jobs.active} active / {health.ehr_bulk.bulk_jobs.failed_24h} failed
+                </p>
+              </div>
+              <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                <p className="text-ghost">Backend clients</p>
+                <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_backend_services}</p>
+              </div>
+              <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                <p className="text-ghost">Capabilities</p>
+                <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_capability_snapshots}</p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+              <p className="text-ghost">Next schedule</p>
+              <p className="mt-1 font-data text-bright">
+                {health.ehr_bulk.schedules.next_run_at ? fmtDateTime(health.ehr_bulk.schedules.next_run_at) : 'None'}
+              </p>
+              <p className="mt-2 text-ghost">Latest completed job</p>
+              <p className="mt-1 font-data text-bright">
+                {health.ehr_bulk.bulk_jobs.latest_completed_at
+                  ? fmtDateTime(health.ehr_bulk.bulk_jobs.latest_completed_at)
+                  : 'None'}
+              </p>
+            </div>
+            {health.ehr_bulk.issues.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {health.ehr_bulk.issues.slice(0, 4).map((issue) => (
+                  <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                    {issue}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

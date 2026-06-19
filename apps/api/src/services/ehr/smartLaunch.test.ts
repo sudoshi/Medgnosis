@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 import { generateKeyPairSync } from 'node:crypto';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 
 const { mockSql } = vi.hoisted(() => {
   const fn = vi.fn();
@@ -11,15 +12,20 @@ const { mockSql } = vi.hoisted(() => {
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 
 import {
+  completeSmartLaunchCallback,
   consumeSmartLaunchState,
+  consumeSmartLaunchHandoff,
   createSmartLaunchState,
+  createSmartLaunchHandoff,
   exchangeSmartAuthorizationCode,
   findSmartLaunchSessionByState,
   hashSmartValue,
   loadSmartLaunchConfig,
   normalizeSmartScope,
   smartPkceChallenge,
+  validateSmartIdToken,
 } from './smartLaunch.js';
+import type { JSONWebKeySet, JWTPayload } from 'jose';
 import type { FetchLike } from './types.js';
 
 const baseSessionRow = {
@@ -27,6 +33,7 @@ const baseSessionRow = {
   ehr_tenant_id: 42,
   org_id: 7,
   user_id: '22222222-2222-4222-8222-222222222222',
+  app_session_id: null,
   client_registration_id: 5,
   state_hash: hashSmartValue('state-1'),
   nonce_hash: hashSmartValue('nonce-1'),
@@ -40,6 +47,9 @@ const baseSessionRow = {
   status: 'pending',
   expires_at: '2026-06-16T12:10:00Z',
   consumed_at: null,
+  handoff_code_hash: null,
+  handoff_expires_at: null,
+  handoff_consumed_at: null,
   created_at: '2026-06-16T12:00:00Z',
   updated_at: '2026-06-16T12:00:00Z',
 } as const;
@@ -181,6 +191,8 @@ describe('loadSmartLaunchConfig', () => {
       jsonResponse({
         authorization_endpoint: 'https://ehr.example.test/oauth2/authorize',
         token_endpoint: 'https://ehr.example.test/oauth2/token',
+        issuer: 'https://ehr.example.test',
+        jwks_uri: 'https://ehr.example.test/oauth2/jwks',
         code_challenge_methods_supported: ['S256'],
         token_endpoint_auth_methods_supported: ['client_secret_basic'],
       }),
@@ -194,12 +206,111 @@ describe('loadSmartLaunchConfig', () => {
       authMethod: 'public_pkce',
       authorizationEndpoint: 'https://ehr.example.test/oauth2/authorize',
       tokenEndpoint: 'https://ehr.example.test/oauth2/token',
+      issuer: 'https://ehr.example.test',
+      idTokenJwksUrl: 'https://ehr.example.test/oauth2/jwks',
     });
     expect(config?.tenant.fhirBaseUrl).toBe('https://ehr.example.test/fhir/R4/');
     expect(fetchMock).toHaveBeenCalledWith(
       'https://ehr.example.test/fhir/R4/.well-known/smart-configuration',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+});
+
+describe('validateSmartIdToken', () => {
+  it('accepts a signed SMART id_token with issuer, audience, exp, iat, and matching nonce', async () => {
+    const now = new Date('2026-06-16T12:00:00Z');
+    const { idToken, jwks } = await createSignedSmartIdToken({ nonce: 'nonce-1', now });
+
+    const claims = await validateSmartIdToken({
+      idToken,
+      jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    });
+
+    expect(claims.sub).toBe('Practitioner/doc-1');
+  });
+
+  it('rejects a validly signed id_token with the wrong nonce', async () => {
+    const now = new Date('2026-06-16T12:00:00Z');
+    const { idToken, jwks } = await createSignedSmartIdToken({ nonce: 'nonce-1', now });
+
+    await expect(validateSmartIdToken({
+      idToken,
+      jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-2'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_nonce_mismatch' });
+  });
+
+  it('rejects id_token issuer, audience, azp, token_use, and expiration failures', async () => {
+    const now = new Date('2026-06-16T12:00:00Z');
+    const valid = await createSignedSmartIdToken({ nonce: 'nonce-1', now });
+    await expect(validateSmartIdToken({
+      idToken: valid.idToken,
+      jwks: valid.jwks,
+      expectedIssuer: 'https://wrong-issuer.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_invalid' });
+
+    await expect(validateSmartIdToken({
+      idToken: valid.idToken,
+      jwks: valid.jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'other-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_invalid' });
+
+    const wrongAzp = await createSignedSmartIdToken({
+      nonce: 'nonce-1',
+      now,
+      audience: ['smart-client', 'other-audience'],
+      extraClaims: { azp: 'other-client' },
+    });
+    await expect(validateSmartIdToken({
+      idToken: wrongAzp.idToken,
+      jwks: wrongAzp.jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_invalid' });
+
+    const accessTokenUse = await createSignedSmartIdToken({
+      nonce: 'nonce-1',
+      now,
+      extraClaims: { token_use: 'access' },
+    });
+    await expect(validateSmartIdToken({
+      idToken: accessTokenUse.idToken,
+      jwks: accessTokenUse.jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_invalid' });
+
+    const expired = await createSignedSmartIdToken({
+      nonce: 'nonce-1',
+      now,
+      expiresAt: new Date('2026-06-16T11:59:00Z'),
+    });
+    await expect(validateSmartIdToken({
+      idToken: expired.idToken,
+      jwks: expired.jwks,
+      expectedIssuer: 'https://ehr.example.test',
+      expectedAudience: 'smart-client',
+      nonceHash: hashSmartValue('nonce-1'),
+      now,
+    })).rejects.toMatchObject({ code: 'smart_id_token_invalid' });
   });
 });
 
@@ -366,6 +477,112 @@ describe('exchangeSmartAuthorizationCode', () => {
   });
 });
 
+describe('SMART launch app handoff', () => {
+  it('mints a hashed one-time handoff code for consumed launch sessions', async () => {
+    mockSql.mockResolvedValueOnce([{ id: baseSessionRow.id }]);
+
+    const handoff = await createSmartLaunchHandoff(baseSessionRow.id, {
+      now: new Date('2026-06-16T12:00:00Z'),
+    });
+
+    expect(handoff.sessionId).toBe(baseSessionRow.id);
+    expect(handoff.handoffCode).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(handoff.expiresAt).toBe('2026-06-16T12:05:00.000Z');
+
+    const values = mockSql.mock.calls[0]!.slice(1);
+    expect(values).toContain(hashSmartValue(handoff.handoffCode));
+    expect(values).toContain(baseSessionRow.id);
+    expect(values).not.toContain(handoff.handoffCode);
+  });
+
+  it('consumes a valid handoff once and resolves the local patient id from the crosswalk', async () => {
+    mockSql
+      .mockResolvedValueOnce([
+        {
+          ...baseSessionRow,
+          status: 'consumed',
+          app_session_id: '33333333-3333-4333-8333-333333333333',
+          handoff_code_hash: hashSmartValue('handoff-code-1'),
+          handoff_expires_at: '2026-06-16T12:05:00Z',
+          handoff_consumed_at: '2026-06-16T12:01:00Z',
+          launch_context: {
+            patient: 'Patient/pat-1',
+            fhirUser: 'Practitioner/doc-1',
+            scopes: ['openid', 'patient/Patient.r'],
+          },
+        },
+      ])
+      .mockResolvedValueOnce([{ patient_id: 123 }]);
+
+    const consumed = await consumeSmartLaunchHandoff({
+      handoffCode: 'handoff-code-1',
+      userId: baseSessionRow.user_id,
+      orgId: 7,
+      appSessionId: '33333333-3333-4333-8333-333333333333',
+      now: new Date('2026-06-16T12:01:00Z'),
+    });
+
+    expect(consumed).toMatchObject({
+      patientId: 123,
+      session: {
+        id: baseSessionRow.id,
+        appSessionId: '33333333-3333-4333-8333-333333333333',
+        handoffConsumedAt: '2026-06-16T12:01:00Z',
+      },
+    });
+    expect(mockSql.mock.calls[0]!.slice(1)).toContain(hashSmartValue('handoff-code-1'));
+    expect(mockSql.mock.calls[0]!.slice(1)).not.toContain('handoff-code-1');
+    expect(mockSql.mock.calls[1]!.slice(1)).toContain('pat-1');
+  });
+});
+
+describe('completeSmartLaunchCallback', () => {
+  it('rejects OpenID launch callbacks when the token response omits id_token', async () => {
+    mockSql
+      .mockResolvedValueOnce([baseSessionRow])
+      .mockResolvedValueOnce([
+        {
+          ...baseSessionRow,
+          status: 'consumed',
+          consumed_at: '2026-06-16T12:01:00Z',
+          updated_at: '2026-06-16T12:01:00Z',
+        },
+      ]);
+    const fetchMock = vi.fn<FetchLike>().mockResolvedValue(
+      jsonResponse({
+        access_token: 'raw-access-token',
+        token_type: 'Bearer',
+        expires_in: 300,
+        scope: 'openid fhirUser launch patient/Patient.r',
+        patient: 'pat-1',
+      }),
+    );
+
+    await expect(completeSmartLaunchCallback(
+      {
+        state: 'state-1',
+        code: 'auth-code',
+        now: new Date('2026-06-16T12:00:00Z'),
+        config: {
+          tenant: {
+            vendor: 'smart_generic',
+            fhirBaseUrl: 'https://ehr.example.test/fhir/R4',
+          },
+          clientId: 'smart-client',
+          tokenEndpoint: 'https://ehr.example.test/oauth2/token',
+          authMethod: 'public_pkce',
+          jwksUrl: null,
+          privateKeyRef: null,
+          issuer: 'https://ehr.example.test',
+          idTokenJwksUrl: 'https://ehr.example.test/oauth2/jwks',
+        },
+      },
+      fetchMock,
+    )).rejects.toMatchObject({ code: 'smart_id_token_missing' });
+    expect(mockSql).toHaveBeenCalledTimes(2);
+  });
+});
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -376,4 +593,47 @@ function jsonResponse(body: unknown, status = 200): Response {
 function createPrivateKeyPem(): string {
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   return privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+}
+
+async function createSignedSmartIdToken(input: {
+  issuer?: string;
+  audience?: string | string[];
+  nonce: string;
+  now: Date;
+  expiresAt?: Date;
+  extraClaims?: JWTPayload;
+}): Promise<{ idToken: string; jwks: JSONWebKeySet }> {
+  const kid = 'smart-id-key-1';
+  const { publicKey, privateKey } = await generateKeyPair('ES256');
+  const publicJwk = await exportJWK(publicKey);
+  const issuedAt = Math.floor(input.now.getTime() / 1000);
+  const expiresAt = Math.floor(
+    (input.expiresAt?.getTime() ?? input.now.getTime() + 5 * 60 * 1000) / 1000,
+  );
+  const idToken = await new SignJWT({
+    nonce: input.nonce,
+    token_use: 'id',
+    ...input.extraClaims,
+  })
+    .setProtectedHeader({ alg: 'ES256', kid })
+    .setIssuer(input.issuer ?? 'https://ehr.example.test')
+    .setAudience(input.audience ?? 'smart-client')
+    .setSubject('Practitioner/doc-1')
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(expiresAt)
+    .sign(privateKey);
+
+  return {
+    idToken,
+    jwks: {
+      keys: [
+        {
+          ...publicJwk,
+          kid,
+          alg: 'ES256',
+          use: 'sig',
+        },
+      ],
+    },
+  };
 }

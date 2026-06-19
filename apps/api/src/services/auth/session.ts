@@ -21,6 +21,12 @@ export interface IssuedAuthSession {
   mfa_required: boolean;
 }
 
+export interface IssueSessionContext {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  mfaVerifiedAt?: Date | string | null;
+}
+
 export async function resolveProviderId(orgId: number | null): Promise<number | undefined> {
   if (!orgId) return undefined;
 
@@ -57,10 +63,29 @@ export function formatAuthUser(row: AuthUserRow, providerId?: number): User {
 export async function issueAuthSession(
   fastify: FastifyInstance,
   user: AuthUserRow,
+  context: IssueSessionContext = {},
 ): Promise<IssuedAuthSession> {
   const role = isUserRole(user.role) ? user.role : 'analyst';
   const providerId = await resolveProviderId(user.org_id);
   const permissions = permissionsForRole(role);
+
+  const refreshToken = crypto.randomUUID();
+  const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  const [refreshRow] = await sql<{ id: string }[]>`
+    INSERT INTO refresh_tokens (user_id, token_hash, expires_at, last_used_at, ip_address, user_agent, mfa_verified_at)
+    VALUES (
+      ${user.id}::UUID,
+      ${refreshHash},
+      ${refreshExpiry.toISOString()},
+      NOW(),
+      ${context.ipAddress ?? null},
+      ${context.userAgent ?? null},
+      ${context.mfaVerifiedAt instanceof Date ? context.mfaVerifiedAt.toISOString() : context.mfaVerifiedAt ?? null}
+    )
+    RETURNING id
+  `;
 
   const payload = {
     sub: user.id,
@@ -69,19 +94,12 @@ export async function issueAuthSession(
     roles: [role],
     permissions,
     org_id: String(user.org_id ?? ''),
+    ...(refreshRow?.id ? { session_id: refreshRow.id } : {}),
     ...(providerId !== undefined ? { provider_id: providerId } : {}),
     ...(user.must_change_password ? { must_change_password: true } : {}),
   };
 
   const accessToken = fastify.jwt.sign(payload);
-  const refreshToken = crypto.randomUUID();
-  const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-  const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  await sql`
-    INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-    VALUES (${user.id}::UUID, ${refreshHash}, ${refreshExpiry.toISOString()})
-  `;
 
   return {
     user: formatAuthUser(user, providerId),

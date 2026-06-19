@@ -19,6 +19,10 @@ const {
   mockListQdmBridgeIssues,
   mockAuditLog,
   mockSql,
+  mockGetSystemHealth,
+  mockCreatePendingPasswordHash,
+  mockCreateUserInvite,
+  mockSendInviteEmail,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
     readonly code: string;
@@ -47,6 +51,10 @@ const {
     mockListQdmBridgeIssues: vi.fn(),
     mockAuditLog: vi.fn(),
     mockSql: vi.fn(),
+    mockGetSystemHealth: vi.fn(),
+    mockCreatePendingPasswordHash: vi.fn(),
+    mockCreateUserInvite: vi.fn(),
+    mockSendInviteEmail: vi.fn(),
   };
 });
 
@@ -100,6 +108,14 @@ vi.mock('../../services/auth/oidc/discovery.js', () => ({ fetchOidcDiscovery: vi
 vi.mock('../../services/auth/oidc/providerConfig.js', () => ({
   getOidcProviderConfig: vi.fn(() => ({ enabled: false })),
 }));
+vi.mock('../../services/systemHealth.js', () => ({
+  getSystemHealth: mockGetSystemHealth,
+}));
+vi.mock('../../services/auth/invites.js', () => ({
+  createPendingPasswordHash: mockCreatePendingPasswordHash,
+  createUserInvite: mockCreateUserInvite,
+  sendInviteEmail: mockSendInviteEmail,
+}));
 
 import adminRoutes from './index.js';
 
@@ -121,6 +137,523 @@ const PROVIDER_USER: JwtPayload = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockSql.mockResolvedValue([]);
+  mockGetSystemHealth.mockResolvedValue(systemHealthPayload());
+  mockCreatePendingPasswordHash.mockResolvedValue('$2b$12$pendinginvitehash');
+  mockCreateUserInvite.mockResolvedValue({
+    invite: {
+      id: '99999999-9999-4999-8999-999999999999',
+      user_id: '11111111-1111-4111-8111-111111111111',
+      expires_at: '2099-01-01T00:00:00Z',
+      created_at: '2026-06-18T00:00:00Z',
+    },
+    token: 'raw-token-not-persisted',
+    activationUrl: 'http://localhost:5173/accept-invite?token=raw-token-not-persisted',
+  });
+  mockSendInviteEmail.mockResolvedValue(false);
+});
+
+function systemHealthPayload() {
+  return {
+    api: { status: 'ok', node_env: 'test' },
+    database: { status: 'ok' },
+    redis: { status: 'ok' },
+    solr: { status: 'disabled', enabled: false },
+    auth: { local_enabled: true, oidc_enabled: false },
+    workers: {
+      status: 'degraded',
+      total_workers: 3,
+      counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
+      queues: [
+        {
+          name: 'medgnosis-ehr-bulk-import',
+          label: 'EHR Bulk import',
+          role: 'ehr_bulk',
+          status: 'ok',
+          workers: 1,
+          paused: false,
+          counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
+        },
+      ],
+    },
+    ehr_bulk: {
+      status: 'ok',
+      queue_enabled: true,
+      tenants: {
+        total: 2,
+        active: 1,
+        with_backend_services: 1,
+        with_capability_snapshots: 1,
+        ready_for_bulk: 1,
+      },
+      schedules: {
+        enabled: 1,
+        due: 0,
+        failed_24h: 0,
+        next_run_at: '2026-06-20 02:00:00+00',
+      },
+      bulk_jobs: {
+        active: 1,
+        failed_24h: 0,
+        completed_24h: 3,
+        latest_completed_at: '2026-06-19 01:30:00+00',
+      },
+      issues: [],
+    },
+    duration_ms: 12,
+  };
+}
+
+describe('admin system health route', () => {
+  it('returns worker queue and EHR Bulk readiness sections', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/system-health',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        workers: {
+          total_workers: 3,
+          queues: [{ name: 'medgnosis-ehr-bulk-import', status: 'ok' }],
+        },
+        ehr_bulk: {
+          status: 'ok',
+          tenants: { ready_for_bulk: 1 },
+          schedules: { enabled: 1 },
+          bulk_jobs: { completed_24h: 3 },
+        },
+      },
+    });
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+});
+
+describe('admin authentication provider routes', () => {
+  it('lists only currently supported auth provider surfaces and masks stored secrets', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        provider_type: 'ldap',
+        display_name: 'LDAP',
+        enabled: false,
+        settings: { bind_password: 'stored-secret' },
+        updated_at: '2026-06-19T00:00:00Z',
+      },
+      {
+        provider_type: 'local',
+        display_name: 'Local',
+        enabled: true,
+        settings: {},
+        updated_at: '2026-06-19T00:00:00Z',
+      },
+      {
+        provider_type: 'oidc',
+        display_name: 'Authentik',
+        enabled: true,
+        settings: {
+          client_id: 'medgnosis',
+          client_secret: 'stored-secret',
+          client_secret_ref: 'OIDC_CLIENT_SECRET',
+        },
+        updated_at: '2026-06-19T00:00:00Z',
+      },
+      {
+        provider_type: 'saml2',
+        display_name: 'SAML',
+        enabled: false,
+        settings: {},
+        updated_at: '2026-06-19T00:00:00Z',
+      },
+    ]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/auth-providers',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        providers: [
+          { provider_type: 'local', display_name: 'Local', enabled: true },
+          {
+            provider_type: 'oidc',
+            display_name: 'Authentik',
+            enabled: true,
+            settings: {
+              client_id: 'medgnosis',
+              client_secret: '__stored__',
+              client_secret_ref: 'OIDC_CLIENT_SECRET',
+            },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(res.json())).not.toContain('ldap');
+    expect(JSON.stringify(res.json())).not.toContain('saml2');
+    expect(JSON.stringify(res.json())).not.toContain('stored-secret');
+    await app.close();
+  });
+
+  it('updates only managed OIDC provider settings and audits the change', async () => {
+    mockSql
+      .mockResolvedValueOnce([
+        {
+          provider_type: 'oidc',
+          display_name: 'Authentik',
+          enabled: false,
+          settings: { client_secret_ref: 'OIDC_CLIENT_SECRET' },
+          updated_at: '2026-06-19T00:00:00Z',
+        },
+      ])
+      .mockImplementationOnce(((strings: TemplateStringsArray, ...values: unknown[]) => {
+        const query = strings.join('');
+        expect(query).toContain('INSERT INTO public.auth_provider_settings');
+        expect(values[0]).toBe('oidc');
+        expect(values[1]).toBe('Enterprise SSO');
+        expect(values[2]).toBe(true);
+        expect(JSON.parse(values[3] as string)).toMatchObject({
+          label: 'Enterprise SSO',
+          discovery_url: 'https://auth.example.test/.well-known/openid-configuration',
+          client_id: 'medgnosis',
+          client_secret_ref: 'OIDC_CLIENT_SECRET',
+          scopes: ['openid', 'email'],
+          allowed_groups: ['Medgnosis Admins'],
+          admin_groups: ['Medgnosis Admins'],
+        });
+        return Promise.resolve([
+          {
+            provider_type: 'oidc',
+            display_name: 'Enterprise SSO',
+            enabled: true,
+            settings: JSON.parse(values[3] as string),
+            updated_at: '2026-06-19T00:01:00Z',
+          },
+        ]);
+      }) as typeof mockSql);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/auth-providers/oidc',
+      payload: {
+        display_name: ' Enterprise SSO ',
+        enabled: true,
+        settings: {
+          label: ' Enterprise SSO ',
+          discovery_url: ' https://auth.example.test/.well-known/openid-configuration ',
+          client_id: ' medgnosis ',
+          client_secret_ref: ' OIDC_CLIENT_SECRET ',
+          scopes: 'openid, email',
+          allowed_groups: ['Medgnosis Admins'],
+          admin_groups: 'Medgnosis Admins',
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { provider: { provider_type: 'oidc', display_name: 'Enterprise SSO', enabled: true } },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'auth_provider_update',
+      'auth_provider',
+      'oidc',
+      { provider_type: 'oidc', enabled: true },
+    );
+    await app.close();
+  });
+
+  it.each(['local', 'ldap', 'oauth2', 'saml2'])(
+    'rejects unsupported auth provider mutation for %s before persistence',
+    async (providerType) => {
+      const app = await buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/admin/auth-providers/${providerType}`,
+        payload: { enabled: true },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        success: false,
+        error: { code: 'UNSUPPORTED_PROVIDER' },
+      });
+      expect(mockSql).not.toHaveBeenCalled();
+      expect(mockAuditLog).not.toHaveBeenCalled();
+      await app.close();
+    },
+  );
+});
+
+describe('admin user invitation routes', () => {
+  it('lists users with pending invite status metadata', async () => {
+    const pendingInvite = {
+      id: '99999999-9999-4999-8999-999999999999',
+      expires_at: '2099-01-01T00:00:00Z',
+      created_at: '2026-06-18T00:00:00Z',
+      status: 'pending',
+    };
+    mockSql.mockImplementation(((strings: TemplateStringsArray) => {
+      const query = strings.join('');
+      expect(query).toContain('public.app_user_invites');
+      expect(query).toContain('pending_invite');
+      return Promise.resolve([
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'pending@example.test',
+          first_name: 'Pending',
+          last_name: 'User',
+          role: 'provider',
+          is_active: false,
+          created_at: '2026-06-18T00:00:00Z',
+          last_login_at: null,
+          provider_first_name: null,
+          provider_last_name: null,
+          pending_invite: pendingInvite,
+        },
+      ]);
+    }) as typeof mockSql);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        users: [
+          {
+            email: 'pending@example.test',
+            is_active: false,
+            pending_invite: pendingInvite,
+          },
+        ],
+      },
+    });
+    await app.close();
+  });
+
+  it('creates admin-invited users as inactive and issues a tokenized invite', async () => {
+    const createdUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'new.user@example.test',
+      first_name: 'New',
+      last_name: 'User',
+      role: 'provider',
+      is_active: false,
+      created_at: '2026-06-18T00:00:00Z',
+    };
+
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      if (query.includes('SELECT id FROM public.app_users')) {
+        expect(values[0]).toBe('new.user@example.test');
+        return Promise.resolve([]);
+      }
+      if (query.includes('INSERT INTO public.app_users')) {
+        expect(values[0]).toBe('new.user@example.test');
+        expect(values[1]).toBe('New');
+        expect(values[2]).toBe('User');
+        expect(values[3]).toBe('provider');
+        expect(values[4]).toBe('$2b$12$pendinginvitehash');
+        expect(query).toContain('must_change_password, is_active');
+        expect(query).toContain('FALSE');
+        return Promise.resolve([createdUser]);
+      }
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      payload: {
+        email: ' New.User@Example.Test ',
+        first_name: ' New ',
+        last_name: ' User ',
+        role: 'provider',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        user: { email: 'new.user@example.test', is_active: false },
+        invite: {
+          id: '99999999-9999-4999-8999-999999999999',
+          activation_url: 'http://localhost:5173/accept-invite?token=raw-token-not-persisted',
+          email_sent: false,
+        },
+      },
+    });
+    expect(mockCreateUserInvite).toHaveBeenCalledWith({
+      userId: createdUser.id,
+      createdBy: ADMIN_USER.sub,
+    });
+    expect(mockSendInviteEmail).toHaveBeenCalledWith({
+      toEmail: createdUser.email,
+      firstName: createdUser.first_name,
+      activationUrl: 'http://localhost:5173/accept-invite?token=raw-token-not-persisted',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'user_invite_create',
+      'app_user',
+      createdUser.id,
+      {
+        invite_id: '99999999-9999-4999-8999-999999999999',
+        role: createdUser.role,
+        email_sent: false,
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    );
+    await app.close();
+  });
+
+  it('resends invites only for inactive users', async () => {
+    const invitedUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'pending@example.test',
+      first_name: 'Pending',
+      last_name: 'User',
+      role: 'analyst',
+      is_active: false,
+    };
+    mockSql.mockResolvedValueOnce([invitedUser]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${invitedUser.id}/resend-invite`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        user: { email: 'pending@example.test', is_active: false },
+        invite: { email_sent: false },
+      },
+    });
+    expect(mockCreateUserInvite).toHaveBeenCalledWith({
+      userId: invitedUser.id,
+      createdBy: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'user_invite_resend',
+      'app_user',
+      invitedUser.id,
+      {
+        invite_id: '99999999-9999-4999-8999-999999999999',
+        role: invitedUser.role,
+        email_sent: false,
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    );
+    await app.close();
+  });
+
+  it('does not resend invites for already active users', async () => {
+    mockSql.mockResolvedValueOnce([{
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'active@example.test',
+      first_name: 'Active',
+      last_name: 'User',
+      role: 'analyst',
+      is_active: true,
+    }]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111/resend-invite',
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('revokes the latest pending invite for inactive users', async () => {
+    const invitedUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'pending@example.test',
+      first_name: 'Pending',
+      last_name: 'User',
+      role: 'analyst',
+      is_active: false,
+    };
+    const revokedInvite = {
+      id: '99999999-9999-4999-8999-999999999999',
+      user_id: invitedUser.id,
+      expires_at: '2099-01-01T00:00:00Z',
+      revoked_at: '2026-06-18T12:00:00Z',
+    };
+    mockSql
+      .mockResolvedValueOnce([invitedUser])
+      .mockResolvedValueOnce([revokedInvite]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${invitedUser.id}/revoke-invite`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        user: { email: 'pending@example.test', is_active: false },
+        invite: revokedInvite,
+      },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'user_invite_revoke',
+      'app_user',
+      invitedUser.id,
+      {
+        invite_id: revokedInvite.id,
+        role: invitedUser.role,
+        expires_at: revokedInvite.expires_at,
+        revoked_at: revokedInvite.revoked_at,
+      },
+    );
+    await app.close();
+  });
+
+  it('does not revoke invites for already active users', async () => {
+    mockSql.mockResolvedValueOnce([{
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'active@example.test',
+      first_name: 'Active',
+      last_name: 'User',
+      role: 'analyst',
+      is_active: true,
+    }]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111/revoke-invite',
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
 
 describe('admin measure promotion governance routes', () => {

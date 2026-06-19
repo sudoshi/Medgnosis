@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Eye, GitCompareArrows, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, ClipboardCheck, Eye, GitCompareArrows, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api, apiErrorMessage } from '../../services/api.js';
 import { fmtDate, fmtDateTime } from './helpers.js';
 import type {
   MeasurePromotionConfig,
+  MeasureDossier,
   PopulationCounts,
   QdmBridgeIssue,
   QdmBridgeOperationalStatus,
@@ -67,6 +68,15 @@ function flagText(flags: { denominator: boolean; numerator: boolean; exclusion: 
 function countText(counts: PopulationCounts | undefined) {
   if (!counts) return '-';
   return `${counts.denominator}/${counts.numerator}/${counts.exclusion}`;
+}
+
+function coverageCountText(counts: {
+  initialPopulation: number;
+  denominator: number;
+  denominatorExclusion: number;
+  numerator: number;
+}) {
+  return `${counts.initialPopulation}/${counts.denominator}/${counts.denominatorExclusion}/${counts.numerator}`;
 }
 
 function jsonPreview(value: unknown, maxItems?: number) {
@@ -338,6 +348,64 @@ function OpsPanel({
   );
 }
 
+function DossierPanel({
+  dossier,
+  isLoading,
+  error,
+}: {
+  dossier: MeasureDossier | undefined;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const coverage = dossier?.components.testDeckCoverage ?? null;
+
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <ClipboardCheck size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Dossier Evidence</h3>
+      </div>
+      {isLoading && <p className="text-sm text-ghost">Loading dossier...</p>}
+      {Boolean(error) && <p className="text-sm text-crimson">{apiErrorMessage(error, 'Dossier load failed')}</p>}
+      {!isLoading && !error && (
+        <div className="space-y-3">
+          <div className="rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-dim">{dossier?.binding?.ecqm_version ?? dossier?.measureCode ?? DEFAULT_MEASURE}</span>
+              <Badge variant={coverage ? 'emerald' : 'dim'}>{coverage ? labelize(coverage.status) : 'No test deck'}</Badge>
+            </div>
+            <p className="mt-2 truncate font-data text-ghost">
+              {dossier?.components.fhirMeasureUrl ?? 'No FHIR Measure binding'}
+            </p>
+          </div>
+
+          {coverage ? (
+            <>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Test deck</p>
+                  <p className="mt-1 font-data text-bright">{coverage.subjectCount}</p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Smoke IP/D/X/N</p>
+                  <p className="mt-1 font-data text-bright">{coverageCountText(coverage.populationSmoke)}</p>
+                </div>
+              </div>
+              <div className="rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="font-medium text-bright">{coverage.testDeck}</p>
+                <p className="mt-1 font-data text-ghost">{coverage.evidenceSource}</p>
+                <p className="mt-2 text-dim">{coverage.promotionGate}</p>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-ghost">No validated local test-deck evidence is registered for this measure.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MeasureGovernanceTab() {
   const [selectedMeasure, setSelectedMeasure] = useState(DEFAULT_MEASURE);
   const [denominatorDrift, setDenominatorDrift] = useState(DEFAULT_DENOMINATOR_DRIFT);
@@ -398,6 +466,12 @@ export function MeasureGovernanceTab() {
     enabled: Boolean(selectedMeasure),
     staleTime: 30_000,
   });
+  const dossierQuery = useQuery({
+    queryKey: ['admin', 'measure-governance', 'dossier', selectedMeasure],
+    queryFn: () => api.get<MeasureDossier>(`/measures/${encodeURIComponent(selectedMeasure)}/dossier`),
+    enabled: Boolean(selectedMeasure),
+    staleTime: 60_000,
+  });
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -419,6 +493,7 @@ export function MeasureGovernanceTab() {
             worklistQuery.refetch();
             opsStatusQuery.refetch();
             opsIssuesQuery.refetch();
+            dossierQuery.refetch();
             if (selectedRowId) detailQuery.refetch();
           }}
           disabled={
@@ -426,7 +501,8 @@ export function MeasureGovernanceTab() {
             worklistQuery.isFetching ||
             detailQuery.isFetching ||
             opsStatusQuery.isFetching ||
-            opsIssuesQuery.isFetching
+            opsIssuesQuery.isFetching ||
+            dossierQuery.isFetching
           }
         >
           <RefreshCw />
@@ -513,6 +589,12 @@ export function MeasureGovernanceTab() {
             issues={opsIssuesQuery.data?.data?.issues ?? []}
             isLoading={opsStatusQuery.isLoading || opsIssuesQuery.isLoading}
             error={opsStatusQuery.error ?? opsIssuesQuery.error}
+          />
+
+          <DossierPanel
+            dossier={dossierQuery.data?.data}
+            isLoading={dossierQuery.isLoading}
+            error={dossierQuery.error}
           />
         </div>
 

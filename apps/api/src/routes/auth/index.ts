@@ -2,12 +2,22 @@
 // Medgnosis API — Auth routes
 // =============================================================================
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { sql } from '@medgnosis/db';
-import { loginRequestSchema, registerRequestSchema, changePasswordSchema } from '@medgnosis/shared';
+import {
+  loginRequestSchema,
+  registerRequestSchema,
+  changePasswordSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
+  mfaSetupConfirmSchema,
+  mfaVerifySchema,
+  mfaDisableSchema,
+} from '@medgnosis/shared';
 import type { UserRole } from '@medgnosis/shared';
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
+import QRCode from 'qrcode';
 import { config } from '../../config.js';
 import { formatAuthUser, issueAuthSession, resolveProviderId } from '../../services/auth/session.js';
 import { permissionsForRole } from '../../services/auth/permissions.js';
@@ -28,6 +38,118 @@ import {
   OidcAccessDeniedError,
   reconcileOidcUser,
 } from '../../services/auth/oidc/reconciliation.js';
+import {
+  activateInviteWithPassword,
+  getPendingInviteByToken,
+} from '../../services/auth/invites.js';
+import {
+  consumePasswordReset,
+  createPasswordReset,
+  hashResetPassword,
+  sendPasswordResetEmail,
+} from '../../services/auth/passwordReset.js';
+import {
+  buildOtpAuthUrl,
+  consumeRecoveryCode,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  parseRecoveryCodeRecords,
+  protectMfaSecret,
+  recoveryCodeRecords,
+  unprotectMfaSecret,
+  verifyTotpCode,
+  verifyTotpCodeWithStep,
+} from '../../services/auth/mfa.js';
+
+const PASSWORD_RESET_RESPONSE_MESSAGE =
+  'If this email is eligible for password reset, instructions have been sent to your inbox.';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MFA_CHALLENGE_EXPIRES_SECONDS = 5 * 60;
+const MFA_SETUP_EXPIRES_SECONDS = 10 * 60;
+
+interface AuthSessionRow {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  revoked: boolean;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  active: boolean;
+}
+
+interface MfaUserRow {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  org_id: number | null;
+  mfa_enabled: boolean;
+  mfa_secret: string | null;
+  mfa_secret_pending: string | null;
+  mfa_secret_pending_expires_at: string | null;
+  mfa_recovery_codes: unknown;
+  mfa_last_used_step: number | null;
+  must_change_password: boolean;
+}
+
+async function issueMfaChallenge(
+  fastify: FastifyInstance,
+  user: {
+    id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    org_id: number | null;
+    must_change_password?: boolean;
+  },
+) {
+  const role = user.role as UserRole;
+  const providerId = await resolveProviderId(user.org_id);
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role,
+    roles: [role],
+    permissions: permissionsForRole(role),
+    org_id: String(user.org_id ?? ''),
+    ...(providerId !== undefined ? { provider_id: providerId } : {}),
+    ...(user.must_change_password ? { must_change_password: true } : {}),
+    mfa_pending: true,
+  };
+
+  return {
+    mfa_required: true,
+    mfa_token: fastify.jwt.sign(payload, { expiresIn: `${MFA_CHALLENGE_EXPIRES_SECONDS}s` }),
+    expires_in: MFA_CHALLENGE_EXPIRES_SECONDS,
+    user: {
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      role,
+    },
+  };
+}
+
+async function issueVerifiedMfaSession(
+  fastify: FastifyInstance,
+  request: FastifyRequest,
+  user: MfaUserRow,
+  verifiedAt = new Date(),
+) {
+  return issueAuthSession(fastify, user, {
+    ...sessionContextFromRequest(request),
+    mfaVerifiedAt: verifiedAt,
+  });
+}
+
+function mfaSecretKeyMaterial(): string {
+  return `medgnosis:mfa:${config.jwtSecret}`;
+}
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /auth/providers
@@ -44,6 +166,201 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         oidc_redirect_path: oidcEnabled ? '/auth/oidc/redirect' : null,
       },
     };
+  });
+
+  // POST /auth/request-password-reset
+  fastify.post(
+    '/request-password-reset',
+    {
+      config: {
+        rateLimit: { max: 5, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = passwordResetRequestSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const normalizedEmail = parseResult.data.email.trim().toLowerCase();
+      const genericResponse = {
+        success: true,
+        data: { message: PASSWORD_RESET_RESPONSE_MESSAGE },
+      };
+
+      if (!config.localAuthEnabled) {
+        return reply.send(genericResponse);
+      }
+
+      const [user] = await sql<{
+        id: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+      }[]>`
+        SELECT id, email, first_name, last_name, role
+        FROM public.app_users
+        WHERE lower(email) = ${normalizedEmail}
+          AND is_active = TRUE
+      `;
+
+      if (!user) {
+        return reply.send(genericResponse);
+      }
+
+      const reset = await createPasswordReset({ userId: user.id });
+      let emailSent = false;
+      try {
+        emailSent = await sendPasswordResetEmail({
+          toEmail: user.email,
+          firstName: user.first_name,
+          resetUrl: reset.resetUrl,
+          expiresAt: reset.reset.expires_at,
+        });
+      } catch (err) {
+        fastify.log.error({ err, reset_id: reset.reset.id }, 'Failed to send password reset email');
+      }
+
+      await request.auditLog('password_reset_request', 'auth', user.id, {
+        reset_id: reset.reset.id,
+        role: user.role,
+        email_sent: emailSent,
+        expires_at: reset.reset.expires_at,
+      });
+
+      return reply.send(genericResponse);
+    },
+  );
+
+  // POST /auth/reset-password
+  fastify.post(
+    '/reset-password',
+    {
+      config: {
+        rateLimit: { max: 10, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = passwordResetConfirmSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const passwordHash = await hashResetPassword(parseResult.data.password);
+      const consumed = await consumePasswordReset(parseResult.data.token, passwordHash);
+
+      if (!consumed) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'RESET_TOKEN_INVALID', message: 'Reset link is invalid or expired' },
+        });
+      }
+
+      await request.auditLog('password_reset_complete', 'auth', consumed.user_id, {
+        reset_id: consumed.id,
+        role: consumed.role,
+        consumed_at: consumed.consumed_at,
+        sessions_revoked: true,
+      });
+
+      return reply.send({
+        success: true,
+        data: { message: 'Password reset successfully. Sign in with your new password.' },
+      });
+    },
+  );
+
+  // POST /auth/accept-invite
+  fastify.post('/accept-invite', async (request, reply) => {
+    const token = normalizeInviteToken((request.body as { token?: unknown } | null)?.token);
+    if (!token) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'token is required' },
+      });
+    }
+
+    const invite = await getPendingInviteByToken(token);
+    if (!invite) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVITE_INVALID', message: 'Invitation is invalid or expired' },
+      });
+    }
+
+    await request.auditLog('invite_accept', 'auth_invite', invite.id, {
+      user_id: invite.user_id,
+    });
+
+    return reply.send({
+      success: true,
+      data: {
+        invite: {
+          email: invite.email,
+          first_name: invite.first_name,
+          last_name: invite.last_name,
+          role: invite.role,
+          expires_at: invite.expires_at,
+        },
+      },
+    });
+  });
+
+  // POST /auth/set-password
+  fastify.post('/set-password', async (request, reply) => {
+    const body = request.body as { token?: unknown; password?: unknown } | null;
+    const token = normalizeInviteToken(body?.token);
+    const password = normalizeInvitePassword(body?.password);
+
+    if (!token || !password) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'token and a valid password are required' },
+      });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const activated = await activateInviteWithPassword(token, passwordHash);
+
+    if (!activated) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVITE_INVALID', message: 'Invitation is invalid or expired' },
+      });
+    }
+
+    await request.auditLog('invite_activate', 'auth_invite', activated.id, {
+      user_id: activated.user_id,
+    });
+
+    return reply.send({
+      success: true,
+      data: {
+        user: {
+          id: activated.user_id,
+          email: activated.email,
+          first_name: activated.first_name,
+          last_name: activated.last_name,
+          role: activated.role,
+        },
+        message: 'Account activated successfully',
+      },
+    });
   });
 
   // GET /auth/oidc/redirect
@@ -217,9 +534,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         role: string;
         org_id: number | null;
         mfa_enabled: boolean;
+        mfa_secret: string | null;
         must_change_password: boolean;
       }[]>`
-        SELECT id, email, first_name, last_name, role, org_id, mfa_enabled, must_change_password
+        SELECT id, email, first_name, last_name, role, org_id, mfa_enabled, mfa_secret, must_change_password
         FROM public.app_users
         WHERE id = ${payload.userId}::uuid AND is_active = TRUE
       `;
@@ -231,7 +549,21 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         });
       }
 
-      const session = await issueAuthSession(fastify, user);
+      if (user.mfa_enabled) {
+        if (!user.mfa_secret) {
+          fastify.log.warn({ userId: user.id }, 'MFA-enabled OIDC user has no TOTP secret');
+          return reply.status(403).send({
+            success: false,
+            error: { code: 'MFA_NOT_CONFIGURED', message: 'MFA is not configured correctly for this account' },
+          });
+        }
+
+        const challenge = await issueMfaChallenge(fastify, user);
+        await request.auditLog('oidc_mfa_challenge', 'auth', user.id, { provider: 'authentik' });
+        return reply.send({ success: true, data: challenge });
+      }
+
+      const session = await issueAuthSession(fastify, user, sessionContextFromRequest(request));
       await request.auditLog('oidc_exchange', 'auth', user.id, { provider: 'authentik' });
 
       return reply.send({ success: true, data: session });
@@ -272,10 +604,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       role: string;
       org_id: number | null;
       mfa_enabled: boolean;
+      mfa_secret: string | null;
       is_active: boolean;
       must_change_password: boolean;
     }[]>`
-      SELECT id, email, password_hash, first_name, last_name, role, org_id, mfa_enabled, is_active, must_change_password
+      SELECT id, email, password_hash, first_name, last_name, role, org_id, mfa_enabled, mfa_secret, is_active, must_change_password
       FROM app_users
       WHERE lower(email) = ${normalizedEmail}
     `;
@@ -298,7 +631,22 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }
 
     await sql`UPDATE app_users SET last_login_at = NOW() WHERE id = ${user.id}::UUID`;
-    const session = await issueAuthSession(fastify, user);
+
+    if (user.mfa_enabled) {
+      if (!user.mfa_secret) {
+        fastify.log.warn({ userId: user.id }, 'MFA-enabled user has no TOTP secret');
+        return reply.status(403).send({
+          success: false,
+          error: { code: 'MFA_NOT_CONFIGURED', message: 'MFA is not configured correctly for this account' },
+        });
+      }
+
+      const challenge = await issueMfaChallenge(fastify, user);
+      await request.auditLog('login_mfa_challenge', 'auth', user.id);
+      return reply.send({ success: true, data: challenge });
+    }
+
+    const session = await issueAuthSession(fastify, user, sessionContextFromRequest(request));
     await request.auditLog('login', 'auth', user.id);
 
     return reply.send({
@@ -307,6 +655,426 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     });
   });
 
+  // POST /auth/mfa/setup
+  fastify.post(
+    '/mfa/setup',
+    {
+      preHandler: [fastify.authenticate],
+      config: {
+        rateLimit: { max: 5, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const [user] = await sql<{
+        id: string;
+        email: string;
+        mfa_enabled: boolean;
+      }[]>`
+        SELECT id, email, mfa_enabled
+        FROM public.app_users
+        WHERE id = ${request.user.sub}::uuid AND is_active = TRUE
+      `;
+
+      if (!user) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+        });
+      }
+
+      if (user.mfa_enabled) {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'MFA_ALREADY_ENABLED', message: 'MFA is already enabled' },
+        });
+      }
+
+      const secret = generateTotpSecret();
+      const encryptedSecret = protectMfaSecret(secret, mfaSecretKeyMaterial());
+      const expiresAt = new Date(Date.now() + MFA_SETUP_EXPIRES_SECONDS * 1000);
+      const otpauthUrl = buildOtpAuthUrl(user.email, secret);
+      const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 192,
+      });
+
+      await sql`
+        UPDATE public.app_users
+        SET mfa_secret_pending = ${encryptedSecret},
+            mfa_secret_pending_expires_at = ${expiresAt.toISOString()},
+            updated_at = NOW()
+        WHERE id = ${user.id}::uuid
+      `;
+
+      await request.auditLog('mfa_setup_start', 'auth_mfa', user.id, {
+        expires_at: expiresAt.toISOString(),
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          manual_secret: secret,
+          otpauth_url: otpauthUrl,
+          qr_code_data_url: qrCodeDataUrl,
+          expires_in: MFA_SETUP_EXPIRES_SECONDS,
+        },
+      });
+    },
+  );
+
+  // POST /auth/mfa/confirm
+  fastify.post(
+    '/mfa/confirm',
+    {
+      preHandler: [fastify.authenticate],
+      config: {
+        rateLimit: { max: 10, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = mfaSetupConfirmSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const result = await sql.begin(async (tx) => {
+        const rows = await tx.unsafe(
+          `
+          SELECT id, email, first_name, last_name, role, org_id, mfa_enabled,
+                 mfa_secret, mfa_secret_pending, mfa_secret_pending_expires_at,
+                 mfa_recovery_codes, mfa_last_used_step, must_change_password
+          FROM public.app_users
+          WHERE id = $1::uuid AND is_active = TRUE
+          FOR UPDATE
+          `,
+          [request.user.sub],
+        ) as MfaUserRow[];
+        const [user] = rows;
+
+        if (!user) {
+          return { status: 404, error: { code: 'USER_NOT_FOUND', message: 'User not found' } };
+        }
+        if (user.mfa_enabled) {
+          return { status: 409, error: { code: 'MFA_ALREADY_ENABLED', message: 'MFA is already enabled' } };
+        }
+        if (!user.mfa_secret_pending || !user.mfa_secret_pending_expires_at) {
+          return { status: 400, error: { code: 'MFA_SETUP_REQUIRED', message: 'Start MFA setup before confirming' } };
+        }
+        if (new Date(user.mfa_secret_pending_expires_at) < new Date()) {
+          return { status: 400, error: { code: 'MFA_SETUP_EXPIRED', message: 'MFA setup expired. Start again.' } };
+        }
+
+        const secret = unprotectMfaSecret(user.mfa_secret_pending, mfaSecretKeyMaterial());
+        const verified = verifyTotpCodeWithStep(secret, parseResult.data.code);
+        if (!verified.valid || verified.step === null) {
+          return { status: 400, error: { code: 'MFA_CODE_INVALID', message: 'Authenticator code is invalid' } };
+        }
+
+        const recoveryCodes = generateRecoveryCodes();
+        const records = recoveryCodeRecords(recoveryCodes);
+        const updatedRows = await tx.unsafe(
+          `
+          UPDATE public.app_users
+          SET mfa_enabled = TRUE,
+              mfa_secret = mfa_secret_pending,
+              mfa_secret_pending = NULL,
+              mfa_secret_pending_expires_at = NULL,
+              mfa_recovery_codes = $2::jsonb,
+              mfa_enabled_at = NOW(),
+              mfa_last_used_step = $3::bigint,
+              updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING id, email, first_name, last_name, role, org_id, mfa_enabled,
+                    mfa_secret, mfa_secret_pending, mfa_secret_pending_expires_at,
+                    mfa_recovery_codes, mfa_last_used_step, must_change_password
+          `,
+          [user.id, JSON.stringify(records), verified.step],
+        ) as MfaUserRow[];
+
+        if (request.user.session_id) {
+          await tx.unsafe(
+            `
+            UPDATE public.refresh_tokens
+            SET mfa_verified_at = NOW(),
+                last_used_at = NOW()
+            WHERE id = $2::uuid
+              AND user_id = $1::uuid
+              AND revoked = FALSE
+            `,
+            [user.id, request.user.session_id],
+          );
+          await tx.unsafe(
+            `
+            UPDATE public.refresh_tokens
+            SET revoked = TRUE,
+                revoked_at = COALESCE(revoked_at, NOW())
+            WHERE user_id = $1::uuid
+              AND id <> $2::uuid
+              AND revoked = FALSE
+            `,
+            [user.id, request.user.session_id],
+          );
+        } else {
+          await tx.unsafe(
+            `
+            UPDATE public.refresh_tokens
+            SET revoked = TRUE,
+                revoked_at = COALESCE(revoked_at, NOW())
+            WHERE user_id = $1::uuid
+              AND revoked = FALSE
+            `,
+            [user.id],
+          );
+        }
+
+        return { status: 200, user: updatedRows[0], recoveryCodes };
+      });
+
+      if (result.status !== 200 || !('user' in result) || !result.user) {
+        return reply.status(result.status).send({ success: false, error: result.error });
+      }
+
+      await request.auditLog('mfa_enable', 'auth_mfa', result.user.id, {
+        recovery_codes_issued: result.recoveryCodes.length,
+        other_sessions_revoked: true,
+      });
+
+      const providerId = await resolveProviderId(result.user.org_id);
+      return reply.send({
+        success: true,
+        data: {
+          user: formatAuthUser(result.user, providerId),
+          recovery_codes: result.recoveryCodes,
+        },
+      });
+    },
+  );
+
+  // POST /auth/mfa/verify
+  fastify.post(
+    '/mfa/verify',
+    {
+      config: {
+        rateLimit: { max: 10, timeWindow: '5 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = mfaVerifySchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      let pending;
+      try {
+        pending = await fastify.jwt.verify<{
+          sub: string;
+          email: string;
+          role: UserRole;
+          org_id: string;
+          mfa_pending?: boolean;
+        }>(parseResult.data.mfa_token);
+      } catch {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'MFA_TOKEN_INVALID', message: 'MFA challenge is invalid or expired' },
+        });
+      }
+
+      if (!pending.mfa_pending) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'MFA_TOKEN_INVALID', message: 'MFA challenge is invalid or expired' },
+        });
+      }
+
+      const verifiedAt = new Date();
+      const result = await sql.begin(async (tx) => {
+        const rows = await tx.unsafe(
+          `
+          SELECT id, email, first_name, last_name, role, org_id, mfa_enabled,
+                 mfa_secret, mfa_secret_pending, mfa_secret_pending_expires_at,
+                 mfa_recovery_codes, mfa_last_used_step, must_change_password
+          FROM public.app_users
+          WHERE id = $1::uuid AND is_active = TRUE
+          FOR UPDATE
+          `,
+          [pending.sub],
+        ) as MfaUserRow[];
+        const [user] = rows;
+
+        if (!user || !user.mfa_enabled || !user.mfa_secret) {
+          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+        }
+
+        const code = parseResult.data.code.trim();
+        const records = parseRecoveryCodeRecords(user.mfa_recovery_codes);
+        let acceptedStep: number | null = null;
+        let nextRecords = records;
+        let valid = false;
+        let method: 'totp' | 'recovery_code' = 'totp';
+
+        if (/^\d{6}$/.test(code)) {
+          const secret = unprotectMfaSecret(user.mfa_secret, mfaSecretKeyMaterial());
+          const verified = verifyTotpCodeWithStep(secret, code);
+          if (
+            verified.valid &&
+            verified.step !== null &&
+            (user.mfa_last_used_step === null || verified.step > Number(user.mfa_last_used_step))
+          ) {
+            acceptedStep = verified.step;
+            valid = true;
+          }
+        } else {
+          method = 'recovery_code';
+          const recovery = consumeRecoveryCode(records, code);
+          valid = recovery.valid;
+          nextRecords = recovery.records;
+        }
+
+        if (!valid) {
+          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+        }
+
+        await tx.unsafe(
+          `
+          UPDATE public.app_users
+          SET mfa_last_used_step = CASE
+                WHEN $2::bigint IS NULL THEN mfa_last_used_step
+                ELSE $2::bigint
+              END,
+              mfa_recovery_codes = $3::jsonb,
+              last_login_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1::uuid
+          `,
+          [user.id, acceptedStep, JSON.stringify(nextRecords)],
+        );
+
+        return { status: 200, user, method };
+      });
+
+      if (result.status !== 200 || !('user' in result) || !result.user) {
+        return reply.status(result.status).send({ success: false, error: result.error });
+      }
+
+      const session = await issueVerifiedMfaSession(fastify, request, result.user, verifiedAt);
+      await request.auditLog('login_mfa_verify', 'auth', result.user.id, {
+        method: result.method,
+      });
+
+      return reply.send({ success: true, data: session });
+    },
+  );
+
+  // POST /auth/mfa/disable
+  fastify.post(
+    '/mfa/disable',
+    {
+      preHandler: [fastify.authenticate],
+      config: {
+        rateLimit: { max: 10, timeWindow: '15 minutes' },
+      },
+    },
+    async (request, reply) => {
+      const parseResult = mfaDisableSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const result = await sql.begin(async (tx) => {
+        const rows = await tx.unsafe(
+          `
+          SELECT id, email, first_name, last_name, role, org_id, mfa_enabled,
+                 mfa_secret, mfa_secret_pending, mfa_secret_pending_expires_at,
+                 mfa_recovery_codes, mfa_last_used_step, must_change_password
+          FROM public.app_users
+          WHERE id = $1::uuid AND is_active = TRUE
+          FOR UPDATE
+          `,
+          [request.user.sub],
+        ) as MfaUserRow[];
+        const [user] = rows;
+
+        if (!user) {
+          return { status: 404, error: { code: 'USER_NOT_FOUND', message: 'User not found' } };
+        }
+        if (!user.mfa_enabled || !user.mfa_secret) {
+          return { status: 409, error: { code: 'MFA_NOT_ENABLED', message: 'MFA is not enabled' } };
+        }
+
+        const code = parseResult.data.code.trim();
+        const records = parseRecoveryCodeRecords(user.mfa_recovery_codes);
+        let valid = false;
+        if (/^\d{6}$/.test(code)) {
+          valid = verifyTotpCode(
+            unprotectMfaSecret(user.mfa_secret, mfaSecretKeyMaterial()),
+            code,
+          );
+        } else {
+          valid = consumeRecoveryCode(records, code).valid;
+        }
+
+        if (!valid) {
+          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+        }
+
+        const updatedRows = await tx.unsafe(
+          `
+          UPDATE public.app_users
+          SET mfa_enabled = FALSE,
+              mfa_secret = NULL,
+              mfa_secret_pending = NULL,
+              mfa_secret_pending_expires_at = NULL,
+              mfa_recovery_codes = '[]'::jsonb,
+              mfa_enabled_at = NULL,
+              mfa_last_used_step = NULL,
+              updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING id, email, first_name, last_name, role, org_id, mfa_enabled,
+                    mfa_secret, mfa_secret_pending, mfa_secret_pending_expires_at,
+                    mfa_recovery_codes, mfa_last_used_step, must_change_password
+          `,
+          [user.id],
+        ) as MfaUserRow[];
+
+        return { status: 200, user: updatedRows[0] };
+      });
+
+      if (result.status !== 200 || !('user' in result) || !result.user) {
+        return reply.status(result.status).send({ success: false, error: result.error });
+      }
+
+      await request.auditLog('mfa_disable', 'auth_mfa', result.user.id);
+      const providerId = await resolveProviderId(result.user.org_id);
+      return reply.send({
+        success: true,
+        data: { user: formatAuthUser(result.user, providerId) },
+      });
+    },
+  );
+
   // POST /auth/logout
   fastify.post(
     '/logout',
@@ -314,13 +1082,90 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     async (request, reply) => {
       // Revoke all refresh tokens for this user
       await sql`
-        UPDATE refresh_tokens SET revoked = TRUE
+        UPDATE refresh_tokens
+        SET revoked = TRUE,
+            revoked_at = COALESCE(revoked_at, NOW())
         WHERE user_id = ${request.user.sub}::UUID AND revoked = FALSE
       `;
 
       await request.auditLog('logout', 'auth', request.user.sub);
 
       return reply.send({ success: true });
+    },
+  );
+
+  // GET /auth/sessions
+  fastify.get(
+    '/sessions',
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const sessions = await sql<AuthSessionRow[]>`
+        SELECT
+          id,
+          created_at::text AS created_at,
+          expires_at::text AS expires_at,
+          revoked,
+          revoked_at::text AS revoked_at,
+          last_used_at::text AS last_used_at,
+          ip_address,
+          user_agent,
+          (revoked = FALSE AND expires_at > NOW()) AS active
+        FROM public.refresh_tokens
+        WHERE user_id = ${request.user.sub}::uuid
+        ORDER BY
+          (revoked = FALSE AND expires_at > NOW()) DESC,
+          COALESCE(last_used_at, created_at) DESC
+        LIMIT 50
+      `;
+
+      return reply.send({
+        success: true,
+        data: {
+          sessions: sessions.map((session) => ({
+            ...session,
+            current: Boolean(request.user.session_id && session.id === request.user.session_id),
+          })),
+        },
+      });
+    },
+  );
+
+  // DELETE /auth/sessions/:id
+  fastify.delete(
+    '/sessions/:id',
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid session id' },
+        });
+      }
+
+      const [session] = await sql<{ id: string; revoked_at: string }[]>`
+        UPDATE public.refresh_tokens
+        SET revoked = TRUE,
+            revoked_at = COALESCE(revoked_at, NOW())
+        WHERE id = ${id}::uuid
+          AND user_id = ${request.user.sub}::uuid
+          AND revoked = FALSE
+        RETURNING id, revoked_at::text AS revoked_at
+      `;
+
+      if (!session) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'SESSION_NOT_FOUND', message: 'Session not found or already revoked' },
+        });
+      }
+
+      await request.auditLog('session_revoke', 'auth_session', session.id, {
+        current: Boolean(request.user.session_id && session.id === request.user.session_id),
+        revoked_at: session.revoked_at,
+      });
+
+      return reply.send({ success: true, data: { session } });
     },
   );
 
@@ -342,7 +1187,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     const result = await sql.begin(async (tx) => {
       const tokenRows = await tx.unsafe(
         `
-        SELECT id, user_id, expires_at, revoked
+        SELECT id, user_id, expires_at, revoked, mfa_verified_at
         FROM refresh_tokens
         WHERE token_hash = $1
         FOR UPDATE
@@ -353,6 +1198,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         user_id: string;
         expires_at: string;
         revoked: boolean;
+        mfa_verified_at: string | null;
       }[];
       const [token] = tokenRows;
 
@@ -371,7 +1217,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       if (token.revoked) {
         await tx.unsafe(
           `
-          UPDATE refresh_tokens SET revoked = TRUE
+          UPDATE refresh_tokens
+          SET revoked = TRUE,
+              revoked_at = COALESCE(revoked_at, NOW())
           WHERE user_id = $1::UUID AND revoked = FALSE
           `,
           [token.user_id],
@@ -388,7 +1236,13 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       if (new Date(token.expires_at) < new Date()) {
         await tx.unsafe(
-          `UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1::UUID`,
+          `
+          UPDATE refresh_tokens
+          SET revoked = TRUE,
+              revoked_at = COALESCE(revoked_at, NOW()),
+              last_used_at = NOW()
+          WHERE id = $1::UUID
+          `,
           [token.id],
         );
         return {
@@ -403,7 +1257,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       // Look up user
       const userRows = await tx.unsafe(
         `
-        SELECT id, email, role, org_id, must_change_password
+        SELECT id, email, role, org_id, must_change_password, mfa_enabled
         FROM app_users
         WHERE id = $1::UUID AND is_active = TRUE
         `,
@@ -414,6 +1268,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         role: string;
         org_id: number | null;
         must_change_password: boolean;
+        mfa_enabled: boolean;
       }[];
       const [user] = userRows;
 
@@ -427,9 +1282,35 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         };
       }
 
+      if (user.mfa_enabled && !token.mfa_verified_at) {
+        await tx.unsafe(
+          `
+          UPDATE refresh_tokens
+          SET revoked = TRUE,
+              revoked_at = COALESCE(revoked_at, NOW()),
+              last_used_at = NOW()
+          WHERE id = $1::UUID
+          `,
+          [token.id],
+        );
+        return {
+          status: 401,
+          body: {
+            success: false,
+            error: { code: 'MFA_REQUIRED', message: 'MFA verification is required for this session' },
+          },
+        };
+      }
+
       // Revoke old token and issue new pair atomically.
       await tx.unsafe(
-        `UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1::UUID`,
+        `
+        UPDATE refresh_tokens
+        SET revoked = TRUE,
+            revoked_at = COALESCE(revoked_at, NOW()),
+            last_used_at = NOW()
+        WHERE id = $1::UUID
+        `,
         [token.id],
       );
 
@@ -448,6 +1329,28 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         refreshProviderId = prov?.provider_id;
       }
 
+      const newRefreshToken = crypto.randomUUID();
+      const newRefreshHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+      const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const sessionContext = sessionContextFromRequest(request);
+
+      const sessionRows = await tx.unsafe(
+        `
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at, last_used_at, ip_address, user_agent, mfa_verified_at)
+        VALUES ($1::UUID, $2, $3, NOW(), $4, $5, $6)
+        RETURNING id
+        `,
+        [
+          user.id,
+          newRefreshHash,
+          refreshExpiry.toISOString(),
+          sessionContext.ipAddress,
+          sessionContext.userAgent,
+          user.mfa_enabled ? token.mfa_verified_at : null,
+        ],
+      ) as { id: string }[];
+      const [session] = sessionRows;
+
       const payload = {
         sub: user.id,
         email: user.email,
@@ -455,22 +1358,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         roles: [user.role as UserRole],
         permissions: permissionsForRole(user.role),
         org_id: String(user.org_id ?? ''),
+        ...(session?.id ? { session_id: session.id } : {}),
         ...(refreshProviderId !== undefined ? { provider_id: refreshProviderId } : {}),
         ...(user.must_change_password ? { must_change_password: true } : {}),
       };
 
       const accessToken = fastify.jwt.sign(payload);
-      const newRefreshToken = crypto.randomUUID();
-      const newRefreshHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
-      const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-      await tx.unsafe(
-        `
-        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-        VALUES ($1::UUID, $2, $3)
-        `,
-        [user.id, newRefreshHash, refreshExpiry.toISOString()],
-      );
 
       return {
         status: 200,
@@ -962,6 +1855,15 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 // Password hashing & verification (bcrypt, cost factor 12)
 // ---------------------------------------------------------------------------
 
+function sessionContextFromRequest(request: FastifyRequest): { ipAddress: string; userAgent: string | null } {
+  const header = request.headers['user-agent'];
+  const userAgent = Array.isArray(header) ? header.join(' ') : header ?? null;
+  return {
+    ipAddress: request.ip,
+    userAgent,
+  };
+}
+
 const BCRYPT_ROUNDS = 12;
 
 export async function hashPassword(password: string): Promise<string> {
@@ -982,6 +1884,17 @@ function generateTempPassword(length: number): string {
   return Array.from(bytes)
     .map((b) => chars[b % chars.length])
     .join('');
+}
+
+function normalizeInviteToken(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const token = value.trim();
+  return token.length > 0 && token.length <= 256 ? token : null;
+}
+
+function normalizeInvitePassword(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return value.length >= 8 && value.length <= 128 ? value : null;
 }
 
 // ---------------------------------------------------------------------------

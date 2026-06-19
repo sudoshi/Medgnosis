@@ -7,6 +7,8 @@ import {
   loginRequestSchema,
   registerRequestSchema,
   changePasswordSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
   mfaVerifySchema,
   patientSearchSchema,
   patientCreateSchema,
@@ -155,14 +157,64 @@ describe('changePasswordSchema', () => {
 });
 
 // ---------------------------------------------------------------------------
+// passwordReset schemas
+// ---------------------------------------------------------------------------
+
+describe('passwordResetRequestSchema', () => {
+  it('accepts a valid reset request email', () => {
+    const result = passwordResetRequestSchema.safeParse({ email: 'user@example.com' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid reset request email', () => {
+    const result = passwordResetRequestSchema.safeParse({ email: 'not-an-email' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('passwordResetConfirmSchema', () => {
+  it('accepts a valid token and password', () => {
+    const result = passwordResetConfirmSchema.safeParse({
+      token: 'reset-token-with-enough-length',
+      password: 'newpass456',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a short token', () => {
+    const result = passwordResetConfirmSchema.safeParse({
+      token: 'short',
+      password: 'newpass456',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a short password', () => {
+    const result = passwordResetConfirmSchema.safeParse({
+      token: 'reset-token-with-enough-length',
+      password: 'short',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // mfaVerifySchema
 // ---------------------------------------------------------------------------
 
 describe('mfaVerifySchema', () => {
-  it('accepts valid 6-digit code with UUID', () => {
+  it('accepts valid 6-digit code with MFA token', () => {
     const result = mfaVerifySchema.safeParse({
       code: '123456',
-      factor_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      mfa_token: 'pending-mfa-token-with-enough-length',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery codes', () => {
+    const result = mfaVerifySchema.safeParse({
+      code: 'MG-ABCDEFGH-234567AB',
+      mfa_token: 'pending-mfa-token-with-enough-length',
     });
     expect(result.success).toBe(true);
   });
@@ -170,15 +222,14 @@ describe('mfaVerifySchema', () => {
   it('rejects code with wrong length', () => {
     const result = mfaVerifySchema.safeParse({
       code: '12345',
-      factor_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      mfa_token: 'pending-mfa-token-with-enough-length',
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects invalid UUID for factor_id', () => {
+  it('rejects missing MFA token', () => {
     const result = mfaVerifySchema.safeParse({
       code: '123456',
-      factor_id: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
   });

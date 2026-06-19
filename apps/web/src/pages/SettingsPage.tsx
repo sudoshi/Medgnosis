@@ -12,19 +12,33 @@ import {
   Shield,
   Check,
   ChevronRight,
+  Copy,
+  KeyRound,
   Palette,
+  QrCode,
+  LogOut,
+  Monitor,
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.js';
 import { useToast } from '../stores/ui.js';
 import { useUpdateProfile, useUserPreferences, useSavePreferences, useDbOverview, useProviderSchedule, useSaveProviderSchedule } from '../hooks/useApi.js';
-import { api } from '../services/api.js';
+import { api, apiErrorMessage } from '../services/api.js';
 import type { User as UserType } from '@medgnosis/shared';
 import { ConfirmModal } from '../components/ConfirmModal.js';
 import { PALETTES } from '../styles/palettes.js';
 import { useThemeStore } from '../stores/theme.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -45,6 +59,26 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+
+interface AuthSession {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  revoked: boolean;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  active: boolean;
+  current: boolean;
+}
+
+interface MfaSetupData {
+  manual_secret: string;
+  otpauth_url: string;
+  qr_code_data_url: string;
+  expires_in: number;
+}
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
@@ -643,12 +677,104 @@ function ScheduleSection({ onPersist }: { onPersist: (key: string, value: Record
 
 // ─── Section: Security ────────────────────────────────────────────────────────
 
+function fmtSessionDate(value: string | null) {
+  if (!value) return 'Never';
+  return new Date(value).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function sessionDeviceLabel(userAgent: string | null) {
+  if (!userAgent) return 'Unknown device';
+  const trimmed = userAgent.trim();
+  if (!trimmed) return 'Unknown device';
+  if (/playwright|chromium/i.test(trimmed)) return 'Chromium browser';
+  if (/firefox/i.test(trimmed)) return 'Firefox browser';
+  if (/safari/i.test(trimmed) && !/chrome|chromium/i.test(trimmed)) return 'Safari browser';
+  if (/chrome|chromium/i.test(trimmed)) return 'Chrome browser';
+  return trimmed.length > 54 ? `${trimmed.slice(0, 51)}...` : trimmed;
+}
+
 function SecuritySection() {
   const toast = useToast();
+  const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [revoking, setRevoking] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [sessionTarget, setSessionTarget] = useState<AuthSession | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupData, setSetupData] = useState<MfaSetupData | null>(null);
+  const [setupCode, setSetupCode] = useState('');
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [disableCode, setDisableCode] = useState('');
+
+  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+    queryKey: ['auth', 'sessions'],
+    queryFn: () => api.get<{ sessions: AuthSession[] }>('/auth/sessions'),
+    staleTime: 30_000,
+  });
+  const sessions = sessionsData?.data?.sessions ?? [];
+  const activeSessionCount = sessions.filter((session) => session.active).length;
+
+  const revokeSession = useMutation({
+    mutationFn: (id: string) => api.delete(`/auth/sessions/${id}`),
+    onSuccess: () => {
+      toast.success('Session revoked');
+      qc.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to revoke session')),
+  });
+
+  const startMfaSetup = useMutation({
+    mutationFn: () => api.post<MfaSetupData>('/auth/mfa/setup'),
+    onSuccess: (res) => {
+      if (!res.data) return;
+      setSetupData(res.data);
+      setSetupCode('');
+      setRecoveryCodes([]);
+      setSetupOpen(true);
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to start MFA setup')),
+  });
+
+  const confirmMfaSetup = useMutation({
+    mutationFn: () => api.post<{ user: UserType; recovery_codes: string[] }>('/auth/mfa/confirm', {
+      code: setupCode,
+    }),
+    onSuccess: (res) => {
+      if (!res.data) return;
+      setUser(res.data.user);
+      setRecoveryCodes(res.data.recovery_codes);
+      qc.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+      toast.success('Two-factor authentication enabled');
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to verify authenticator code')),
+  });
+
+  const disableMfa = useMutation({
+    mutationFn: () => api.post<{ user: UserType }>('/auth/mfa/disable', {
+      code: disableCode,
+    }),
+    onSuccess: (res) => {
+      if (res.data?.user) setUser(res.data.user);
+      setDisableOpen(false);
+      setDisableCode('');
+      toast.success('Two-factor authentication disabled');
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to disable MFA')),
+  });
+
+  const copyRecoveryCodes = async () => {
+    await navigator.clipboard.writeText(recoveryCodes.join('\n'));
+    toast.success('Recovery codes copied');
+  };
 
   const handleRevokeAll = async () => {
     setRevoking(true);
@@ -673,38 +799,103 @@ function SecuritySection() {
       {/* 2FA */}
       <div className="surface p-5">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-bright">Two-factor authentication</p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-bright">Two-factor authentication</p>
+              {user?.mfa_enabled && (
+                <span className="rounded-full border border-teal/20 bg-teal/10 px-2 py-0.5 text-[10px] font-medium text-teal">
+                  Enabled
+                </span>
+              )}
+            </div>
             <p className="text-xs text-ghost mt-0.5 leading-relaxed">
               Add an extra layer of security to your account with an authenticator app
             </p>
           </div>
-          <Button className="flex-shrink-0" disabled>
-            <span>Enable 2FA</span>
-            <ChevronRight strokeWidth={2} aria-hidden="true" />
-          </Button>
+          {user?.mfa_enabled ? (
+            <Button
+              className="flex-shrink-0"
+              variant="outline"
+              onClick={() => setDisableOpen(true)}
+            >
+              <span>Disable 2FA</span>
+            </Button>
+          ) : (
+            <Button
+              className="flex-shrink-0"
+              onClick={() => startMfaSetup.mutate()}
+              disabled={startMfaSetup.isPending}
+            >
+              <span>{startMfaSetup.isPending ? 'Preparing...' : 'Enable 2FA'}</span>
+              <ChevronRight strokeWidth={2} aria-hidden="true" />
+            </Button>
+          )}
         </div>
-        <p className="text-xs text-ghost mt-3">
-          Two-factor authentication setup is coming soon.
-        </p>
+        {user?.mfa_enabled && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-ghost">
+            <KeyRound size={14} className="text-teal" aria-hidden="true" />
+            <span>Authenticator verification is required for new sign-ins.</span>
+          </div>
+        )}
       </div>
 
       {/* Session info */}
       <div className="surface p-5">
-        <h3 className="text-xs font-semibold text-bright mb-3">Active session</h3>
-        {[
-          { label: 'Auth method', value: 'JWT Bearer'      },
-          { label: 'Token type',  value: 'Access + Refresh' },
-          { label: 'Session',     value: 'Secure (HTTPS)'   },
-        ].map(({ label, value }) => (
-          <div
-            key={label}
-            className="flex items-center justify-between py-2.5 border-b border-edge/15 last:border-0"
-          >
-            <span className="text-sm text-dim">{label}</span>
-            <span className="font-data text-xs text-bright">{value}</span>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-xs font-semibold text-bright">Active sessions</h3>
+          <span className="font-data text-[11px] text-ghost">{activeSessionCount} active</span>
+        </div>
+
+        {sessionsLoading && (
+          <div className="py-3 text-sm text-ghost">Loading sessions...</div>
+        )}
+
+        {!sessionsLoading && sessions.length === 0 && (
+          <div className="py-3 text-sm text-ghost">No active sessions found.</div>
+        )}
+
+        {!sessionsLoading && sessions.length > 0 && (
+          <div className="divide-y divide-edge/15">
+            {sessions.map((session) => (
+              <div key={session.id} className="flex items-start justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Monitor size={14} className={session.active ? 'text-teal' : 'text-ghost'} aria-hidden="true" />
+                    <p className="truncate text-sm font-medium text-bright">
+                      {sessionDeviceLabel(session.user_agent)}
+                    </p>
+                    {session.current && (
+                      <span className="rounded-full border border-teal/20 bg-teal/10 px-2 py-0.5 text-[10px] font-medium text-teal">
+                        Current
+                      </span>
+                    )}
+                    {!session.active && (
+                      <span className="rounded-full border border-edge/30 bg-s2 px-2 py-0.5 text-[10px] font-medium text-ghost">
+                        Revoked
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-data text-[11px] text-ghost">
+                    <span>Last used {fmtSessionDate(session.last_used_at ?? session.created_at)}</span>
+                    <span>IP {session.ip_address ?? 'unknown'}</span>
+                    <span>Expires {fmtSessionDate(session.expires_at)}</span>
+                  </div>
+                </div>
+                {session.active && !session.current && (
+                  <button
+                    type="button"
+                    className="flex flex-shrink-0 items-center gap-1.5 rounded-btn border border-crimson/25 px-2.5 py-1.5 text-xs font-ui text-crimson transition-colors hover:bg-crimson/8 hover:border-crimson/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={revokeSession.isPending}
+                    onClick={() => setSessionTarget(session)}
+                  >
+                    <LogOut size={13} aria-hidden="true" />
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       {/* Danger zone */}
@@ -732,6 +923,142 @@ function SecuritySection() {
         </div>
       </div>
 
+      <Dialog open={setupOpen} onOpenChange={(open) => {
+        setSetupOpen(open);
+        if (!open) {
+          setSetupCode('');
+          setSetupData(null);
+          setRecoveryCodes([]);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set up two-factor authentication</DialogTitle>
+            <DialogDescription>
+              {recoveryCodes.length > 0
+                ? 'Recovery codes are shown once.'
+                : 'Scan the QR code or enter the manual key in your authenticator app.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {recoveryCodes.length > 0 ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-2 rounded-panel border border-edge/30 bg-s1 p-3 font-data text-xs text-bright sm:grid-cols-2">
+                {recoveryCodes.map((code) => (
+                  <span key={code}>{code}</span>
+                ))}
+              </div>
+              <Button type="button" variant="outline" onClick={copyRecoveryCodes} className="w-full">
+                <Copy size={14} aria-hidden="true" />
+                Copy codes
+              </Button>
+              <DialogFooter>
+                <Button type="button" onClick={() => setSetupOpen(false)}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                confirmMfaSetup.mutate();
+              }}
+            >
+              {setupData && (
+                <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
+                  <div className="flex h-44 w-44 items-center justify-center rounded-panel border border-edge/30 bg-white p-2">
+                    <img
+                      src={setupData.qr_code_data_url}
+                      alt="Authenticator QR code"
+                      className="h-full w-full"
+                    />
+                  </div>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-bright">
+                      <QrCode size={16} className="text-teal" aria-hidden="true" />
+                      Manual key
+                    </div>
+                    <p className="break-all rounded-panel border border-edge/30 bg-s1 p-3 font-data text-xs text-bright">
+                      {setupData.manual_secret}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ghost" htmlFor="mfa-setup-code">
+                  Authenticator code
+                </label>
+                <Input
+                  id="mfa-setup-code"
+                  name="one-time-code"
+                  value={setupCode}
+                  onChange={(event) => setSetupCode(event.target.value)}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  placeholder="123456"
+                  disabled={confirmMfaSetup.isPending}
+                />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setSetupOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={confirmMfaSetup.isPending || setupCode.trim().length < 6}>
+                  {confirmMfaSetup.isPending ? 'Verifying...' : 'Verify and enable'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={disableOpen} onOpenChange={(open) => {
+        setDisableOpen(open);
+        if (!open) setDisableCode('');
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Disable two-factor authentication?</DialogTitle>
+            <DialogDescription>
+              Enter an authenticator or recovery code to confirm this change.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              disableMfa.mutate();
+            }}
+          >
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ghost" htmlFor="mfa-disable-code">
+                Verification code
+              </label>
+              <Input
+                id="mfa-disable-code"
+                name="one-time-code"
+                value={disableCode}
+                onChange={(event) => setDisableCode(event.target.value)}
+                autoComplete="one-time-code"
+                inputMode="text"
+                placeholder="123456"
+                disabled={disableMfa.isPending}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDisableOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="destructive" disabled={disableMfa.isPending || disableCode.trim().length < 6}>
+                {disableMfa.isPending ? 'Disabling...' : 'Disable 2FA'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmModal
         open={confirmRevoke}
         title="Sign out of all devices?"
@@ -740,6 +1067,19 @@ function SecuritySection() {
         confirmVariant="danger"
         onConfirm={() => { setConfirmRevoke(false); handleRevokeAll(); }}
         onCancel={() => setConfirmRevoke(false)}
+      />
+
+      <ConfirmModal
+        open={sessionTarget !== null}
+        title="Revoke this session?"
+        body="This device will lose refresh access and will need to sign in again."
+        confirmLabel="Revoke session"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (sessionTarget) revokeSession.mutate(sessionTarget.id);
+          setSessionTarget(null);
+        }}
+        onCancel={() => setSessionTarget(null)}
       />
     </div>
   );

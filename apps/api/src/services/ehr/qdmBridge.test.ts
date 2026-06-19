@@ -58,6 +58,26 @@ const stagedObservation: StagedFhirResourceRow = {
   },
 };
 
+const stagedPatient: StagedFhirResourceRow = {
+  id: 502,
+  org_id: 7,
+  ehr_tenant_id: 42,
+  ingest_run_id: '00000000-0000-4000-8000-000000000068',
+  resource_type: 'Patient',
+  resource_id: 'pat-1',
+  patient_ref: 'Patient/pat-1',
+  source_version_id: '7',
+  source_last_updated: '2026-06-17T12:00:00Z',
+  content_hash: 'patient123',
+  resource: {
+    resourceType: 'Patient',
+    id: 'pat-1',
+    identifier: [{ system: 'urn:mrn', value: 'MRN-1' }],
+    name: [{ family: 'Launch', given: ['Ehr'] }],
+    birthDate: '1975-04-02',
+  },
+};
+
 describe('buildQdmEventUpsertInput', () => {
   it('flattens canonical QDM timing, code, value, and source metadata for persistence', () => {
     const qdm: QdmElement = {
@@ -100,7 +120,7 @@ describe('normalizeStagedRunToQdm', () => {
       if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
         return Promise.resolve([stagedObservation]);
       }
-      if (text.includes('SELECT patient_id')) {
+      if (text.includes('SELECT COALESCE(patient_id')) {
         return Promise.resolve([{ patient_id: 123 }]);
       }
       if (text.includes('INSERT INTO phm_edw.ehr_resource_crosswalk')) {
@@ -156,6 +176,56 @@ describe('normalizeStagedRunToQdm', () => {
     ).toBe(true);
   });
 
+  it('preserves launched Patient crosswalks as local patient targets while adding QDM evidence', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedPatient]);
+      }
+      if (text.includes('SELECT COALESCE(patient_id')) {
+        return Promise.resolve([{ patient_id: 123 }]);
+      }
+      if (text.includes('INSERT INTO phm_edw.ehr_resource_crosswalk')) {
+        return Promise.resolve([{ id: 77 }]);
+      }
+      if (text.includes('INSERT INTO phm_edw.qdm_event')) {
+        return Promise.resolve([{ qdm_event_id: 88 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await normalizeStagedRunToQdm({
+      ingestRunId: stagedPatient.ingest_run_id,
+      ehrTenantId: 42,
+      orgId: 7,
+      limit: 10,
+    });
+
+    expect(result).toMatchObject({
+      resourcesSeen: 1,
+      resourcesNormalized: 1,
+      resourcesFailed: 0,
+      eventsUpserted: 1,
+    });
+
+    const resourceCrosswalkCall = mockSql.mock.calls.find((call) =>
+      (call[0] as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'),
+    );
+    expect(resourceCrosswalkCall?.[5]).toBe('phm_edw.patient');
+    expect(resourceCrosswalkCall?.[6]).toBe(123);
+    expect(resourceCrosswalkCall?.[7]).toBe(123);
+
+    const queries = mockSql.mock.calls.map((call) => (call[0] as TemplateStringsArray).join(''));
+    expect(queries.some((query) => query.includes('INSERT INTO phm_edw.fhir_qdm_crosswalk'))).toBe(true);
+    expect(
+      queries.some(
+        (query) =>
+          query.includes('UPDATE phm_edw.ehr_resource_crosswalk') &&
+          query.includes("local_table = 'phm_edw.qdm_event'"),
+      ),
+    ).toBe(false);
+  });
+
   it('marks unsupported staged resources as skipped without creating QDM events', async () => {
     const stagedCoverage: StagedFhirResourceRow = {
       ...stagedObservation,
@@ -168,7 +238,7 @@ describe('normalizeStagedRunToQdm', () => {
       if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
         return Promise.resolve([stagedCoverage]);
       }
-      if (text.includes('SELECT patient_id')) {
+      if (text.includes('SELECT COALESCE(patient_id')) {
         return Promise.resolve([{ patient_id: 123 }]);
       }
       return Promise.resolve([]);

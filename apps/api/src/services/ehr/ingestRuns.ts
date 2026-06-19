@@ -59,6 +59,14 @@ export interface FailEhrIngestRunInput extends FinishEhrIngestRunInput {
   errors?: unknown[];
 }
 
+export interface ListEhrIngestRunsInput {
+  ehrTenantId: number;
+  status?: EhrIngestRunStatus;
+  mode?: EhrIngestRunMode;
+  resourceType?: string;
+  limit?: number;
+}
+
 export interface FinishEhrIngestRunQdmBridgeOptions {
   enabled: boolean;
   limit?: number;
@@ -206,6 +214,11 @@ export async function finishIngestRunWithQdmBridge(
   const resourcesUpdated = countOrNull(input.resourcesUpdated);
   const errorCount = countOrNull(input.errorCount);
   const qdmBridgeResult = await maybeNormalizeQdm(input);
+  const qdmBridgeErrorCount = qdmBridgeResult?.resourcesFailed ?? 0;
+  const persistedErrorCount =
+    errorCount === null
+      ? (qdmBridgeErrorCount > 0 ? qdmBridgeErrorCount : null)
+      : errorCount + qdmBridgeErrorCount;
   const metadata = qdmBridgeResult
     ? {
         ...(input.metadata ?? {}),
@@ -220,7 +233,7 @@ export async function finishIngestRunWithQdmBridge(
         resources_received = COALESCE(${resourcesReceived}::integer, resources_received),
         resources_staged = COALESCE(${resourcesStaged}::integer, resources_staged),
         resources_updated = COALESCE(${resourcesUpdated}::integer, resources_updated),
-        error_count = COALESCE(${errorCount}::integer, error_count),
+        error_count = COALESCE(${persistedErrorCount}::integer, error_count),
         error_message = NULL,
         metadata = metadata || ${sql.json(asSqlJson(metadata))},
         updated_at = NOW()
@@ -292,6 +305,43 @@ export async function failIngestRun(input: FailEhrIngestRunInput): Promise<EhrIn
   return requireReturnedRun(rows, 'fail');
 }
 
+export async function listIngestRuns(input: ListEhrIngestRunsInput): Promise<EhrIngestRun[]> {
+  const status = input.status ?? null;
+  const mode = input.mode ?? null;
+  const resourceType = nonEmptyResourceType(input.resourceType);
+  const limit = boundedLimit(input.limit);
+
+  const rows = await sql<EhrIngestRunRow[]>`
+    SELECT id::text AS id,
+           org_id,
+           ehr_tenant_id,
+           resource_type,
+           mode,
+           status,
+           requested_since::text AS requested_since,
+           started_at::text AS started_at,
+           finished_at::text AS finished_at,
+           resources_received,
+           resources_staged,
+           resources_updated,
+           error_count,
+           error_message,
+           errors,
+           metadata,
+           created_at::text AS created_at,
+           updated_at::text AS updated_at
+    FROM phm_edw.ehr_ingest_run
+    WHERE ehr_tenant_id = ${input.ehrTenantId}
+      AND (${status}::text IS NULL OR status = ${status})
+      AND (${mode}::text IS NULL OR mode = ${mode})
+      AND (${resourceType}::text IS NULL OR resource_type = ${resourceType})
+    ORDER BY started_at DESC, created_at DESC
+    LIMIT ${limit}
+  `;
+
+  return rows.map(mapIngestRun);
+}
+
 async function maybeNormalizeQdm(
   input: FinishEhrIngestRunInput,
 ): Promise<NormalizeStagedRunToQdmResult | null> {
@@ -310,4 +360,12 @@ async function maybeNormalizeQdm(
   }
 
   return result;
+}
+
+function boundedLimit(value: number | undefined): number {
+  if (value == null) return 25;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error('EHR ingest run limit must be a positive integer');
+  }
+  return Math.min(value, 100);
 }

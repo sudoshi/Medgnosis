@@ -9,7 +9,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.js';
 import { api, apiErrorMessage } from '../services/api.js';
-import type { AuthProviderDiscovery, User, AuthTokens } from '@medgnosis/shared';
+import type { AuthProviderDiscovery, User, AuthTokens, MfaChallenge } from '@medgnosis/shared';
 
 // ── Population Network Visualization (SVG) ───────────────────────────────────
 
@@ -51,6 +51,11 @@ const RIPPLE_NODES: { idx: number; delay: number }[] = [
   { idx: 19, delay: 1.8 },
   { idx: 23, delay: 4.2 },
 ];
+
+function safeReturnTo(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/dashboard';
+  return value;
+}
 
 function PopulationNetwork() {
   return (
@@ -144,10 +149,14 @@ export function LoginPage() {
   const navigate    = useNavigate();
   const [params] = useSearchParams();
   const { setAuth } = useAuthStore();
+  const postLoginPath = safeReturnTo(params.get('return_to'));
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPw,   setShowPw]   = useState(false);
+  const [mfaToken, setMfaToken] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaUser, setMfaUser] = useState<Pick<User, 'email' | 'first_name'> | null>(null);
   const [remember, setRemember] = useState(false);
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
@@ -180,18 +189,47 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ user: User; tokens: AuthTokens }>('/auth/login', {
+      const res = await api.post<{ user: User; tokens: AuthTokens; mfa_required?: false } | MfaChallenge>('/auth/login', {
         email,
         password,
       });
       if (res.data) {
+        if ('mfa_required' in res.data && res.data.mfa_required) {
+          setMfaToken(res.data.mfa_token);
+          setMfaUser(res.data.user);
+          setMfaCode('');
+          setPassword('');
+          return;
+        }
         setAuth(res.data.user, res.data.tokens);
-        navigate('/dashboard');
+        navigate(postLoginPath, { replace: true });
       } else {
         setError(res.error?.message ?? 'Login failed');
       }
     } catch (err) {
       setError(apiErrorMessage(err, 'Login failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.post<{ user: User; tokens: AuthTokens }>('/auth/mfa/verify', {
+        mfa_token: mfaToken,
+        code: mfaCode,
+      });
+      if (res.data) {
+        setAuth(res.data.user, res.data.tokens);
+        navigate(postLoginPath, { replace: true });
+      } else {
+        setError(res.error?.message ?? 'Verification failed');
+      }
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Verification failed'));
     } finally {
       setLoading(false);
     }
@@ -405,6 +443,19 @@ export function LoginPage() {
           color: #4E5D6C;
           user-select: none;
         }
+        .lpg-row-links {
+          margin: -10px 0 18px;
+          text-align: right;
+          font-size: 0.781em;
+          animation: field-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.35s both;
+        }
+        .lpg-row-link {
+          color: #0DD9D9;
+          text-decoration: none;
+          font-weight: 600;
+          transition: color 0.18s;
+        }
+        .lpg-row-link:hover { color: #3AE8E8; }
 
         /* Error */
         .lpg-error {
@@ -563,9 +614,14 @@ export function LoginPage() {
           animation: field-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.48s both;
         }
         .lpg-register-link {
+          background: none;
+          border: none;
+          padding: 0;
           color: #0DD9D9;
+          font: inherit;
           text-decoration: none;
           font-weight: 600;
+          cursor: pointer;
           transition: color 0.18s;
         }
         .lpg-register-link:hover { color: #3AE8E8; }
@@ -781,12 +837,16 @@ export function LoginPage() {
 
           {/* Heading */}
           <div className="lpg-heading">
-            <h2>Welcome back</h2>
-            <p>Sign in to your clinical workspace</p>
+            <h2>{mfaToken ? 'Verify your code' : 'Welcome back'}</h2>
+            <p>
+              {mfaToken
+                ? `Complete sign-in for ${mfaUser?.email ?? 'your account'}`
+                : 'Sign in to your clinical workspace'}
+            </p>
           </div>
 
           {/* Form */}
-          {providers?.oidc_enabled && (
+          {!mfaToken && providers?.oidc_enabled && (
             <>
               <button type="button" className="lpg-sso" onClick={startOidc}>
                 <ShieldCheck size={17} strokeWidth={1.8} />
@@ -796,6 +856,61 @@ export function LoginPage() {
             </>
           )}
 
+          {mfaToken ? (
+            <form onSubmit={handleMfaSubmit} noValidate autoComplete="on">
+              <div className="lpg-f">
+                <label className="lpg-label" htmlFor="lpg-mfa">Authenticator code</label>
+                <div className="lpg-wrap">
+                  <input
+                    id="lpg-mfa"
+                    name="one-time-code"
+                    type="text"
+                    className="lpg-input"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    required
+                    placeholder="123456"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="lpg-error" role="alert">
+                  <span className="lpg-error-icon">
+                    <AlertCircle size={14} strokeWidth={2}/>
+                  </span>
+                  <span className="lpg-error-text">{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="lpg-submit"
+                disabled={loading || !mfaCode.trim()}
+              >
+                {loading && <span className="lpg-spin" aria-hidden="true"/>}
+                {loading ? 'Verifying…' : 'Verify code'}
+              </button>
+
+              <div className="lpg-register">
+                <button
+                  type="button"
+                  className="lpg-register-link"
+                  onClick={() => {
+                    setMfaToken('');
+                    setMfaUser(null);
+                    setMfaCode('');
+                    setError('');
+                  }}
+                >
+                  Use a different account
+                </button>
+              </div>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} noValidate autoComplete="on">
 
             <div className="lpg-f">
@@ -855,6 +970,10 @@ export function LoginPage() {
               <span className="lpg-check-label">Keep me signed in</span>
             </label>
 
+            <div className="lpg-row-links">
+              <Link to="/reset-password" className="lpg-row-link">Forgot password?</Link>
+            </div>
+
             {error && (
               <div className="lpg-error" role="alert">
                 <span className="lpg-error-icon">
@@ -873,20 +992,25 @@ export function LoginPage() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+          )}
 
           {/* Demo quick-fill */}
+          {!mfaToken && (
           <div className="lpg-demo">
             <span className="lpg-demo-lbl">Quick demo</span>
             <button type="button" className="lpg-demo-btn" onClick={fillDemo}>
               Admin — Demo Account
             </button>
           </div>
+          )}
 
           {/* Create account link */}
+          {!mfaToken && (
           <div className="lpg-register">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="lpg-register-link">Create account</Link>
           </div>
+          )}
 
           {/* Footer */}
           <div className="lpg-footer">

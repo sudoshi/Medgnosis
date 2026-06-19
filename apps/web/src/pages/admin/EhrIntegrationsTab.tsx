@@ -5,6 +5,8 @@ import {
   Activity,
   CheckCircle2,
   ClipboardCheck,
+  Database,
+  Play,
   PlugZap,
   RefreshCw,
   Save,
@@ -33,11 +35,15 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { fmtDateTime } from './helpers.js';
 import type {
+  EhrBulkExportLevel,
+  EhrBulkJob,
+  EhrBulkSchedule,
   EhrCapabilitySnapshot,
   EhrClientAuthMethod,
   EhrClientRegistration,
   EhrClientType,
   EhrEnvironment,
+  EhrIngestRun,
   EhrTenant,
   EhrTenantDetail,
   EhrVendor,
@@ -52,6 +58,7 @@ const VENDOR_OPTIONS: Array<{ value: EhrVendor; label: string }> = [
 ];
 
 const ENVIRONMENT_OPTIONS: EhrEnvironment[] = ['sandbox', 'staging', 'production'];
+const MAX_BULK_SCHEDULE_INTERVAL_MINUTES = 525_600;
 
 interface TenantListResponse {
   tenants: EhrTenant[];
@@ -67,6 +74,66 @@ interface EhrDiagnosticsResponse {
   tenant: EhrTenant;
   diagnostics: unknown;
   snapshot: EhrCapabilitySnapshot;
+}
+
+interface EhrIngestRunsResponse {
+  tenant: EhrTenant;
+  ingestRuns: EhrIngestRun[];
+  latest: EhrIngestRun | null;
+  count: number;
+}
+
+interface EhrBulkJobsResponse {
+  tenant: EhrTenant;
+  bulkJobs: EhrBulkJob[];
+  latest: EhrBulkJob | null;
+  count: number;
+}
+
+interface EhrBulkSchedulesResponse {
+  tenant: EhrTenant;
+  bulkSchedules: EhrBulkSchedule[];
+  latest: EhrBulkSchedule | null;
+  count: number;
+}
+
+interface EhrBulkScheduleResponse {
+  tenant: EhrTenant;
+  bulkSchedule: EhrBulkSchedule;
+}
+
+interface EhrBulkExportResponse {
+  tenant: EhrTenant;
+  bulkExport: {
+    enqueued: boolean;
+    queueName: string;
+    jobId?: string;
+    reason?: string;
+  };
+}
+
+interface EhrBulkImportResponse {
+  tenant: EhrTenant;
+  bulkImport: {
+    enqueued: boolean;
+    queueName: string;
+    jobId?: string;
+    reason?: string;
+  };
+}
+
+interface BulkImportPayload {
+  bulkJobId: string;
+  maxResourcesPerFile?: number;
+  resumeFailedOnly?: boolean;
+}
+
+interface EhrBulkCancelResponse {
+  tenant: EhrTenant;
+  bulkCancel: {
+    job: EhrBulkJob;
+    tokenMetadataId: string | null;
+  };
 }
 
 interface FormState {
@@ -88,6 +155,16 @@ interface FormState {
   backendPrivateKeyRef: string;
   backendClientSecretRef: string;
   backendJwksUrl: string;
+}
+
+interface BulkExportFormState {
+  exportLevel: EhrBulkExportLevel;
+  resourceTypes: string;
+  groupId: string;
+  patientId: string;
+  since: string;
+  maxResourcesPerFile: string;
+  scheduleIntervalMinutes: string;
 }
 
 interface UpsertTenantPayload {
@@ -121,6 +198,22 @@ interface UpsertTenantPayload {
   };
 }
 
+interface BulkExportPayload {
+  exportLevel: EhrBulkExportLevel;
+  resourceTypes: string[];
+  groupId?: string;
+  patientId?: string;
+  since?: string;
+  maxResourcesPerFile?: number;
+}
+
+interface BulkSchedulePayload extends BulkExportPayload {
+  id?: string;
+  enabled: boolean;
+  intervalMinutes: number;
+  sinceMode: 'last_success';
+}
+
 export function EhrIntegrationsTab() {
   const toast = useToast();
   const qc = useQueryClient();
@@ -128,6 +221,9 @@ export function EhrIntegrationsTab() {
   const [environmentFilter, setEnvironmentFilter] = useState<EhrEnvironment | 'all'>('all');
   const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(() => defaultFormState());
+  const [bulkForm, setBulkForm] = useState<BulkExportFormState>(() => defaultBulkExportFormState());
+  const [bulkImportJobId, setBulkImportJobId] = useState<string | null>(null);
+  const [bulkCancelJobId, setBulkCancelJobId] = useState<string | null>(null);
 
   const tenantsQuery = useQuery({
     queryKey: ['ehr', 'tenants', vendorFilter, environmentFilter],
@@ -151,7 +247,45 @@ export function EhrIntegrationsTab() {
     staleTime: 15_000,
   });
 
+  const ingestRunsQuery = useQuery({
+    queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId],
+    queryFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.get<EhrIngestRunsResponse>(`/ehr/admin/tenants/${selectedTenantId}/ingest-runs?limit=5`);
+    },
+    enabled: selectedTenantId !== null,
+    staleTime: 15_000,
+  });
+
+  const bulkJobsQuery = useQuery({
+    queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId],
+    queryFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.get<EhrBulkJobsResponse>(`/ehr/admin/tenants/${selectedTenantId}/bulk-jobs?limit=5`);
+    },
+    enabled: selectedTenantId !== null,
+    staleTime: 15_000,
+  });
+
+  const bulkSchedulesQuery = useQuery({
+    queryKey: ['ehr', 'tenant-bulk-schedules', selectedTenantId],
+    queryFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.get<EhrBulkSchedulesResponse>(`/ehr/admin/tenants/${selectedTenantId}/bulk-schedules`);
+    },
+    enabled: selectedTenantId !== null,
+    staleTime: 15_000,
+  });
+
   const detail = detailQuery.data?.data;
+  const ingestRuns = ingestRunsQuery.data?.data?.ingestRuns ?? [];
+  const latestIngestRun = ingestRunsQuery.data?.data?.latest ?? null;
+  const bulkJobs = bulkJobsQuery.data?.data?.bulkJobs ?? [];
+  const latestBulkJob = bulkJobsQuery.data?.data?.latest ?? null;
+  const bulkSchedules = bulkSchedulesQuery.data?.data?.bulkSchedules ?? [];
+  const latestBulkSchedule = bulkSchedulesQuery.data?.data?.latest ?? null;
+  const canStartBulkExport = isBulkExportFormValid(bulkForm);
+  const canSaveBulkSchedule = canStartBulkExport && isBulkScheduleIntervalValid(bulkForm);
   const readinessBlocked = useMemo(
     () => detail?.readiness.clients.some((client) => client.status === 'blocked') ?? false,
     [detail],
@@ -178,6 +312,86 @@ export function EhrIntegrationsTab() {
     onError: (err) => toast.error(apiErrorMessage(err, 'Diagnostics failed')),
   });
 
+  const bulkExportMutation = useMutation({
+    mutationFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.post<EhrBulkExportResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/bulk-exports',
+        buildBulkExportPayload(bulkForm),
+      );
+    },
+    onSuccess: (response) => {
+      if (response.data?.bulkExport.enqueued) {
+        toast.success('Bulk export queued');
+      } else {
+        toast.warning(`Bulk export not queued: ${response.data?.bulkExport.reason ?? 'queue unavailable'}`);
+      }
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Bulk export queueing failed')),
+  });
+
+  const bulkScheduleMutation = useMutation({
+    mutationFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.post<EhrBulkScheduleResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/bulk-schedules',
+        buildBulkSchedulePayload(bulkForm, latestBulkSchedule?.id ?? null),
+      );
+    },
+    onSuccess: () => {
+      toast.success('Bulk schedule saved');
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-schedules', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Bulk schedule save failed')),
+  });
+
+  const bulkImportMutation = useMutation({
+    mutationFn: (input: { job: EhrBulkJob; resumeFailedOnly?: boolean }) => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      const { job, resumeFailedOnly = false } = input;
+      const payload: BulkImportPayload = { bulkJobId: job.id };
+      const maxResourcesPerFile = Number.parseInt(bulkForm.maxResourcesPerFile.trim(), 10);
+      if (Number.isFinite(maxResourcesPerFile) && maxResourcesPerFile > 0) {
+        payload.maxResourcesPerFile = maxResourcesPerFile;
+      }
+      if (resumeFailedOnly) {
+        payload.resumeFailedOnly = true;
+      }
+      return api.post<EhrBulkImportResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/bulk-imports',
+        payload,
+      );
+    },
+    onSuccess: (response) => {
+      if (response.data?.bulkImport.enqueued) {
+        toast.success('Bulk import queued');
+      } else {
+        toast.warning(`Bulk import not queued: ${response.data?.bulkImport.reason ?? 'queue unavailable'}`);
+      }
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Bulk import queueing failed')),
+    onSettled: () => setBulkImportJobId(null),
+  });
+
+  const bulkCancelMutation = useMutation({
+    mutationFn: (job: EhrBulkJob) => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.post<EhrBulkCancelResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/bulk-jobs/' + job.id + '/cancel',
+        {},
+      );
+    },
+    onSuccess: () => {
+      toast.success('Bulk export canceled');
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Bulk export cancellation failed')),
+    onSettled: () => setBulkCancelJobId(null),
+  });
+
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? detail?.tenant ?? null;
 
   return (
@@ -190,10 +404,15 @@ export function EhrIntegrationsTab() {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => void tenantsQuery.refetch()}
-          disabled={tenantsQuery.isFetching}
+          onClick={() => {
+            void tenantsQuery.refetch();
+            if (selectedTenantId !== null) void ingestRunsQuery.refetch();
+            if (selectedTenantId !== null) void bulkJobsQuery.refetch();
+            if (selectedTenantId !== null) void bulkSchedulesQuery.refetch();
+          }}
+          disabled={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching}
         >
-          <RefreshCw className={tenantsQuery.isFetching ? 'animate-spin' : ''} />
+          <RefreshCw className={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching ? 'animate-spin' : ''} />
           Refresh
         </Button>
       </div>
@@ -483,7 +702,7 @@ export function EhrIntegrationsTab() {
           <p className="text-sm text-ghost py-8 text-center">Select a tenant to view readiness.</p>
         ) : (
           <div className="space-y-5">
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
               <ReadinessMetric label="Clients" value={detail.clientRegistrations.length} />
               <ReadinessMetric
                 label="Blocked"
@@ -491,10 +710,54 @@ export function EhrIntegrationsTab() {
                 tone={readinessBlocked ? 'amber' : 'emerald'}
               />
               <ReadinessMetric
-                label="Last snapshot"
-                value={detail.latestCapabilitySnapshot ? fmtDateTime(detail.latestCapabilitySnapshot.capturedAt) : 'None'}
+                label="Last ingest"
+                value={latestIngestRun ? fmtDateTime(latestIngestRun.startedAt) : 'None'}
+                tone={latestIngestRun?.status === 'failed' ? 'amber' : latestIngestRun?.status === 'succeeded' ? 'emerald' : 'teal'}
+              />
+              <ReadinessMetric
+                label="Last Bulk"
+                value={latestBulkJob ? titleCase(latestBulkJob.status) : 'None'}
+                tone={latestBulkJob?.status === 'failed' ? 'amber' : latestBulkJob?.status === 'completed' ? 'emerald' : 'teal'}
               />
             </div>
+
+            <IngestRunsPanel
+              runs={ingestRuns}
+              latest={latestIngestRun}
+              isFetching={ingestRunsQuery.isFetching}
+              onRefresh={() => void ingestRunsQuery.refetch()}
+            />
+
+            <BulkJobsPanel
+              jobs={bulkJobs}
+              latest={latestBulkJob}
+              latestSchedule={latestBulkSchedule}
+              scheduleCount={bulkSchedules.length}
+              isFetching={bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching}
+              onRefresh={() => {
+                void bulkJobsQuery.refetch();
+                void bulkSchedulesQuery.refetch();
+              }}
+              form={bulkForm}
+              setForm={setBulkForm}
+              onStart={() => bulkExportMutation.mutate()}
+              isStarting={bulkExportMutation.isPending}
+              canStart={canStartBulkExport}
+              onSaveSchedule={() => bulkScheduleMutation.mutate()}
+              isSavingSchedule={bulkScheduleMutation.isPending}
+              canSaveSchedule={canSaveBulkSchedule}
+              onImport={(job, resumeFailedOnly) => {
+                setBulkImportJobId(job.id);
+                bulkImportMutation.mutate({ job, resumeFailedOnly });
+              }}
+              importingJobId={bulkImportJobId}
+              onCancel={(job) => {
+                setBulkCancelJobId(job.id);
+                bulkCancelMutation.mutate(job);
+              }}
+              cancelingJobId={bulkCancelJobId}
+              disabled={selectedTenantId === null}
+            />
 
             <Table>
               <TableHeader>
@@ -596,6 +859,347 @@ function ReadinessMetric({
   );
 }
 
+function IngestRunsPanel({
+  runs,
+  latest,
+  isFetching,
+  onRefresh,
+}: {
+  runs: EhrIngestRun[];
+  latest: EhrIngestRun | null;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const received = latest?.resourcesReceived ?? 0;
+  const staged = latest?.resourcesStaged ?? 0;
+  const updated = latest?.resourcesUpdated ?? 0;
+
+  return (
+    <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+        <div>
+          <p className="text-xs text-ghost uppercase tracking-wider mb-1">Patient sync</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={latest ? runStatusVariant(latest.status) : 'dim'}>
+              {latest ? titleCase(latest.status) : 'No runs'}
+            </Badge>
+            {latest && <span className="font-data text-xs text-ghost">{shortId(latest.id)}</span>}
+          </div>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onRefresh} disabled={isFetching}>
+          <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+          Sync status
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <SnapshotItem label="Received" value={received} />
+        <SnapshotItem label="Staged" value={staged} />
+        <SnapshotItem label="Updated" value={updated} />
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Run</TableHead>
+            <TableHead>Mode</TableHead>
+            <TableHead>Resource</TableHead>
+            <TableHead>Rows</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Started</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {runs.map((run) => (
+            <TableRow key={run.id}>
+              <TableCell>
+                <div>
+                  <p className="font-data text-xs text-bright">{shortId(run.id)}</p>
+                  <p className="text-[11px] text-ghost truncate max-w-[220px]">{runSource(run)}</p>
+                </div>
+              </TableCell>
+              <TableCell><span className="text-xs text-dim">{titleCase(run.mode)}</span></TableCell>
+              <TableCell><span className="text-xs text-dim">{run.resourceType ?? 'Mixed'}</span></TableCell>
+              <TableCell>
+                <span className="font-data text-xs text-dim tabular-nums">
+                  {run.resourcesStaged}/{run.resourcesReceived}
+                </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-col gap-1">
+                  <Badge variant={runStatusVariant(run.status)}>{titleCase(run.status)}</Badge>
+                  {run.errorCount > 0 && <span className="text-[11px] text-crimson">{run.errorCount} errors</span>}
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                <span className="font-data text-[11px] text-ghost">{fmtDateTime(run.startedAt)}</span>
+              </TableCell>
+            </TableRow>
+          ))}
+          {runs.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center text-ghost">No ingest runs found</TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function BulkJobsPanel({
+  jobs,
+  latest,
+  latestSchedule,
+  scheduleCount,
+  isFetching,
+  onRefresh,
+  form,
+  setForm,
+  onStart,
+  isStarting,
+  canStart,
+  onSaveSchedule,
+  isSavingSchedule,
+  canSaveSchedule,
+  onImport,
+  importingJobId,
+  onCancel,
+  cancelingJobId,
+  disabled,
+}: {
+  jobs: EhrBulkJob[];
+  latest: EhrBulkJob | null;
+  latestSchedule: EhrBulkSchedule | null;
+  scheduleCount: number;
+  isFetching: boolean;
+  onRefresh: () => void;
+  form: BulkExportFormState;
+  setForm: Dispatch<SetStateAction<BulkExportFormState>>;
+  onStart: () => void;
+  isStarting: boolean;
+  canStart: boolean;
+  onSaveSchedule: () => void;
+  isSavingSchedule: boolean;
+  canSaveSchedule: boolean;
+  onImport: (job: EhrBulkJob, resumeFailedOnly?: boolean) => void;
+  importingJobId: string | null;
+  onCancel: (job: EhrBulkJob) => void;
+  cancelingJobId: string | null;
+  disabled: boolean;
+}) {
+  const latestFiles = latest?.importFiles ?? [];
+  const staged = latestFiles.reduce((sum, file) => sum + file.resourcesStaged, 0);
+  const errors = latestFiles.reduce((sum, file) => sum + file.errorCount, 0);
+  const completedFiles = latestFiles.filter((file) => file.status === 'completed').length;
+
+  return (
+    <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Database size={14} className="text-[var(--primary)]" />
+            <p className="text-xs text-ghost uppercase tracking-wider">Bulk Data</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={latest ? bulkStatusVariant(latest.status) : 'dim'}>
+              {latest ? titleCase(latest.status) : 'No jobs'}
+            </Badge>
+            {latest && <span className="font-data text-xs text-ghost">{shortId(latest.id)}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onRefresh} disabled={isFetching}>
+            <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+            Bulk status
+          </Button>
+          <Button size="sm" onClick={onStart} disabled={disabled || !canStart || isStarting}>
+            <Play className={isStarting ? 'animate-pulse' : ''} />
+            Start
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onSaveSchedule}
+            disabled={disabled || !canSaveSchedule || isSavingSchedule}
+          >
+            <RefreshCw className={isSavingSchedule ? 'animate-spin' : ''} />
+            Schedule
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <SnapshotItem label="Files" value={`${completedFiles}/${latestFiles.length}`} />
+        <SnapshotItem label="Staged" value={staged} />
+        <SnapshotItem label="Errors" value={errors} tone={errors > 0 ? 'amber' : 'emerald'} />
+        <SnapshotItem
+          label="Next"
+          value={latestSchedule ? fmtDateTime(latestSchedule.nextRunAt) : 'None'}
+          tone={scheduleCount > 0 ? 'emerald' : 'amber'}
+        />
+        <SnapshotItem
+          label="Last success"
+          value={latestSchedule?.lastSuccessAt ? fmtDateTime(latestSchedule.lastSuccessAt) : 'None'}
+          tone={latestSchedule?.lastSuccessAt ? 'emerald' : 'amber'}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[120px_1fr_1fr_1fr_110px_110px] gap-3 mb-4">
+        <Field label="Level">
+          <Select
+            value={form.exportLevel}
+            onValueChange={(value) => updateBulkForm(setForm, 'exportLevel', value as EhrBulkExportLevel)}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="group">Group</SelectItem>
+              <SelectItem value="patient">Patient</SelectItem>
+              <SelectItem value="system">System</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Group ID">
+          <Input
+            value={form.groupId}
+            onChange={(event) => updateBulkForm(setForm, 'groupId', event.target.value)}
+            disabled={form.exportLevel !== 'group'}
+            placeholder="group-1"
+          />
+        </Field>
+        <Field label="Patient ID">
+          <Input
+            value={form.patientId}
+            onChange={(event) => updateBulkForm(setForm, 'patientId', event.target.value)}
+            disabled={form.exportLevel !== 'patient'}
+            placeholder="FHIR patient id"
+          />
+        </Field>
+        <Field label="Resource types">
+          <Input
+            value={form.resourceTypes}
+            onChange={(event) => updateBulkForm(setForm, 'resourceTypes', event.target.value)}
+          />
+        </Field>
+        <Field label="Per file">
+          <Input
+            value={form.maxResourcesPerFile}
+            onChange={(event) => updateBulkForm(setForm, 'maxResourcesPerFile', event.target.value)}
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Every min">
+          <Input
+            value={form.scheduleIntervalMinutes}
+            onChange={(event) => updateBulkForm(setForm, 'scheduleIntervalMinutes', event.target.value)}
+            inputMode="numeric"
+          />
+        </Field>
+      </div>
+      <Field label="Since">
+        <Input
+          value={form.since}
+          onChange={(event) => updateBulkForm(setForm, 'since', event.target.value)}
+          placeholder="2026-06-01T00:00:00Z"
+        />
+      </Field>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job</TableHead>
+            <TableHead>Target</TableHead>
+            <TableHead>Resources</TableHead>
+            <TableHead>Files</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Next</TableHead>
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {jobs.map((job) => {
+            const fileStats = bulkFileStats(job);
+            const canResume = job.status === 'completed' && fileStats.errors > 0;
+            return (
+              <TableRow key={job.id}>
+                <TableCell>
+                  <div>
+                    <p className="font-data text-xs text-bright">{shortId(job.id)}</p>
+                    <p className="text-[11px] text-ghost">{titleCase(job.exportLevel)} export</p>
+                  </div>
+                </TableCell>
+                <TableCell><span className="font-data text-xs text-dim">{bulkTarget(job)}</span></TableCell>
+                <TableCell><span className="text-xs text-dim">{job.resourceTypes.join(', ')}</span></TableCell>
+                <TableCell>
+                  <span className="font-data text-xs text-dim tabular-nums">
+                    {fileStats.completed}/{fileStats.total} / {fileStats.staged} staged
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1">
+                    <Badge variant={bulkStatusVariant(job.status)}>{titleCase(job.status)}</Badge>
+                    {fileStats.errors > 0 && <span className="text-[11px] text-crimson">{fileStats.errors} errors</span>}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <span className="font-data text-[11px] text-ghost">
+                    {job.nextPollAt ? fmtDateTime(job.nextPollAt) : fmtDateTime(job.requestedAt)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    {job.status === 'completed' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onImport(job, false)}
+                        disabled={disabled || importingJobId === job.id || cancelingJobId === job.id}
+                      >
+                        <RefreshCw className={importingJobId === job.id ? 'animate-spin' : ''} />
+                        Import
+                      </Button>
+                    )}
+                    {canResume && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onImport(job, true)}
+                        disabled={disabled || importingJobId === job.id || cancelingJobId === job.id}
+                      >
+                        <RefreshCw className={importingJobId === job.id ? 'animate-spin' : ''} />
+                        Resume
+                      </Button>
+                    )}
+                    {(job.status === 'accepted' || job.status === 'in_progress') && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onCancel(job)}
+                        disabled={disabled || cancelingJobId === job.id || importingJobId === job.id}
+                      >
+                        <XCircle className={cancelingJobId === job.id ? 'animate-pulse' : ''} />
+                        Cancel
+                      </Button>
+                    )}
+                    {job.status !== 'completed' && job.status !== 'accepted' && job.status !== 'in_progress' && (
+                      <span className="text-xs text-ghost">-</span>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+          {jobs.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={7} className="text-center text-ghost">No Bulk jobs found</TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function CapabilitySnapshot({ snapshot }: { snapshot: EhrCapabilitySnapshot | null }) {
   if (!snapshot) {
     return (
@@ -663,6 +1267,18 @@ function defaultFormState(): FormState {
   };
 }
 
+function defaultBulkExportFormState(): BulkExportFormState {
+  return {
+    exportLevel: 'group',
+    resourceTypes: 'Patient,Observation,Condition,Encounter',
+    groupId: '',
+    patientId: '',
+    since: '',
+    maxResourcesPerFile: '5000',
+    scheduleIntervalMinutes: '1440',
+  };
+}
+
 function defaultApiBaseUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:3002';
   return window.location.origin;
@@ -672,6 +1288,14 @@ function updateForm<K extends keyof FormState>(
   setForm: Dispatch<SetStateAction<FormState>>,
   key: K,
   value: FormState[K],
+): void {
+  setForm((current) => ({ ...current, [key]: value }));
+}
+
+function updateBulkForm<K extends keyof BulkExportFormState>(
+  setForm: Dispatch<SetStateAction<BulkExportFormState>>,
+  key: K,
+  value: BulkExportFormState[K],
 ): void {
   setForm((current) => ({ ...current, [key]: value }));
 }
@@ -717,6 +1341,56 @@ function buildUpsertPayload(form: FormState): UpsertTenantPayload {
   return payload;
 }
 
+function buildBulkExportPayload(form: BulkExportFormState): BulkExportPayload {
+  const payload: BulkExportPayload = {
+    exportLevel: form.exportLevel,
+    resourceTypes: optionalList(form.resourceTypes) ?? [],
+  };
+  const groupId = form.groupId.trim();
+  const patientId = form.patientId.trim();
+  const since = form.since.trim();
+  const maxResourcesPerFile = Number.parseInt(form.maxResourcesPerFile.trim(), 10);
+
+  if (form.exportLevel === 'group' && groupId) payload.groupId = groupId;
+  if (form.exportLevel === 'patient' && patientId) payload.patientId = patientId;
+  if (since) payload.since = since;
+  if (Number.isFinite(maxResourcesPerFile) && maxResourcesPerFile > 0) {
+    payload.maxResourcesPerFile = maxResourcesPerFile;
+  }
+
+  return payload;
+}
+
+function buildBulkSchedulePayload(
+  form: BulkExportFormState,
+  existingScheduleId?: string | null,
+): BulkSchedulePayload {
+  const intervalMinutes = Number.parseInt(form.scheduleIntervalMinutes.trim(), 10);
+  const payload: BulkSchedulePayload = {
+    ...buildBulkExportPayload(form),
+    enabled: true,
+    intervalMinutes: Number.isFinite(intervalMinutes) && intervalMinutes >= 15 ? intervalMinutes : 1440,
+    sinceMode: 'last_success',
+  };
+  if (existingScheduleId) payload.id = existingScheduleId;
+  return payload;
+}
+
+function isBulkExportFormValid(form: BulkExportFormState): boolean {
+  const resourceTypes = optionalList(form.resourceTypes) ?? [];
+  if (resourceTypes.length === 0) return false;
+  if (form.exportLevel === 'group') return form.groupId.trim().length > 0;
+  if (form.exportLevel === 'patient') return form.patientId.trim().length > 0;
+  return true;
+}
+
+function isBulkScheduleIntervalValid(form: BulkExportFormState): boolean {
+  const intervalMinutes = Number.parseInt(form.scheduleIntervalMinutes.trim(), 10);
+  return Number.isFinite(intervalMinutes) &&
+    intervalMinutes >= 15 &&
+    intervalMinutes <= MAX_BULK_SCHEDULE_INTERVAL_MINUTES;
+}
+
 function tenantFilterQuery(
   vendor: EhrVendor | 'all',
   environment: EhrEnvironment | 'all',
@@ -753,6 +1427,49 @@ function clientTypeLabel(value: EhrClientType): string {
   if (value === 'smart_launch') return 'SMART launch';
   if (value === 'backend_services') return 'Backend Services';
   return 'CDS Hooks';
+}
+
+function runStatusVariant(status: EhrIngestRun['status']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {
+  if (status === 'succeeded') return 'emerald';
+  if (status === 'running') return 'info';
+  if (status === 'failed') return 'crimson';
+  if (status === 'canceled') return 'amber';
+  return 'dim';
+}
+
+function bulkStatusVariant(status: EhrBulkJob['status']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {
+  if (status === 'completed') return 'emerald';
+  if (status === 'accepted' || status === 'in_progress') return 'info';
+  if (status === 'failed') return 'crimson';
+  if (status === 'canceled') return 'amber';
+  return 'dim';
+}
+
+function bulkTarget(job: EhrBulkJob): string {
+  if (job.exportLevel === 'group') return job.groupId ?? 'Group';
+  if (job.exportLevel === 'patient') return job.patientId ?? 'Patient';
+  return 'System';
+}
+
+function bulkFileStats(job: EhrBulkJob): { total: number; completed: number; staged: number; errors: number } {
+  return job.importFiles.reduce(
+    (stats, file) => ({
+      total: stats.total + 1,
+      completed: stats.completed + (file.status === 'completed' ? 1 : 0),
+      staged: stats.staged + file.resourcesStaged,
+      errors: stats.errors + file.errorCount,
+    }),
+    { total: 0, completed: 0, staged: 0, errors: 0 },
+  );
+}
+
+function shortId(value: string): string {
+  return value.length > 13 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
+function runSource(run: EhrIngestRun): string {
+  const source = run.metadata['source'];
+  return typeof source === 'string' && source.trim() ? source : 'EHR ingest';
 }
 
 function titleCase(value: string): string {

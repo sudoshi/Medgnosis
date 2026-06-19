@@ -1,6 +1,6 @@
 # QDM Bridge Operations Runbook
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 
 ## Purpose
 
@@ -13,6 +13,30 @@ explicitly accepts promotion.
 - SQL bundle rows remain authoritative unless `measure_promotion_config.authoritative_source` is intentionally changed by the guarded promotion service.
 - `qdm:shadow-refresh` is non-authoritative. It can refresh QDM/CQL evidence, CQL shadow star rows, reconciliation rows, and semantic drift evidence, but it forces `QDM_CQL_PROMOTION_ELIGIBLE=false`.
 - Raw QDM/FHIR evidence is not duplicated in the operational ledger. Use the audited semantic drift detail route for selected patient-level evidence review.
+
+## CMS122 Promotion Hold Criteria
+
+Keep `CMS122v12` on `sql_bundle` authority and `cql_shadow` or manual hold until
+all of these are true:
+
+1. A full-population CQL reconciliation run is accepted, linked to the persisted
+   population `MeasureReport`, and marked promotion eligible by the guarded
+   reconciliation service.
+2. The semantic drift dossier has been reviewed for initial-population,
+   denominator, numerator, and exclusion differences between the local `DM-02`
+   SQL surrogate and the published CMS122 eCQM semantics.
+3. Residual denominator drift has either been remediated in QDM/QI-Core mapping
+   or explicitly accepted as a governed measure-definition difference.
+4. The CMS122 numerator mismatch is resolved or explicitly accepted. Local
+   care-gap closure is not equivalent to the CMS122 numerator definition, which
+   counts poor control, missing HbA1c/GMI result, or not-performed logic.
+5. Patient-level MeasureReport evidence coverage is complete enough for
+   promotion validation, including resolved patient, measure, and period
+   dimensions for all promoted evidence rows.
+6. The MADiE test-deck proof remains green through
+   `scripts/cql-realmeasure-smoke.sh`. This is required artifact evidence, but
+   it is not sufficient for production promotion without local population
+   reconciliation and clinical/product sign-off.
 
 ## Operator Commands
 

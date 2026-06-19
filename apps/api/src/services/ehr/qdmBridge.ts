@@ -201,7 +201,7 @@ function normalizeStagedResourceToQdm(
     let eventsUpserted = 0;
     for (const qdm of qdmElements) {
       const event = await upsertQdmEvent(tx, buildQdmEventUpsertInput(row, qdm, patientId));
-      if (eventsUpserted === 0 && resourceCrosswalkId != null) {
+      if (eventsUpserted === 0 && resourceCrosswalkId != null && row.resource_type !== 'Patient') {
         await setResourceCrosswalkLocalTarget(tx, resourceCrosswalkId, event.qdm_event_id);
       }
       await upsertFhirQdmCrosswalk(tx, row, event.qdm_event_id, resourceCrosswalkId, qdm);
@@ -246,12 +246,15 @@ async function resolvePatientId(tx: Tx, row: StagedFhirResourceRow): Promise<num
 
   const rows = await tx.unsafe<{ patient_id: number | string }[]>(
     `
-    SELECT patient_id
+    SELECT COALESCE(patient_id, CASE WHEN local_table = 'phm_edw.patient' THEN local_id END) AS patient_id
     FROM phm_edw.ehr_resource_crosswalk
     WHERE ehr_tenant_id = $1
       AND resource_type = 'Patient'
       AND ehr_resource_id = $2
-      AND patient_id IS NOT NULL
+      AND (
+        patient_id IS NOT NULL
+        OR (local_table = 'phm_edw.patient' AND local_id IS NOT NULL)
+      )
     ORDER BY last_seen_at DESC
     LIMIT 1
     `,
@@ -266,6 +269,7 @@ async function upsertResourceCrosswalk(
   row: StagedFhirResourceRow,
   patientId: number | null,
 ): Promise<number | null> {
+  const localTarget = crosswalkLocalTarget(row, patientId);
   const rows = await tx.unsafe<{ id: number | string }[]>(
     `
     INSERT INTO phm_edw.ehr_resource_crosswalk
@@ -277,17 +281,33 @@ async function upsertResourceCrosswalk(
       $2,
       $3,
       $4::jsonb,
-      'phm_edw.qdm_event',
-      NULL,
       $5,
       $6,
-      $7::timestamptz,
+      $7,
       $8,
+      $9::timestamptz,
+      $10,
       NOW()
     )
     ON CONFLICT ON CONSTRAINT uq_ehr_resource_crosswalk_source
     DO UPDATE SET
       ehr_identifier = EXCLUDED.ehr_identifier,
+      local_table = CASE
+        WHEN EXCLUDED.resource_type = 'Patient' AND EXCLUDED.patient_id IS NOT NULL
+          THEN 'phm_edw.patient'
+        WHEN phm_edw.ehr_resource_crosswalk.local_table IS NOT NULL
+          AND phm_edw.ehr_resource_crosswalk.local_table <> 'phm_edw.qdm_event'
+          THEN phm_edw.ehr_resource_crosswalk.local_table
+        ELSE EXCLUDED.local_table
+      END,
+      local_id = CASE
+        WHEN EXCLUDED.resource_type = 'Patient' AND EXCLUDED.patient_id IS NOT NULL
+          THEN EXCLUDED.patient_id
+        WHEN phm_edw.ehr_resource_crosswalk.local_table IS NOT NULL
+          AND phm_edw.ehr_resource_crosswalk.local_table <> 'phm_edw.qdm_event'
+          THEN phm_edw.ehr_resource_crosswalk.local_id
+        ELSE EXCLUDED.local_id
+      END,
       patient_id = COALESCE(EXCLUDED.patient_id, phm_edw.ehr_resource_crosswalk.patient_id),
       source_version_id = EXCLUDED.source_version_id,
       source_last_updated = EXCLUDED.source_last_updated,
@@ -300,6 +320,8 @@ async function upsertResourceCrosswalk(
       row.resource_type,
       row.resource_id,
       asUnsafeJson(fhirIdentifierArray(row.resource.identifier)),
+      localTarget.localTable,
+      localTarget.localId,
       patientId,
       row.source_version_id,
       row.source_last_updated,
@@ -308,6 +330,17 @@ async function upsertResourceCrosswalk(
   );
 
   return rows[0] ? Number(rows[0].id) : null;
+}
+
+function crosswalkLocalTarget(
+  row: StagedFhirResourceRow,
+  patientId: number | null,
+): { localTable: string; localId: number | null } {
+  if (row.resource_type === 'Patient' && patientId !== null) {
+    return { localTable: 'phm_edw.patient', localId: patientId };
+  }
+
+  return { localTable: 'phm_edw.qdm_event', localId: null };
 }
 
 async function upsertQdmEvent(
@@ -422,6 +455,7 @@ async function setResourceCrosswalkLocalTarget(
         local_id = $2,
         last_seen_at = NOW()
     WHERE id = $1
+      AND (local_table IS NULL OR local_table = 'phm_edw.qdm_event')
     `,
     [resourceCrosswalkId, qdmEventId],
   );
