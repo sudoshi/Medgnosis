@@ -67,8 +67,10 @@ Configure SanteMPI's matching against the **HL7 Identity Matching IG** minimum d
 
 Tune thresholds against a labeled sample; the `MPI_AUTO_THRESHOLD` / `MPI_REVIEW_THRESHOLD` split should track the precision you require for auto-accept vs. the steward review budget.
 
-### 3. Feeding the index (operational prerequisite)
-`$match` only returns candidates for patients SanteMPI already knows. You must **feed** patients into SanteMPI — via PIXm Patient Identity Feed (`ITI-104`) or FHIR `Patient` create — as part of ingestion or a one-time load of the existing population. **Until the index is fed, `$match` returns nothing and the tier is a no-op.** (Wiring the feed into the ingestion paths is the next implementation step; the master-id-on-person design above is what makes repeat matches converge.)
+### 3. Feeding the index
+`$match` only returns candidates for patients SanteMPI already knows. Two feeds:
+- **New ingests** are fed automatically (best-effort) by the resolver when `MPI_ENABLED=true` — `feed()` registers demographics, a self-`$match` learns the MDM master id, and it's stored on the person.
+- **Existing population** — one-time load via `npm run mpi:backfill` (resumable; skips persons that already carry a master id; `--dry-run`, `--limit`, `--concurrency`). **Heavy:** measured ~15–21 persons/s at `--concurrency 8`, so ~1M persons is a **~13+ hour, monitored, off-hours job** (MDM matching slows as the index grows). Watch SanteDB + `santedb-db` load on the shared host. Demographics-only (no identity-domain registration needed).
 
 ---
 
