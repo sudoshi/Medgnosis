@@ -35,6 +35,8 @@ export interface FhirMpiClientOptions {
   fetchImpl?: FetchLike;
   accessToken?: string;
   timeoutMs?: number;
+  /** Max candidates to request. SanteDB's $match NREs without a count, so this is always sent. */
+  count?: number;
 }
 
 const MATCH_GRADE_URL = 'http://hl7.org/fhir/StructureDefinition/match-grade';
@@ -62,6 +64,12 @@ function masterIdentifier(resource: Record<string, unknown>, system: string): { 
       return { system, value: identifier['value'] };
     }
   }
+  // SanteDB returns candidates keyed by their stable resource id rather than an
+  // identifier in our master system — use that id as the master value.
+  const id = resource['id'];
+  if (typeof id === 'string' && id.length > 0) {
+    return { system, value: id };
+  }
   return null;
 }
 
@@ -71,6 +79,7 @@ export class FhirMpiClient implements MpiClient {
   private readonly fetchImpl: FetchLike;
   private readonly accessToken: string | undefined;
   private readonly timeoutMs: number;
+  private readonly count: number;
 
   constructor(options: FhirMpiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -82,6 +91,7 @@ export class FhirMpiClient implements MpiClient {
     this.fetchImpl = fetchImpl.bind(globalThis) as FetchLike;
     this.accessToken = options.accessToken;
     this.timeoutMs = options.timeoutMs ?? 10_000;
+    this.count = options.count ?? 10;
   }
 
   async match(input: MpiMatchInput): Promise<MpiCandidate[]> {
@@ -121,6 +131,8 @@ export class FhirMpiClient implements MpiClient {
       parameter: [
         { name: 'resource', resource: patient },
         { name: 'onlyCertainMatches', valueBoolean: false },
+        // SanteDB's FHIR $match throws a NullReferenceException without count.
+        { name: 'count', valueInteger: this.count },
       ],
     };
   }

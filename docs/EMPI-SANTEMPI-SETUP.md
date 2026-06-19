@@ -100,4 +100,18 @@ curl -s -X POST http://localhost:8099/fhir/Patient/\$match \
 ```
 Then confirm Medgnosis routes through it: ingest a near-duplicate and check `phm_edw.identity_review_queue` for a new row (mid-confidence) or a shared `person_id` (high-confidence).
 
-> **Deployed state (2026-06-19):** container verified Up — `santedb` + `auditdb` created, schema installed (94 tables), OAuth2 on `/auth`, FHIR auth-gated, ~577 MiB idle. `MPI_ENABLED` remains `false` (no app behavior change). Remaining before enabling: OAuth credentials/token, matching weights, and the index feed (above).
+> **Deployed state (2026-06-19):** container verified Up — `santedb` + `auditdb` created, schema installed (94 tables), OAuth2 on `/auth`, FHIR auth-gated, ~577 MiB idle. `MPI_ENABLED` remains `false` (no app behavior change).
+
+### Verified working recipe (2026-06-19)
+Live `$match` was confirmed end-to-end through `FhirMpiClient`. Gotchas baked into the code/config:
+- **Auth (machine-to-machine):** SanteDB-native OAuth `client_credentials`, **client id/secret in the POST body** (not HTTP Basic). The seeded dev client `fiddler`/`fiddler` works; the `Administrator` user and `org.santedb.*` clients are also seeded. (Medgnosis app credentials do **not** work here — separate identity domain.)
+  ```bash
+  curl -s http://localhost:8099/auth/oauth2_token -d grant_type=client_credentials \
+    -d client_id=fiddler -d client_secret=fiddler -d scope='*'
+  ```
+- **`$match` requires a `count` parameter** — without it SanteDB throws `NullReferenceException` (`error.messaging.fhir.match.operation`). `FhirMpiClient` always sends `count`.
+- **Candidates are keyed by SanteDB resource id**, not an identifier in `MPI_MASTER_ID_SYSTEM`; the client uses `resource.id` as the master value (fallback).
+- **Feeding requires registered identity domains:** a FHIR `Patient` create with an identifier in an unregistered system 400s (`Could not find identity domain <system>`). Register each source system's assigning authority in SanteDB first, or feed demographics-only. **(This is the key task for wiring the feed into ingestion.)**
+- The default match config `org.santedb.matching.patient.default` (AbsoluteScore, nonmatch 6.0 / match 12.0) is present; tune it to the HL7 Identity Matching IG before production.
+
+**Remaining before enabling `MPI_ENABLED`:** client_credentials token fetch/refresh in `FhirMpiClient`; register source-system identity domains + wire the patient feed into ingestion; tune matching weights; steward UI.

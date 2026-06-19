@@ -74,6 +74,9 @@ describe('FhirMpiClient.match', () => {
       gender: 'female',
       name: [{ family: 'Hopper', given: ['Grace'] }],
     });
+    // SanteDB's FHIR $match NREs without a count parameter — always send one.
+    const countParam = body.parameter.find((p: { name: string }) => p.name === 'count');
+    expect(countParam.valueInteger).toBeGreaterThan(0);
   });
 
   it('parses candidates with master identifier, score, and grade, sorted by score desc', async () => {
@@ -100,11 +103,26 @@ describe('FhirMpiClient.match', () => {
     expect(fetchImpl.mock.calls[0]![1].headers.authorization).toBe('Bearer mpi-token');
   });
 
-  it('drops candidates with no master identifier and returns [] on empty bundle', async () => {
+  it('falls back to the candidate resource id (under the master system) when no master identifier is present', async () => {
+    // SanteDB returns candidates keyed by their stable resource id, not an
+    // identifier in our configured master system.
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         resourceType: 'Bundle',
-        entry: [{ resource: { resourceType: 'Patient', identifier: [{ system: 'urn:oid:epic', value: 'x' }] }, search: { score: 0.9 } }],
+        entry: [{ resource: { resourceType: 'Patient', id: 'mdm-abc', identifier: [{ system: 'urn:oid:epic', value: 'x' }] }, search: { score: 0.8 } }],
+      }),
+    );
+    const client = new FhirMpiClient({ baseUrl: 'https://mpi.internal/fhir', masterIdSystem: MASTER_SYSTEM, fetchImpl });
+    expect(await client.match(demographics)).toEqual([
+      { masterIdentifier: { system: MASTER_SYSTEM, value: 'mdm-abc' }, score: 0.8, grade: null },
+    ]);
+  });
+
+  it('drops candidates with neither a master identifier nor a resource id, and returns [] on empty bundle', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        resourceType: 'Bundle',
+        entry: [{ resource: { resourceType: 'Patient' }, search: { score: 0.9 } }],
       }),
     );
     const client = new FhirMpiClient({ baseUrl: 'https://mpi.internal/fhir', masterIdSystem: MASTER_SYSTEM, fetchImpl });
