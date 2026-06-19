@@ -8,10 +8,14 @@
 import type postgres from 'postgres';
 import { sql } from '@medgnosis/db';
 import type { FhirResource } from './types.js';
+import { extractPatientIdentifiers, normalizeDemographics } from './identity/identityKeys.js';
+import { reconcilePatient } from './identity/reconcilePatient.js';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+const BULK_IDENTITY_SOURCE_SYSTEM = 'bulk_export';
 const SUPPORTED_RESOURCE_TYPES = [
+  'Patient',
   'Encounter',
   'Condition',
   'Observation',
@@ -163,6 +167,7 @@ async function findHydratableStagedResources(
       AND (${tenantFilter}::bigint IS NULL OR ehr_tenant_id = ${tenantFilter})
       AND (${orgFilter}::int IS NULL OR org_id IS NOT DISTINCT FROM ${orgFilter})
     ORDER BY CASE resource_type
+               WHEN 'Patient' THEN 0
                WHEN 'Encounter' THEN 1
                WHEN 'Condition' THEN 2
                WHEN 'Observation' THEN 3
@@ -180,6 +185,27 @@ async function findHydratableStagedResources(
 
 function hydrateStagedResource(row: StagedFhirResourceRow): Promise<HydratedResourceTarget | null> {
   return sql.begin(async (tx) => {
+    // Patient resources resolve enterprise identity and create/reuse the legacy
+    // phm_edw.patient row; the resulting patient_id seeds the crosswalk so child
+    // resources in the same (Patient-first ordered) batch can resolve it.
+    if (row.resource_type === 'Patient') {
+      const existing = await findExistingLocalTarget(tx, row);
+      if (existing.localTable === 'phm_edw.patient' && existing.localId !== null) {
+        const target: HydratedResourceTarget = {
+          localTable: 'phm_edw.patient',
+          localId: existing.localId,
+          operation: 'updated',
+        };
+        await upsertResourceCrosswalk(tx, row, target.localId, target);
+        return target;
+      }
+
+      const target = await hydratePatient(row);
+      if (!target) return null;
+      await upsertResourceCrosswalk(tx, row, target.localId, target);
+      return target;
+    }
+
     const patientId = await resolvePatientId(tx, row);
     if (patientId === null) return null;
 
@@ -190,6 +216,54 @@ function hydrateStagedResource(row: StagedFhirResourceRow): Promise<HydratedReso
     await upsertResourceCrosswalk(tx, row, patientId, target);
     return target;
   });
+}
+
+async function hydratePatient(row: StagedFhirResourceRow): Promise<HydratedResourceTarget | null> {
+  const patient = row.resource;
+  const ehrTenantId = Number(row.ehr_tenant_id);
+  // reconcilePatient uses the default (global-pool) repository rather than the
+  // surrounding hydration transaction: postgres's TransactionSql type omits the
+  // tagged-template call signature, so the repository cannot run on `tx`. This
+  // is safe because reconcile is idempotent — on retry the person is matched by
+  // its identifier and the existing legacy patient is reused, so a rolled-back
+  // crosswalk step never produces a duplicate patient.
+  const result = await reconcilePatient({
+    patient,
+    ehrTenantId,
+    sourceSystem: BULK_IDENTITY_SOURCE_SYSTEM,
+    insertLegacyPatient: () => insertStagedPatientRow(patient),
+  });
+  return {
+    localTable: 'phm_edw.patient',
+    localId: result.localPatientId,
+    operation: result.reusedExisting ? 'updated' : 'inserted',
+  };
+}
+
+async function insertStagedPatientRow(patient: FhirResource): Promise<number> {
+  // Minimal legacy row from the identity minimum data set. Richer demographics
+  // (middle name, phone, email) are populated by the SMART launch path; bulk
+  // ingestion seeds name/DOB/sex/MRN and is enriched on subsequent encounters.
+  const demographics = normalizeDemographics(patient);
+  const mrn = extractPatientIdentifiers(patient).find((identifier) => identifier.strong)?.value ?? null;
+  const rows = await sql<{ patient_id: number | string }[]>`
+    INSERT INTO phm_edw.patient
+      (mrn, first_name, last_name, date_of_birth, gender, active_ind, created_date, updated_date)
+    VALUES (
+      ${mrn === null ? null : truncate(mrn, 50)},
+      ${truncate(demographics.firstName, 100)},
+      ${truncate(demographics.lastName, 100)},
+      ${demographics.dateOfBirth}::date,
+      ${truncateNullable(demographics.sex, 50)},
+      'Y', NOW(), NOW()
+    )
+    RETURNING patient_id
+  `;
+  const patientId = optionalPositiveNumber(rows[0]?.patient_id);
+  if (patientId === null) {
+    throw new Error('Unable to create local patient during bulk hydration');
+  }
+  return patientId;
 }
 
 async function hydrateByResourceType(

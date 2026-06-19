@@ -285,4 +285,91 @@ describe('hydrateStagedRunToEdw', () => {
       },
     });
   });
+
+  it('reuses an existing bulk Patient crosswalk before identity resolution', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Patient', 'pat-1', bulkPatient)]);
+      }
+      if (text.includes('SELECT local_table, local_id')) {
+        return Promise.resolve([{ local_table: 'phm_edw.patient', local_id: 777 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId, ehrTenantId: 42, orgId: 7 });
+
+    expect(result).toMatchObject({
+      resourcesSeen: 1,
+      resourcesHydrated: 1,
+      resourcesSkipped: 0,
+      resourcesFailed: 0,
+      rowsUpdated: 1,
+      byResourceType: { Patient: { seen: 1, hydrated: 1, skipped: 0, failed: 0 } },
+    });
+
+    const queries = mockSql.mock.calls.map((call) => (call[0] as TemplateStringsArray).join(''));
+    expect(queries.some((q) => q.includes('FROM phm_edw.patient_identifier'))).toBe(false);
+    expect(queries.some((q) => q.includes('INSERT INTO phm_edw.person'))).toBe(false);
+    expect(queries.some((q) => q.includes('INSERT INTO phm_edw.patient\n'))).toBe(false);
+
+    const crosswalk = mockSql.mock.calls
+      .filter((call) => (call[0] as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'))
+      .map((call) => ({ resourceType: call[2], localTable: call[5], localId: call[6], patientId: call[7] }));
+    expect(crosswalk).toEqual([
+      { resourceType: 'Patient', localTable: 'phm_edw.patient', localId: 777, patientId: 777 },
+    ]);
+  });
+
+  it('hydrates a bulk Patient through identity resolution, minting a person and linking it', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Patient', 'pat-1', bulkPatient)]);
+      }
+      if (text.includes('FROM phm_edw.patient_identifier')) return Promise.resolve([]); // no id match
+      if (text.includes('FROM phm_edw.person')) return Promise.resolve([]); // no demographic match
+      if (text.includes('INSERT INTO phm_edw.person')) return Promise.resolve([{ person_id: 1 }]);
+      if (text.includes('FROM phm_edw.patient_link')) return Promise.resolve([]); // no existing legacy row
+      if (text.includes('INSERT INTO phm_edw.patient\n')) return Promise.resolve([{ patient_id: 555 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId, ehrTenantId: 42, orgId: 7 });
+
+    expect(result).toMatchObject({
+      resourcesSeen: 1,
+      resourcesHydrated: 1,
+      resourcesFailed: 0,
+      byResourceType: { Patient: { seen: 1, hydrated: 1, skipped: 0, failed: 0 } },
+    });
+
+    const queries = mockSql.mock.calls.map((call) => (call[0] as TemplateStringsArray).join(''));
+    expect(queries.some((q) => q.includes('INSERT INTO phm_edw.person'))).toBe(true);
+    expect(queries.some((q) => q.includes('INSERT INTO phm_edw.patient_identifier'))).toBe(true);
+    expect(queries.some((q) => q.includes('INSERT INTO phm_edw.patient_link'))).toBe(true);
+
+    const crosswalk = mockSql.mock.calls
+      .filter((call) => (call[0] as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'))
+      .map((call) => ({ resourceType: call[2], localTable: call[5], localId: call[6], patientId: call[7] }));
+    expect(crosswalk).toEqual([
+      { resourceType: 'Patient', localTable: 'phm_edw.patient', localId: 555, patientId: 555 },
+    ]);
+  });
 });
+
+const bulkPatient: FhirResource = {
+  resourceType: 'Patient',
+  id: 'pat-1',
+  identifier: [
+    {
+      system: 'urn:oid:1.2.3.4',
+      value: 'MRN-1',
+      type: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v2-0203', code: 'MR' }] },
+    },
+  ],
+  name: [{ use: 'official', family: 'Bulk', given: ['Patty'] }],
+  birthDate: '1980-02-03',
+  gender: 'female',
+};

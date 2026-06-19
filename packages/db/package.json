@@ -19,7 +19,8 @@
     "db:migrate:list": "node --import tsx/esm src/migrate.ts --list",
     "db:seed": "node --import tsx/esm src/seed.ts",
     "db:seed-ehr-sandbox": "node --import tsx/esm src/seed-ehr-sandbox.ts",
-    "db:seed-demo": "node --import tsx/esm src/seed-demo.ts"
+    "db:seed-demo": "node --import tsx/esm src/seed-demo.ts",
+    "db:backfill-empi": "node --import tsx/esm src/backfill-empi.ts"
   },
   "dependencies": {
     "@medgnosis/shared": "*",
