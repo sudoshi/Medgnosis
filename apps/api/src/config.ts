@@ -67,6 +67,17 @@ export const config = {
   oidcStateTtlSeconds: Number(optional('OIDC_STATE_TTL_SECONDS', '300')),
   oidcExchangeTtlSeconds: Number(optional('OIDC_EXCHANGE_TTL_SECONDS', '60')),
 
+  // EMPI probabilistic matching (SanteMPI). OFF by default — deterministic-only
+  // identity resolution until an MPI sidecar is deployed and configured.
+  mpiEnabled: optionalBool('MPI_ENABLED', false),
+  mpiBaseUrl: optional('MPI_BASE_URL', 'http://santempi:8080/fhir'),
+  // Assigning-authority system URI of the MPI master/enterprise identifier.
+  mpiMasterIdSystem: optional('MPI_MASTER_ID_SYSTEM', 'urn:oid:2.16.840.1.113883.3.999.mpi'),
+  mpiAccessToken: process.env['MPI_ACCESS_TOKEN'] ?? '',
+  // Auto-accept >= auto; route [review, auto) to the steward queue; ignore < review.
+  mpiAutoThreshold: Number(optional('MPI_AUTO_THRESHOLD', '0.9')),
+  mpiReviewThreshold: Number(optional('MPI_REVIEW_THRESHOLD', '0.6')),
+
   // Redis
   redisUrl: optional('REDIS_URL', 'redis://localhost:6379'),
 

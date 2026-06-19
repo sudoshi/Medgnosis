@@ -20,6 +20,8 @@ import {
   type NormalizedDemographics,
   type NormalizedIdentifier,
 } from './identityKeys.js';
+import type { MpiClient } from './mpiClient.js';
+import { decideProbabilisticMatch, type ProbabilisticThresholds } from './probabilisticMatch.js';
 
 export type MatchGrade = 'certain' | 'possible' | 'none';
 
@@ -88,9 +90,19 @@ function profileFromDemographics(demographics: NormalizedDemographics): PersonPr
   };
 }
 
+/**
+ * Optional probabilistic (MPI) tier. When supplied, it is consulted only after
+ * the deterministic tiers find nothing — never to override a deterministic
+ * match. Omit it entirely (the default) for deterministic-only resolution.
+ */
+export interface MpiResolution extends ProbabilisticThresholds {
+  client: MpiClient;
+}
+
 export async function resolvePatientIdentity(
   input: ResolvePatientIdentityInput,
   repo: IdentityRepository,
+  mpi?: MpiResolution,
 ): Promise<ResolvePatientIdentityResult> {
   const { patient, ehrTenantId, sourceSystem } = input;
   const demographics = normalizeDemographics(patient);
@@ -128,6 +140,17 @@ export async function resolvePatientIdentity(
 
   // Tier 2 — demographic floor key.
   const demographicMatches = distinct(await repo.findPersonIdsByDemographicKey(key));
+
+  // Tier 3 — probabilistic (MPI), only when deterministic tiers found nothing.
+  if (demographicMatches.length === 0 && mpi) {
+    const probabilistic = await resolveProbabilistic(
+      { demographics, key, strongIdentifiers, ehrTenantId, sourceSystem },
+      repo,
+      mpi,
+    );
+    if (probabilistic) return probabilistic;
+  }
+
   const personId = await repo.createPerson(profileFromDemographics(demographics), sourceSystem, ehrTenantId);
   await repo.attachIdentifiers(personId, strongIdentifiers, sourceSystem, ehrTenantId);
   await repo.upsertDemographicKey(personId, key);
@@ -146,4 +169,73 @@ export async function resolvePatientIdentity(
   }
 
   return { personId, matchGrade: 'none', isNew: true, needsReview: false };
+}
+
+interface ProbabilisticContext {
+  demographics: NormalizedDemographics;
+  key: string;
+  strongIdentifiers: NormalizedIdentifier[];
+  ehrTenantId: number;
+  sourceSystem: string;
+}
+
+function masterAsIdentifier(master: { system: string; value: string }): NormalizedIdentifier {
+  return { system: master.system, value: master.value, typeCode: null, strong: true };
+}
+
+/**
+ * Probabilistic resolution via the MPI. Returns a result when the MPI yields an
+ * actionable match, or null to fall through to normal person creation.
+ *
+ * The MPI master identifier is attached to the resolved person so that a future
+ * MPI $match (which re-surfaces the same master) re-resolves to the same local
+ * person via the strong-identifier tier. Mid-confidence matches mint a
+ * provisional person and enqueue a steward review — never an auto-merge.
+ */
+async function resolveProbabilistic(
+  ctx: ProbabilisticContext,
+  repo: IdentityRepository,
+  mpi: MpiResolution,
+): Promise<ResolvePatientIdentityResult | null> {
+  const candidates = await mpi.client.match({ ...ctx.demographics, identifiers: ctx.strongIdentifiers });
+  const decision = decideProbabilisticMatch(candidates, mpi);
+  if (decision.action === 'none') return null;
+
+  const master = masterAsIdentifier(decision.candidate.masterIdentifier);
+
+  if (decision.action === 'attach') {
+    const matched = distinct(
+      (await repo.findPersonIdsByIdentifiers([master])).map((m) => m.personId),
+    );
+    const personId = matched.length >= 1
+      ? Math.min(...matched)
+      : await repo.createPerson(profileFromDemographics(ctx.demographics), ctx.sourceSystem, ctx.ehrTenantId);
+    await repo.attachIdentifiers(personId, [...ctx.strongIdentifiers, master], ctx.sourceSystem, ctx.ehrTenantId);
+    await repo.upsertDemographicKey(personId, ctx.key);
+    return { personId, matchGrade: 'certain', isNew: matched.length === 0, needsReview: false };
+  }
+
+  // review band: provisional person + steward review against the MPI candidates.
+  const personId = await repo.createPerson(
+    profileFromDemographics(ctx.demographics),
+    ctx.sourceSystem,
+    ctx.ehrTenantId,
+  );
+  await repo.attachIdentifiers(personId, [...ctx.strongIdentifiers, master], ctx.sourceSystem, ctx.ehrTenantId);
+  await repo.upsertDemographicKey(personId, ctx.key);
+  const candidatePersonIds = distinct(
+    (await repo.findPersonIdsByIdentifiers(decision.reviewCandidates.map((c) => masterAsIdentifier(c.masterIdentifier))))
+      .map((m) => m.personId),
+  ).filter((id) => id !== personId);
+  await repo.enqueueReview({
+    personId,
+    candidatePersonIds,
+    // Phase 1 reuses the demographic_only_match bucket for MPI-sourced reviews
+    // (no schema change); split out when the steward UI lands.
+    reason: 'demographic_only_match',
+    ehrTenantId: ctx.ehrTenantId,
+    sourceSystem: ctx.sourceSystem,
+    demographicKey: ctx.key,
+  });
+  return { personId, matchGrade: 'possible', isNew: true, needsReview: true };
 }

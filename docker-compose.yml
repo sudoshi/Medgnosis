@@ -189,9 +189,39 @@ services:
     networks:
       - medgnosis
 
+  # Enterprise Master Patient Index — probabilistic Patient/$match for the EMPI
+  # Phase 1 (see docs/EMPI-SANTEMPI-SETUP.md). Off by default; start with:
+  #   docker compose --profile mpi up -d santempi
+  # and set MPI_ENABLED=true (+ MPI_BASE_URL/MPI_MASTER_ID_SYSTEM) on the api.
+  santempi:
+    container_name: medgnosis-santempi
+    image: santesuite/santedb-mpi:latest
+    environment:
+      # SanteDB connection / FHIR are configured via the mounted config volume;
+      # see the setup doc for matching weights (HL7 Identity Matching IG) and the
+      # master-authority OID that MPI_MASTER_ID_SYSTEM must equal.
+      SDB_FEATURE: "FHIR;MPI"
+    volumes:
+      - santempi_data:/santedb/data
+      - santempi_config:/santedb/config
+    ports:
+      - "8085:8080" # FHIR base at http://localhost:8085/fhir (host); santempi:8080 in-network
+    restart: unless-stopped
+    profiles:
+      - mpi
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: "2"
+    networks:
+      - medgnosis
+
 volumes:
   redis_data:
   solr_data:
+  santempi_data:
+  santempi_config:
 
 networks:
   medgnosis:

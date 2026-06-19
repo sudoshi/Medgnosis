@@ -14,6 +14,7 @@ import {
   resolvePatientIdentity as resolvePatientIdentityDefault,
   type IdentityRepository,
   type MatchGrade,
+  type MpiResolution,
   type ResolvePatientIdentityResult,
 } from './resolvePatientIdentity.js';
 import {
@@ -21,6 +22,7 @@ import {
   identityRepository as identityRepositoryDefault,
   linkLegacyPatient as linkLegacyPatientDefault,
 } from './identityRepository.js';
+import { buildMpiResolution } from './mpiResolution.js';
 
 export interface ReconcilePatientInput {
   patient: FhirResource;
@@ -34,10 +36,13 @@ export interface ReconcilePatientDeps {
   resolveIdentity?: (
     input: { patient: FhirResource; ehrTenantId: number; sourceSystem: string },
     repo: IdentityRepository,
+    mpi?: MpiResolution,
   ) => Promise<ResolvePatientIdentityResult>;
   repository?: IdentityRepository;
   findLegacyPatientId?: (personId: number) => Promise<number | null>;
   linkLegacyPatient?: (patientId: number, personId: number, ehrTenantId: number) => Promise<void>;
+  /** Probabilistic tier; defaults to the env-configured MPI (undefined when disabled). */
+  mpi?: MpiResolution;
 }
 
 export interface ReconcilePatientResult {
@@ -55,11 +60,17 @@ export async function reconcilePatient(
   const repository = deps.repository ?? identityRepositoryDefault;
   const findLegacyPatientId = deps.findLegacyPatientId ?? findLegacyPatientIdDefault;
   const linkLegacyPatient = deps.linkLegacyPatient ?? linkLegacyPatientDefault;
+  const mpi = deps.mpi ?? buildMpiResolution();
 
-  const identity = await resolveIdentity(
-    { patient: input.patient, ehrTenantId: input.ehrTenantId, sourceSystem: input.sourceSystem },
-    repository,
-  );
+  const resolveInput = {
+    patient: input.patient,
+    ehrTenantId: input.ehrTenantId,
+    sourceSystem: input.sourceSystem,
+  };
+  // Pass mpi only when present so deterministic-only callers/tests see a 2-arg call.
+  const identity = mpi
+    ? await resolveIdentity(resolveInput, repository, mpi)
+    : await resolveIdentity(resolveInput, repository);
 
   const existingLegacyId = await findLegacyPatientId(identity.personId);
   if (existingLegacyId !== null) {

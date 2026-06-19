@@ -208,3 +208,93 @@ describe('resolvePatientIdentity', () => {
     expect(repo.persons).toHaveLength(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tier 3 — optional probabilistic (MPI) resolution. Off unless `mpi` is passed.
+// ---------------------------------------------------------------------------
+import { describe as describe2, it as it2, expect as expect2, beforeEach as beforeEach2, vi as vi2 } from 'vitest';
+import type { MpiCandidate, MpiClient } from './mpiClient.js';
+
+const MPI_SYSTEM = 'urn:oid:mpi-master';
+function mpiCandidate(value: string, score: number): MpiCandidate {
+  return { masterIdentifier: { system: MPI_SYSTEM, value }, score, grade: null };
+}
+function fakeMpi(candidates: MpiCandidate[]) {
+  const client: MpiClient = { match: vi2.fn().mockResolvedValue(candidates) };
+  return { client, autoThreshold: 0.9, reviewThreshold: 0.6 };
+}
+function newPatient(): FhirResource {
+  return {
+    resourceType: 'Patient',
+    id: 'pat-x',
+    name: [{ use: 'official', family: 'Nomatch', given: ['Nora'] }],
+    birthDate: '1990-01-01',
+    gender: 'female',
+    identifier: [{ system: 'urn:oid:epic', value: 'EPIC-ONLY' }],
+  };
+}
+
+let mpiRepo: FakeIdentityRepository;
+beforeEach2(() => {
+  mpiRepo = new FakeIdentityRepository();
+});
+
+describe2('resolvePatientIdentity — probabilistic tier', () => {
+  it2('does not consult the MPI when a deterministic identifier match already resolves', async () => {
+    mpiRepo.seed({
+      identifiers: [{ system: 'urn:oid:epic', value: 'EPIC-ONLY', typeCode: null, strong: true }],
+      demographicKey: null,
+      profile: { firstName: 'Nora', lastName: 'Nomatch', dateOfBirth: '1990-01-01', sex: 'female' },
+    });
+    const mpi = fakeMpi([mpiCandidate('M9', 0.99)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('certain');
+    expect2(mpi.client.match).not.toHaveBeenCalled();
+  });
+
+  it2('auto-attaches to the local person carrying the high-confidence master identifier', async () => {
+    const existing = mpiRepo.seed({
+      identifiers: [{ system: MPI_SYSTEM, value: 'M1', typeCode: null, strong: true }],
+      demographicKey: null,
+      profile: { firstName: 'Nora', lastName: 'Nomatch', dateOfBirth: '1990-01-01', sex: 'female' },
+    });
+    const mpi = fakeMpi([mpiCandidate('M1', 0.95)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result).toMatchObject({ personId: existing, matchGrade: 'certain', isNew: false, needsReview: false });
+    expect2(mpiRepo.persons).toHaveLength(1);
+    // The inbound EHR identifier is now attached to the matched person.
+    expect2(mpiRepo.persons[0]?.identifiers.map((i) => i.value).sort()).toEqual(['EPIC-ONLY', 'M1']);
+  });
+
+  it2('mints a new person + stores the master id when the MPI master is not yet local', async () => {
+    const mpi = fakeMpi([mpiCandidate('M2', 0.97)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result).toMatchObject({ matchGrade: 'certain', isNew: true, needsReview: false });
+    expect2(mpiRepo.persons).toHaveLength(1);
+    expect2(mpiRepo.persons[0]?.identifiers.map((i) => i.value).sort()).toEqual(['EPIC-ONLY', 'M2']);
+  });
+
+  it2('routes a mid-confidence MPI match to review with a provisional person', async () => {
+    const mpi = fakeMpi([mpiCandidate('M3', 0.72)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result).toMatchObject({ matchGrade: 'possible', isNew: true, needsReview: true });
+    expect2(mpiRepo.reviews).toHaveLength(1);
+  });
+
+  it2('falls through to a normal new person when MPI confidence is below review', async () => {
+    const mpi = fakeMpi([mpiCandidate('M4', 0.3)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('none');
+    expect2(mpiRepo.reviews).toHaveLength(0);
+  });
+});
