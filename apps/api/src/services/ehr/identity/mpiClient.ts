@@ -33,10 +33,23 @@ export interface FhirMpiClientOptions {
   /** Assigning-authority system of the MPI's master/enterprise identifier. */
   masterIdSystem: string;
   fetchImpl?: FetchLike;
+  /** Static bearer token. Takes precedence over client_credentials acquisition. */
   accessToken?: string;
   timeoutMs?: number;
   /** Max candidates to request. SanteDB's $match NREs without a count, so this is always sent. */
   count?: number;
+  // OAuth2 client_credentials acquisition (used when accessToken is not set).
+  tokenUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  /** Injectable clock (ms) for token-expiry testing; defaults to Date.now. */
+  now?: () => number;
+}
+
+interface CachedToken {
+  token: string;
+  expiresAtMs: number;
 }
 
 const MATCH_GRADE_URL = 'http://hl7.org/fhir/StructureDefinition/match-grade';
@@ -80,6 +93,12 @@ export class FhirMpiClient implements MpiClient {
   private readonly accessToken: string | undefined;
   private readonly timeoutMs: number;
   private readonly count: number;
+  private readonly tokenUrl: string | undefined;
+  private readonly clientId: string | undefined;
+  private readonly clientSecret: string | undefined;
+  private readonly scope: string;
+  private readonly now: () => number;
+  private cachedToken: CachedToken | null = null;
 
   constructor(options: FhirMpiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -92,6 +111,43 @@ export class FhirMpiClient implements MpiClient {
     this.accessToken = options.accessToken;
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.count = options.count ?? 10;
+    this.tokenUrl = options.tokenUrl;
+    this.clientId = options.clientId;
+    this.clientSecret = options.clientSecret;
+    this.scope = options.scope ?? '*';
+    this.now = options.now ?? Date.now;
+  }
+
+  /** Resolve a bearer token: static if provided, else cached/freshly-acquired client_credentials. */
+  private async resolveToken(): Promise<string | undefined> {
+    if (this.accessToken) return this.accessToken;
+    if (!this.tokenUrl || !this.clientId) return undefined;
+    if (this.cachedToken && this.cachedToken.expiresAtMs > this.now()) {
+      return this.cachedToken.token;
+    }
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: this.clientId,
+      scope: this.scope,
+    });
+    if (this.clientSecret) body.set('client_secret', this.clientSecret);
+    const response = await this.fetchImpl(this.tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!response.ok) {
+      throw new Error(`MPI token request failed with HTTP ${response.status}`);
+    }
+    const json = (await response.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) {
+      throw new Error('MPI token response did not include an access_token');
+    }
+    // Refresh 30s before stated expiry; default 5 min when expires_in is absent.
+    const ttlMs = Math.max(0, (json.expires_in ?? 300) - 30) * 1000;
+    this.cachedToken = { token: json.access_token, expiresAtMs: this.now() + ttlMs };
+    return json.access_token;
   }
 
   async match(input: MpiMatchInput): Promise<MpiCandidate[]> {
@@ -100,7 +156,8 @@ export class FhirMpiClient implements MpiClient {
       'content-type': 'application/fhir+json',
       accept: 'application/fhir+json',
     };
-    if (this.accessToken) headers.authorization = `Bearer ${this.accessToken}`;
+    const token = await this.resolveToken();
+    if (token) headers.authorization = `Bearer ${token}`;
 
     const response = await this.fetchImpl(`${this.baseUrl}/Patient/$match`, {
       method: 'POST',

@@ -135,3 +135,64 @@ describe('FhirMpiClient.match', () => {
     await expect(client.match(demographics)).rejects.toThrow(/match/i);
   });
 });
+
+describe('FhirMpiClient — client_credentials token acquisition', () => {
+  function tokenResponse(token: string, expiresIn = 3600): Response {
+    return new Response(JSON.stringify({ access_token: token, token_type: 'bearer', expires_in: expiresIn }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  const emptyBundle = () => jsonResponse({ resourceType: 'Bundle', entry: [] });
+
+  function clientWithCreds(fetchImpl: ReturnType<typeof vi.fn>, now: () => number) {
+    return new FhirMpiClient({
+      baseUrl: 'https://mpi.internal/fhir',
+      masterIdSystem: MASTER_SYSTEM,
+      fetchImpl,
+      tokenUrl: 'https://mpi.internal/auth/oauth2_token',
+      clientId: 'fiddler',
+      clientSecret: 'fiddler',
+      now,
+    });
+  }
+
+  it('fetches a client_credentials token (id/secret in the body) and uses it as the bearer on $match', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(tokenResponse('svc-token-1'))
+      .mockResolvedValueOnce(emptyBundle());
+    await clientWithCreds(fetchImpl, () => 1_000).match(demographics);
+
+    const [tokenUrl, tokenInit] = fetchImpl.mock.calls[0]!;
+    expect(tokenUrl).toBe('https://mpi.internal/auth/oauth2_token');
+    const body = new URLSearchParams(tokenInit.body as string);
+    expect(body.get('grant_type')).toBe('client_credentials');
+    expect(body.get('client_id')).toBe('fiddler');
+    expect(body.get('client_secret')).toBe('fiddler');
+
+    const [, matchInit] = fetchImpl.mock.calls[1]!;
+    expect(matchInit.headers.authorization).toBe('Bearer svc-token-1');
+  });
+
+  it('caches the token across calls until it nears expiry, then refreshes', async () => {
+    let clock = 0;
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(tokenResponse('tok-A', 100)) // expires at ~100s
+      .mockResolvedValueOnce(emptyBundle())
+      .mockResolvedValueOnce(emptyBundle())
+      .mockResolvedValueOnce(tokenResponse('tok-B', 100))
+      .mockResolvedValueOnce(emptyBundle());
+    const client = clientWithCreds(fetchImpl, () => clock);
+
+    await client.match(demographics);            // fetch token A (calls 0,1)
+    clock = 50_000;                               // still valid
+    await client.match(demographics);            // reuse A (call 2), no token fetch
+    clock = 200_000;                              // past expiry
+    await client.match(demographics);            // refresh -> token B (calls 3,4)
+
+    const tokenFetches = fetchImpl.mock.calls.filter((c) => c[0] === 'https://mpi.internal/auth/oauth2_token');
+    expect(tokenFetches).toHaveLength(2);
+    expect(fetchImpl.mock.calls[2]![1].headers.authorization).toBe('Bearer tok-A');
+    expect(fetchImpl.mock.calls[4]![1].headers.authorization).toBe('Bearer tok-B');
+  });
+});

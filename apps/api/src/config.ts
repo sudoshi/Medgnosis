@@ -73,7 +73,13 @@ export const config = {
   mpiBaseUrl: optional('MPI_BASE_URL', 'http://santempi:8080/fhir'),
   // Assigning-authority system URI of the MPI master/enterprise identifier.
   mpiMasterIdSystem: optional('MPI_MASTER_ID_SYSTEM', 'urn:oid:2.16.840.1.113883.3.999.mpi'),
+  // Static token (overrides client_credentials) — leave blank in production.
   mpiAccessToken: process.env['MPI_ACCESS_TOKEN'] ?? '',
+  // OAuth2 client_credentials for the MPI (preferred machine-to-machine auth).
+  mpiTokenUrl: process.env['MPI_TOKEN_URL'] ?? '',
+  mpiClientId: process.env['MPI_CLIENT_ID'] ?? '',
+  mpiClientSecret: process.env['MPI_CLIENT_SECRET'] ?? '',
+  mpiScope: optional('MPI_SCOPE', '*'),
   // Auto-accept >= auto; route [review, auto) to the steward queue; ignore < review.
   mpiAutoThreshold: Number(optional('MPI_AUTO_THRESHOLD', '0.9')),
   mpiReviewThreshold: Number(optional('MPI_REVIEW_THRESHOLD', '0.6')),
