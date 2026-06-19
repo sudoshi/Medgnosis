@@ -136,6 +136,30 @@ describe('FhirMpiClient.match', () => {
   });
 });
 
+describe('FhirMpiClient.feed', () => {
+  it('POSTs a demographics-only Patient and returns the MPI id', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ resourceType: 'Patient', id: 'mpi-new-1' }, 201));
+    const client = new FhirMpiClient({ baseUrl: 'https://mpi.internal/fhir', masterIdSystem: MASTER_SYSTEM, fetchImpl });
+
+    const id = await client.feed({ firstName: 'Grace', lastName: 'Hopper', dateOfBirth: '1906-12-09', sex: 'female' });
+
+    expect(id).toBe('mpi-new-1');
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('https://mpi.internal/fhir/Patient');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({ resourceType: 'Patient', birthDate: '1906-12-09', gender: 'female', name: [{ family: 'Hopper', given: ['Grace'] }] });
+    // Demographics-only: no identifiers fed (avoids SanteDB's unregistered-identity-domain 400).
+    expect(body.identifier).toBeUndefined();
+  });
+
+  it('throws on a non-OK feed response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ resourceType: 'OperationOutcome' }, 400));
+    const client = new FhirMpiClient({ baseUrl: 'https://mpi.internal/fhir', masterIdSystem: MASTER_SYSTEM, fetchImpl });
+    await expect(client.feed({ firstName: 'A', lastName: 'B', dateOfBirth: '2000-01-01', sex: null })).rejects.toThrow(/feed|create/i);
+  });
+});
+
 describe('FhirMpiClient — client_credentials token acquisition', () => {
   function tokenResponse(token: string, expiresIn = 3600): Response {
     return new Response(JSON.stringify({ access_token: token, token_type: 'bearer', expires_in: expiresIn }), {

@@ -24,10 +24,12 @@ function build(): MpiResolution | undefined {
   if (process.env['MPI_ENABLED'] !== 'true') return undefined;
   const baseUrl = process.env['MPI_BASE_URL'];
   if (!baseUrl) return undefined;
+  const masterIdSystem = process.env['MPI_MASTER_ID_SYSTEM'] ?? DEFAULT_MASTER_ID_SYSTEM;
   return {
+    masterIdSystem,
     client: new FhirMpiClient({
       baseUrl,
-      masterIdSystem: process.env['MPI_MASTER_ID_SYSTEM'] ?? DEFAULT_MASTER_ID_SYSTEM,
+      masterIdSystem,
       // Static token wins; otherwise acquire via OAuth2 client_credentials.
       accessToken: nonEmpty('MPI_ACCESS_TOKEN'),
       tokenUrl: nonEmpty('MPI_TOKEN_URL'),

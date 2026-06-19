@@ -26,6 +26,11 @@ export interface MpiMatchInput extends NormalizedDemographics {
 
 export interface MpiClient {
   match(input: MpiMatchInput): Promise<MpiCandidate[]>;
+  /**
+   * Register a patient with the MPI (demographics-only) so future $match can
+   * find it. Returns the MPI's stable id for the registered record.
+   */
+  feed(input: MpiMatchInput): Promise<string>;
 }
 
 export interface FhirMpiClientOptions {
@@ -170,6 +175,40 @@ export class FhirMpiClient implements MpiClient {
     }
     const bundle = (await response.json()) as FhirResource;
     return this.parseCandidates(bundle);
+  }
+
+  async feed(input: MpiMatchInput): Promise<string> {
+    // Demographics-only: no identifiers, so SanteDB never rejects an
+    // unregistered identity domain. The MPI assigns its own id.
+    const patient: Record<string, unknown> = {
+      resourceType: 'Patient',
+      name: [{ family: input.lastName, given: [input.firstName] }],
+      birthDate: input.dateOfBirth,
+    };
+    if (input.sex) patient.gender = input.sex;
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/fhir+json',
+      accept: 'application/fhir+json',
+    };
+    const token = await this.resolveToken();
+    if (token) headers.authorization = `Bearer ${token}`;
+
+    const response = await this.fetchImpl(`${this.baseUrl}/Patient`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(patient),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!response.ok) {
+      throw new Error(`MPI Patient create (feed) failed with HTTP ${response.status}`);
+    }
+    const created = (await response.json()) as FhirResource;
+    const id = created['id'];
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('MPI Patient create (feed) response did not include an id');
+    }
+    return id;
   }
 
   private buildParameters(input: MpiMatchInput): Record<string, unknown> {

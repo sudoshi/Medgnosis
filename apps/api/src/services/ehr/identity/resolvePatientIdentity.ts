@@ -97,6 +97,8 @@ function profileFromDemographics(demographics: NormalizedDemographics): PersonPr
  */
 export interface MpiResolution extends ProbabilisticThresholds {
   client: MpiClient;
+  /** Assigning-authority system used to store the MPI master id on a person. */
+  masterIdSystem: string;
 }
 
 export async function resolvePatientIdentity(
@@ -155,6 +157,12 @@ export async function resolvePatientIdentity(
   await repo.attachIdentifiers(personId, strongIdentifiers, sourceSystem, ehrTenantId);
   await repo.upsertDemographicKey(personId, key);
 
+  // Register the new person with the MPI (best-effort) and store the returned
+  // master id so a future $match re-resolves to this same person.
+  if (mpi) {
+    await feedNewPersonToMpi(personId, demographics, sourceSystem, ehrTenantId, mpi, repo);
+  }
+
   if (demographicMatches.length > 0) {
     // Provisional person minted; never auto-merge on demographics alone.
     await repo.enqueueReview({
@@ -197,7 +205,13 @@ async function resolveProbabilistic(
   repo: IdentityRepository,
   mpi: MpiResolution,
 ): Promise<ResolvePatientIdentityResult | null> {
-  const candidates = await mpi.client.match({ ...ctx.demographics, identifiers: ctx.strongIdentifiers });
+  // Best-effort: a failed/unreachable MPI falls back to deterministic creation.
+  let candidates;
+  try {
+    candidates = await mpi.client.match({ ...ctx.demographics, identifiers: ctx.strongIdentifiers });
+  } catch {
+    return null;
+  }
   const decision = decideProbabilisticMatch(candidates, mpi);
   if (decision.action === 'none') return null;
 
@@ -238,4 +252,32 @@ async function resolveProbabilistic(
     demographicKey: ctx.key,
   });
   return { personId, matchGrade: 'possible', isNew: true, needsReview: true };
+}
+
+/**
+ * Best-effort MPI registration for a newly minted person. Registers the
+ * demographics, then self-$matches to learn the MDM MASTER id (the FHIR create
+ * returns only the local record id, while $match returns the master), and
+ * stores that master id on the person so a future $match re-resolves to it.
+ * Any failure (MPI down, feed rejected) is swallowed so ingestion is never
+ * blocked.
+ */
+async function feedNewPersonToMpi(
+  personId: number,
+  demographics: NormalizedDemographics,
+  sourceSystem: string,
+  ehrTenantId: number,
+  mpi: MpiResolution,
+  repo: IdentityRepository,
+): Promise<void> {
+  try {
+    await mpi.client.feed(demographics);
+    const selfMatch = await mpi.client.match(demographics);
+    const master = selfMatch[0]?.masterIdentifier;
+    if (master) {
+      await repo.attachIdentifiers(personId, [masterAsIdentifier(master)], sourceSystem, ehrTenantId);
+    }
+  } catch {
+    // Non-blocking: the person exists locally and can be fed/matched later.
+  }
 }

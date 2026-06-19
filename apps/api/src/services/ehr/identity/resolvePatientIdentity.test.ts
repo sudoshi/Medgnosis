@@ -219,9 +219,12 @@ const MPI_SYSTEM = 'urn:oid:mpi-master';
 function mpiCandidate(value: string, score: number): MpiCandidate {
   return { masterIdentifier: { system: MPI_SYSTEM, value }, score, grade: null };
 }
-function fakeMpi(candidates: MpiCandidate[]) {
-  const client: MpiClient = { match: vi2.fn().mockResolvedValue(candidates) };
-  return { client, autoThreshold: 0.9, reviewThreshold: 0.6 };
+function fakeMpi(candidates: MpiCandidate[], feedId = 'MPI-FED') {
+  const client: MpiClient = {
+    match: vi2.fn().mockResolvedValue(candidates),
+    feed: vi2.fn().mockResolvedValue(feedId),
+  };
+  return { client, masterIdSystem: MPI_SYSTEM, autoThreshold: 0.9, reviewThreshold: 0.6 };
 }
 function newPatient(): FhirResource {
   return {
@@ -296,5 +299,41 @@ describe2('resolvePatientIdentity — probabilistic tier', () => {
     );
     expect2(result.matchGrade).toBe('none');
     expect2(mpiRepo.reviews).toHaveLength(0);
+  });
+
+  it2('feeds a new person, then stores the master id from the post-feed self-match', async () => {
+    const mpi = fakeMpi([]); // tier-3 $match returns [] -> new person -> feed
+    // first match() = tier 3 (no actionable match); second = post-feed self-match.
+    (mpi.client.match as ReturnType<typeof vi2.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([mpiCandidate('SELF-MASTER', 0.7)]);
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('none');
+    expect2(mpi.client.feed).toHaveBeenCalledTimes(1);
+    // Person carries its inbound id plus the MPI MASTER id (closes the match loop).
+    expect2(mpiRepo.persons[0]?.identifiers.map((i) => i.value).sort()).toEqual(['EPIC-ONLY', 'SELF-MASTER']);
+  });
+
+  it2('is best-effort: a failed MPI $match falls back to deterministic creation', async () => {
+    const mpi = fakeMpi([]);
+    (mpi.client.match as ReturnType<typeof vi2.fn>).mockRejectedValueOnce(new Error('MPI down'));
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('none');
+    expect2(mpiRepo.persons).toHaveLength(1);
+  });
+
+  it2('is best-effort: a failed MPI feed still creates the person (no master id, no throw)', async () => {
+    const mpi = fakeMpi([]);
+    (mpi.client.feed as ReturnType<typeof vi2.fn>).mockRejectedValueOnce(new Error('feed failed'));
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 1, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('none');
+    expect2(mpiRepo.persons).toHaveLength(1);
+    expect2(mpiRepo.persons[0]?.identifiers.map((i) => i.value)).toEqual(['EPIC-ONLY']);
   });
 });
