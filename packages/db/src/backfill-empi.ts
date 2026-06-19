@@ -1,154 +1,143 @@
 // =============================================================================
-// Medgnosis DB — EMPI Phase 0 backfill
+// Medgnosis DB — EMPI Phase 0 backfill (set-based)
 //
 // Creates one phm_edw.person per existing phm_edw.patient that has no
-// patient_link yet, links them, and seeds the demographic_match_key so the
+// patient_link yet, links them 1:1, and seeds the demographic_match_key so the
 // pre-EMPI population participates in the demographic match tier (a later
 // re-ingest of one of these patients is flagged for review instead of silently
 // duplicated).
 //
-// Idempotent (skips already-linked patients) and batched. Additive only — it
-// never modifies or deletes existing phm_edw.patient rows.
+// Strictly additive: INSERT-only into phm_edw.person / patient_link /
+// patient_merge_log. It never UPDATEs, DELETEs, or overwrites phm_edw.patient
+// or any clinical row. Fully reversible (truncate the three EMPI tables).
 //
-//   npm run db:backfill-empi -- --dry-run   # report counts, change nothing
+// Set-based and keyset-paginated: each batch is ONE auto-committed statement
+// that inserts N persons and N links (no per-row round-trips), so a ~1M-row
+// population is ~1M/BATCH_SIZE statements, not ~1M transactions. Idempotent
+// (NOT EXISTS + ON CONFLICT DO NOTHING) — safe to re-run / resume.
+//
+//   npm run db:backfill-empi -- --dry-run   # count only, change nothing
 //   npm run db:backfill-empi                # apply
 //
-// NOTE: the demographic key MUST stay byte-identical to
-// apps/api/.../identity/identityKeys.ts:demographicMatchKey
-// (last, first, dob, sex joined with an empty separator, lowercased/trimmed). Keep the two in sync.
+// The demographic key is built in SQL and MUST stay byte-identical to
+// apps/api/.../identity/identityKeys.ts:demographicMatchKey — currently
+// last+first+dob+sex, each lowercased/trimmed, joined with an EMPTY separator.
 // =============================================================================
 
 import { sql } from './client.js';
 
-const BATCH_SIZE = 500;
-const KEY_SEPARATOR = '';
+const BATCH_SIZE = 5000;
 
-interface LegacyPatientRow {
-  patient_id: number;
-  first_name: string | null;
-  last_name: string | null;
-  date_of_birth: string | null; // YYYY-MM-DD
-  gender: string | null;
-  mrn: string | null;
+// SQL expression for the demographic match key. Mirrors identityKeys.ts:
+// lower(trim(last)) || lower(trim(first)) || 'YYYY-MM-DD' || lower(trim(sex||'')).
+const DEMOGRAPHIC_KEY_SQL = `
+  lower(btrim(p.last_name))
+  || lower(btrim(p.first_name))
+  || to_char(p.date_of_birth, 'YYYY-MM-DD')
+  || lower(btrim(coalesce(p.gender, '')))
+`;
+
+interface BatchResultRow {
+  scanned: number | string;
+  linked: number | string;
+  max_patient_id: number | string | null;
 }
 
-function clean(value: string | null): string {
-  return (value ?? '').trim();
+function toInt(value: number | string | null | undefined): number {
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : value ?? 0;
+  return Number.isFinite(parsed as number) ? (parsed as number) : 0;
 }
 
-/** Mirror of identityKeys.demographicMatchKey — keep in sync. */
-function demographicMatchKey(row: LegacyPatientRow): string | null {
-  const last = clean(row.last_name).toLowerCase();
-  const first = clean(row.first_name).toLowerCase();
-  const dob = clean(row.date_of_birth).toLowerCase();
-  if (!last || !first || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
-  const sex = clean(row.gender).toLowerCase();
-  return [last, first, dob, sex].join(KEY_SEPARATOR);
-}
-
-async function fetchUnlinkedBatch(afterPatientId = 0): Promise<LegacyPatientRow[]> {
-  return sql<LegacyPatientRow[]>`
-    SELECT p.patient_id,
-           p.first_name,
-           p.last_name,
-           to_char(p.date_of_birth, 'YYYY-MM-DD') AS date_of_birth,
-           p.gender,
-           p.mrn
+async function countUnlinked(): Promise<number> {
+  const rows = await sql<{ total: number | string }[]>`
+    SELECT count(*)::bigint AS total
     FROM phm_edw.patient p
-    WHERE NOT EXISTS (
-      SELECT 1 FROM phm_edw.patient_link pl WHERE pl.patient_id = p.patient_id
-    )
-      AND p.patient_id > ${afterPatientId}
-    ORDER BY p.patient_id
-    LIMIT ${BATCH_SIZE}
+    WHERE NOT EXISTS (SELECT 1 FROM phm_edw.patient_link pl WHERE pl.patient_id = p.patient_id)
   `;
+  return toInt(rows[0]?.total);
 }
 
-async function backfillPatient(row: LegacyPatientRow): Promise<'linked' | 'skipped'> {
-  const key = demographicMatchKey(row);
-  if (key === null) return 'skipped'; // insufficient demographics for an identity
-
-  // postgres's TransactionSql type omits the tagged-template call signature, so
-  // statements inside the transaction use tx.unsafe(query, params).
-  return sql.begin(async (tx) => {
-    const existingLink = await tx.unsafe<{ patient_id: number }[]>(
-      `
-      SELECT patient_id
-      FROM phm_edw.patient_link
-      WHERE patient_id = $1
-      LIMIT 1
-      `,
-      [row.patient_id],
-    );
-    if (existingLink[0]) return 'skipped' as const;
-
-    const personRows = await tx.unsafe<{ person_id: number }[]>(
-      `
+// One auto-committed batch: insert persons for the next window of unlinked
+// patients (ordered by patient_id), then link each patient to its new person.
+// person_id is assigned from a sequence in insertion order, which follows the
+// ORDER BY patient_id, so ranking inserted persons by person_id re-aligns them
+// 1:1 with patients ranked by patient_id.
+async function runBatch(afterPatientId: number): Promise<BatchResultRow> {
+  const rows = await sql.unsafe<BatchResultRow[]>(
+    `
+    WITH batch AS (
+      SELECT p.patient_id,
+             p.first_name, p.last_name, p.date_of_birth, p.gender,
+             (${DEMOGRAPHIC_KEY_SQL}) AS dkey,
+             row_number() OVER (ORDER BY p.patient_id) AS rn
+      FROM phm_edw.patient p
+      WHERE p.patient_id > $1
+        AND NOT EXISTS (SELECT 1 FROM phm_edw.patient_link pl WHERE pl.patient_id = p.patient_id)
+      ORDER BY p.patient_id
+      LIMIT $2
+    ),
+    ins AS (
       INSERT INTO phm_edw.person
         (first_name, last_name, date_of_birth, sex, demographic_match_key, source_system, status)
-      VALUES ($1, $2, $3::date, $4, $5, 'backfill', 'active')
+      SELECT first_name, last_name, date_of_birth, gender, dkey, 'backfill', 'active'
+      FROM batch
+      ORDER BY patient_id
       RETURNING person_id
-      `,
-      [clean(row.first_name), clean(row.last_name), row.date_of_birth, row.gender, key],
-    );
-    const personId = personRows[0]!.person_id;
-    await tx.unsafe(
-      `
+    ),
+    ins_ranked AS (
+      SELECT person_id, row_number() OVER (ORDER BY person_id) AS rn FROM ins
+    ),
+    linked AS (
       INSERT INTO phm_edw.patient_link (patient_id, person_id)
-      VALUES ($1, $2)
+      SELECT b.patient_id, i.person_id
+      FROM batch b JOIN ins_ranked i ON i.rn = b.rn
       ON CONFLICT (patient_id) DO NOTHING
-      `,
-      [row.patient_id, personId],
-    );
-    await tx.unsafe(
-      `
-      INSERT INTO phm_edw.patient_merge_log (action, target_person_id, reason, performed_by, details)
-      VALUES ('provisional_created', $1, 'empi_backfill', 'system', $2::jsonb)
-      `,
-      [personId, JSON.stringify({ patientId: row.patient_id })],
-    );
-    return 'linked' as const;
-  });
+      RETURNING patient_id
+    )
+    SELECT (SELECT count(*) FROM batch)            AS scanned,
+           (SELECT count(*) FROM linked)           AS linked,
+           (SELECT max(patient_id) FROM batch)     AS max_patient_id
+    `,
+    [afterPatientId, BATCH_SIZE],
+  );
+  return rows[0] ?? { scanned: 0, linked: 0, max_patient_id: null };
+}
+
+async function writeSummary(linked: number): Promise<void> {
+  await sql`
+    INSERT INTO phm_edw.patient_merge_log (action, target_person_id, reason, performed_by, details)
+    VALUES ('provisional_created', NULL, 'empi_backfill', 'system',
+            ${sql.json({ backfill: true, linked })})
+  `;
 }
 
 async function main(): Promise<void> {
   const dryRun = process.argv.slice(2).includes('--dry-run');
   console.info(`[backfill-empi] Starting (${dryRun ? 'dry-run' : 'apply'})...`);
 
-  let linked = 0;
-  let skipped = 0;
-
   if (dryRun) {
-    let afterPatientId = 0;
-    for (;;) {
-      const batch = await fetchUnlinkedBatch(afterPatientId);
-      if (batch.length === 0) break;
-      afterPatientId = batch[batch.length - 1]!.patient_id;
-      for (const row of batch) {
-        if (demographicMatchKey(row) === null) skipped += 1;
-        else linked += 1;
-      }
-    }
-    const total = linked + skipped;
-    console.info(`[backfill-empi] dry-run: ${total} unlinked patient(s); would link ${linked}, skip ${skipped}.`);
+    const total = await countUnlinked();
+    console.info(`[backfill-empi] dry-run: ${total} unlinked patient(s) would be linked.`);
     await sql.end();
     return;
   }
 
+  let linked = 0;
   let afterPatientId = 0;
+  let batchNo = 0;
+
   for (;;) {
-    const batch = await fetchUnlinkedBatch(afterPatientId);
-    if (batch.length === 0) break;
-    afterPatientId = batch[batch.length - 1]!.patient_id;
-    for (const row of batch) {
-      const outcome = await backfillPatient(row);
-      if (outcome === 'linked') linked += 1;
-      else skipped += 1;
-    }
-    console.info(`[backfill-empi] progress: linked=${linked} skipped=${skipped}`);
+    const result = await runBatch(afterPatientId);
+    const scanned = toInt(result.scanned);
+    if (scanned === 0) break;
+    linked += toInt(result.linked);
+    afterPatientId = toInt(result.max_patient_id);
+    batchNo += 1;
+    console.info(`[backfill-empi] batch ${batchNo}: scanned=${scanned} linkedTotal=${linked} (through patient_id ${afterPatientId})`);
   }
 
-  console.info(`[backfill-empi] Done. linked=${linked} skipped=${skipped}`);
+  await writeSummary(linked);
+  console.info(`[backfill-empi] Done. linked=${linked}`);
   await sql.end();
 }
 
