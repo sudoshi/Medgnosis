@@ -16,6 +16,11 @@ import type {
   ReviewQueueInput,
 } from './resolvePatientIdentity.js';
 
+// Any tagged-template SQL client: the global pool OR a transaction handle.
+// Passing a transaction runs the whole reconcile atomically inside an existing
+// edwHydration sql.begin() block.
+type SqlExecutor = typeof sql;
+
 const IDENTIFIER_COMPOSITE_SEPARATOR = '';
 const SENSITIVE_TYPE_CODES = new Set(['SS', 'SB']); // SSN, social beneficiary
 
@@ -57,11 +62,15 @@ function toNumber(value: string | number | null | undefined): number {
 }
 
 export class PostgresIdentityRepository implements IdentityRepository {
+  // db defaults to the global pool; pass a transaction handle to run the whole
+  // reconcile atomically inside an existing sql.begin() block (bulk hydration).
+  constructor(private readonly db: SqlExecutor = sql) {}
+
   async findPersonIdsByIdentifiers(identifiers: NormalizedIdentifier[]): Promise<IdentifierMatch[]> {
     const storable = identifiers.filter((identifier) => identifier.strong).map(toStorable);
     if (storable.length === 0) return [];
     const composites = storable.map((identifier) => compositeKey(identifier.system, identifier.value));
-    const rows = await sql<IdentifierMatchRow[]>`
+    const rows = await this.db<IdentifierMatchRow[]>`
       SELECT person_id, system, value
       FROM phm_edw.patient_identifier
       WHERE active = true
@@ -71,7 +80,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async findPersonIdsByDemographicKey(key: string): Promise<number[]> {
-    const rows = await sql<PersonIdRow[]>`
+    const rows = await this.db<PersonIdRow[]>`
       SELECT person_id
       FROM phm_edw.person
       WHERE demographic_match_key = ${key}
@@ -81,7 +90,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async createPerson(profile: PersonProfile, sourceSystem: string, ehrTenantId: number): Promise<number> {
-    const rows = await sql<PersonIdRow[]>`
+    const rows = await this.db<PersonIdRow[]>`
       INSERT INTO phm_edw.person
         (first_name, last_name, date_of_birth, sex, source_system, origin_ehr_tenant_id, status)
       VALUES (
@@ -91,9 +100,9 @@ export class PostgresIdentityRepository implements IdentityRepository {
       RETURNING person_id
     `;
     const personId = toNumber(rows[0]?.person_id);
-    await sql`
+    await this.db`
       INSERT INTO phm_edw.patient_merge_log (action, target_person_id, performed_by, details)
-      VALUES ('provisional_created', ${personId}, 'system', ${sql.json({ sourceSystem, ehrTenantId })})
+      VALUES ('provisional_created', ${personId}, 'system', ${this.db.json({ sourceSystem, ehrTenantId })})
     `;
     return personId;
   }
@@ -106,7 +115,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   ): Promise<void> {
     const storable = identifiers.filter((identifier) => identifier.strong).map(toStorable);
     for (const identifier of storable) {
-      await sql`
+      await this.db`
         INSERT INTO phm_edw.patient_identifier
           (person_id, system, value, value_hash, type_code, source_system, ehr_tenant_id)
         VALUES (
@@ -120,7 +129,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async upsertDemographicKey(personId: number, key: string): Promise<void> {
-    await sql`
+    await this.db`
       UPDATE phm_edw.person
       SET demographic_match_key = ${key}, updated_at = NOW()
       WHERE person_id = ${personId}
@@ -128,7 +137,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
   }
 
   async enqueueReview(input: ReviewQueueInput): Promise<void> {
-    await sql`
+    await this.db`
       INSERT INTO phm_edw.identity_review_queue
         (person_id, candidate_person_ids, reason, ehr_tenant_id, source_system, demographic_key)
       VALUES (
@@ -137,39 +146,45 @@ export class PostgresIdentityRepository implements IdentityRepository {
       )
     `;
     if (input.reason === 'demographic_only_match') {
-      await sql`
+      await this.db`
         UPDATE phm_edw.person SET status = 'provisional', updated_at = NOW()
         WHERE person_id = ${input.personId} AND status = 'active'
       `;
     }
-    await sql`
+    await this.db`
       INSERT INTO phm_edw.patient_merge_log (action, target_person_id, reason, performed_by, details)
       VALUES ('review_enqueued', ${input.personId}, ${input.reason}, 'system',
-              ${sql.json({ candidatePersonIds: input.candidatePersonIds })})
+              ${this.db.json({ candidatePersonIds: input.candidatePersonIds })})
+    `;
+  }
+
+  /** Find the legacy phm_edw.patient row already linked to a person, if any. */
+  async findLegacyPatientId(personId: number): Promise<number | null> {
+    const rows = await this.db<PatientLinkRow[]>`
+      SELECT patient_id FROM phm_edw.patient_link WHERE person_id = ${personId} ORDER BY patient_id LIMIT 1
+    `;
+    const value = rows[0]?.patient_id;
+    return value === undefined ? null : toNumber(value);
+  }
+
+  /** Link a legacy phm_edw.patient row to its resolved enterprise person. */
+  async linkLegacyPatient(patientId: number, personId: number, ehrTenantId: number): Promise<void> {
+    await this.db`
+      INSERT INTO phm_edw.patient_link (patient_id, person_id, ehr_tenant_id)
+      VALUES (${patientId}, ${personId}, ${ehrTenantId})
+      ON CONFLICT (patient_id) DO UPDATE SET person_id = EXCLUDED.person_id
     `;
   }
 }
 
-/** Find the legacy phm_edw.patient row already linked to a person, if any. */
-export async function findLegacyPatientId(personId: number): Promise<number | null> {
-  const rows = await sql<PatientLinkRow[]>`
-    SELECT patient_id FROM phm_edw.patient_link WHERE person_id = ${personId} ORDER BY patient_id LIMIT 1
-  `;
-  const value = rows[0]?.patient_id;
-  return value === undefined ? null : toNumber(value);
-}
-
-/** Link a legacy phm_edw.patient row to its resolved enterprise person. */
-export async function linkLegacyPatient(
-  patientId: number,
-  personId: number,
-  ehrTenantId: number,
-): Promise<void> {
-  await sql`
-    INSERT INTO phm_edw.patient_link (patient_id, person_id, ehr_tenant_id)
-    VALUES (${patientId}, ${personId}, ${ehrTenantId})
-    ON CONFLICT (patient_id) DO UPDATE SET person_id = EXCLUDED.person_id
-  `;
-}
-
 export const identityRepository = new PostgresIdentityRepository();
+
+// Standalone wrappers over the default (global-pool) instance, used by the
+// reconcilePatient defaults and the SMART launch path.
+export function findLegacyPatientId(personId: number): Promise<number | null> {
+  return identityRepository.findLegacyPatientId(personId);
+}
+
+export function linkLegacyPatient(patientId: number, personId: number, ehrTenantId: number): Promise<void> {
+  return identityRepository.linkLegacyPatient(patientId, personId, ehrTenantId);
+}
