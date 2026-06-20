@@ -3,7 +3,7 @@
 - **Date:** 2026-06-20
 - **Branch:** `feature/fhir-edw-ingestion-expansion` (10 commits, not yet merged)
 - **Plan:** `docs/superpowers/plans/2026-06-20-fhir-edw-ingestion-expansion.md`
-- **Status:** Phases A, B, C, D, E1, E2, F, G's clean parts (scopes + CapabilityStatement), and G1 (standalone dimension dispatch) COMPLETE and verified (full suite 777 passed). Merged to `main`. Only the operational Epic re-onboard (+ optional QI-Core builders) remains.
+- **Status:** Phases A–G1 + E2 COMPLETE, verified (full suite 777 passed), merged + pushed to `origin/main`. Epic sandbox re-onboarded (tenant 2) and verified live end-to-end (token exchange + authenticated FHIR reads incl. new resource types). Only optional QI-Core builders remain.
 
 ## Sequence-drift investigation (2026-06-20)
 
@@ -34,10 +34,20 @@ Each code phase was verified at three levels: (1) mockSql unit tests asserting e
 
 `softDeleteByCrosswalk` (resolves a resource by tenant/type/id via the crosswalk → soft-deletes the mapped EDW row + audit stamp) and `processBulkDeletions` + `extractDeletedReferences` (download each `$export` `deleted` output — NDJSON of FHIR Bundles with `request.method=DELETE`/`request.url=ResourceType/id` — parse and soft-delete each) are wired into `importBulkExportJob` after hydration. Per-file fetch errors are counted, not fatal; results recorded in ingest-run metadata. 5 tests; full apps/api suite 777 green.
 
-## Follow-ups (deferred — specified, not started)
+## Epic re-onboard + live end-to-end verification (DONE 2026-06-20)
 
-1. **Epic re-onboard + portal scopes** (operational, prod). Re-run `ehr:onboard` for tenant id=2 (command in `2026-06-20-epic-app-registration-prep.md`) to push the expanded backend/SMART scopes into the registry. Epic only grants scopes that are ALSO checked in the app portal — the human must select the new `system/*.rs` scopes for App A on `fhir.epic.com`. Gate this behind the token-exchange propagation already pending in the Epic registration work.
-2. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
+Re-ran `ehr:onboard` for tenant id=2 — registry now requests all 15 resource types for both SMART launch (`patient/*.rs`) and backend services (`system/*.rs`). Token-exchange propagation has cleared, and the **Epic public sandbox grants all the new resource scopes automatically** (no portal scope-check was needed for the sandbox; granted set includes `system/DiagnosticReport.r/s`, `DocumentReference`, `ServiceRequest`, `CarePlan`, `CareTeam`, `Goal`, `Coverage`, `Practitioner`, `Organization`, `Location`, vital-signs/laboratory Observations, problem-list/encounter-diagnosis Conditions, etc.).
+
+Live end-to-end proof (backend `private_key_jwt` token via our JWKS → authenticated FHIR reads against sandbox patient Camila Lopez `erXuFYUfucBZaryVksYEcMg3`):
+- `Patient/…` → HTTP 200, "Camila Maria Lopez"
+- `DiagnosticReport?patient=…` → HTTP 200, 2 entries (**new resource type returning real data**)
+- `Condition?patient=…` → HTTP 200, 2 entries
+
+The full ingestion chain is therefore live: token → FHIR read/`$export` → stage → hydrate into `phm_edw` for all 15 resource types.
+
+## Follow-ups (remaining)
+
+1. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
 
 ## Honest scope notes (carried from the plan)
 

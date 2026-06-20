@@ -2,7 +2,7 @@
 
 - **Date:** 2026-06-20
 - **Scope:** Repo-side preparation for the two Epic sandbox app registrations (Backend Services + SMART App Launch) described in `EPIC_REGISTRATION_HANDOFF.md`.
-- **Status:** Registered. Tenant id=2 created in the **production** registry with both Epic Client IDs. Smoke is 6/7 green; the only failure is `invalid_client` on the backend token exchange, which is the expected Epic non-prod propagation delay (≤ 60 min). Re-run the token step after propagation.
+- **Status:** LIVE. Tenant id=2 in the **production** registry with both Epic Client IDs. Propagation cleared; backend `private_key_jwt` token exchange succeeds and authenticated FHIR reads work against sandbox patient Camila Lopez (`erXuFYUfucBZaryVksYEcMg3`). Re-onboarded with the expanded 15-resource scope set (Epic sandbox grants all backend scopes automatically). See `2026-06-20-fhir-edw-expansion-closeout.md` for the end-to-end verification.
 
 ## Registered Client IDs (Epic sandbox, non-production)
 
