@@ -67,6 +67,12 @@ Configure SanteMPI's matching against the **HL7 Identity Matching IG** minimum d
 
 Tune thresholds against a labeled sample; the `MPI_AUTO_THRESHOLD` / `MPI_REVIEW_THRESHOLD` split should track the precision you require for auto-accept vs. the steward review budget.
 
+#### Auto-merge gating (overlay safety)
+Auto-merge (`action: 'attach'`) requires **both** `score >= MPI_AUTO_THRESHOLD` **and** the MPI grading the candidate **`certain`** (`requireCertainGradeForAuto`, default on). A merely-high demographic score never auto-merges — the certainty call is deferred to SanteMPI's configured matching, which only grades `certain` on strong multi-attribute evidence. Consequences:
+- With the **stock** config (demographic matches grade `possible` at ~0.67), nothing auto-merges → everything is review-only **even though `MPI_ENABLED=true`**. This is the safe default.
+- To actually enable auto-merge, tune the SanteMPI MatchConfiguration so strong matches (identifier + name + DOB) exceed `matchThreshold` and grade `certain`; those — and only those — will auto-merge.
+- **Calibrate before relying on it:** let the review queue accumulate real outcomes, measure precision per score/grade band, then set `MPI_AUTO_THRESHOLD` (and only disable `requireCertainGradeForAuto` with validated data). Auto-merging an overlay is far costlier than a steward reviewing a true match.
+
 ### 3. Feeding the index
 `$match` only returns candidates for patients SanteMPI already knows.
 - **New ingests (primary strategy)** are fed automatically (best-effort, async) by the resolver when `MPI_ENABLED=true` — a `medgnosis-mpi-feed` worker registers demographics, self-`$match`es to learn the MDM master id, and stores it on the person. This populates the MPI **organically** with the patients actually in active use across sources, which is where cross-source matching matters.

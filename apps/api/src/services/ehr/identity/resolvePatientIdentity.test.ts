@@ -216,8 +216,10 @@ import { describe as describe2, it as it2, expect as expect2, beforeEach as befo
 import type { MpiCandidate, MpiClient } from './mpiClient.js';
 
 const MPI_SYSTEM = 'urn:oid:mpi-master';
-function mpiCandidate(value: string, score: number): MpiCandidate {
-  return { masterIdentifier: { system: MPI_SYSTEM, value }, score, grade: null };
+// Default grade 'certain' so high-score cases exercise the auto-attach path
+// (auto-merge now requires score >= auto AND grade === 'certain').
+function mpiCandidate(value: string, score: number, grade: 'certain' | 'probable' | 'possible' = 'certain'): MpiCandidate {
+  return { masterIdentifier: { system: MPI_SYSTEM, value }, score, grade };
 }
 function fakeMpi(candidates: MpiCandidate[], feedId = 'MPI-FED') {
   const client: MpiClient = {
