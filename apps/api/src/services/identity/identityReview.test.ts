@@ -19,7 +19,7 @@ const { mockSql } = vi.hoisted(() => {
 });
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 
-import { mergeReview, dismissReview } from './identityReview.js';
+import { mergeReview, dismissReview, unmergeMerge, listRecentMerges } from './identityReview.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -108,5 +108,70 @@ describe('dismissReview', () => {
   it('refuses to dismiss a resolved review', async () => {
     mockSql.mockImplementation(() => Promise.resolve([openReview({ status: 'dismissed' })]));
     await expect(dismissReview(1, 'a')).rejects.toThrow(/already dismissed/i);
+  });
+});
+
+function mergeLogRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 7, source_person_id: 20, target_person_id: 10, reason: 'demographic_only_match',
+    performed_by: 'admin@x', created_at: 'now',
+    details: { movedPatientIds: [101], movedIdentifiers: [{ system: 'urn:mpi', value: 'M1' }] },
+    ...overrides,
+  };
+}
+
+describe('unmergeMerge', () => {
+  it('reverses a merge: repoints links + identifiers back, reactivates the source, audits', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const t = strings.join('');
+      if (t.includes('FROM phm_edw.patient_merge_log') && t.includes("action = 'merge'") && !t.includes('count(')) {
+        return Promise.resolve([mergeLogRow()]);
+      }
+      if (t.includes('count(*)') && t.includes("action = 'unmerge'")) return Promise.resolve([{ count: 0 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await unmergeMerge(7, 'admin@x');
+    expect(result).toEqual({ restoredPersonId: 20 });
+
+    // links repointed target(10) -> source(20) for the recorded patient ids
+    const link = queriesFor((t) => t.includes('UPDATE phm_edw.patient_link') && t.includes('ANY'))[0]!;
+    expect(link.params).toEqual([20, 10, [101]]);
+    // identifier repointed back
+    expect(queriesFor((t) => t.includes('UPDATE phm_edw.patient_identifier'))[0]!.params).toEqual([20, 10, 'urn:mpi', 'M1']);
+    // source reactivated
+    expect(queriesFor((t) => t.includes("SET status = 'active'") && t.includes('merged_into_person_id = NULL'))).toHaveLength(1);
+    // unmerge audit written
+    expect(queriesFor((t) => t.includes('INSERT INTO phm_edw.patient_merge_log') && t.includes("'unmerge'"))).toHaveLength(1);
+  });
+
+  it('refuses to un-merge a merge that was already reversed', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const t = strings.join('');
+      if (t.includes('FROM phm_edw.patient_merge_log') && t.includes("action = 'merge'") && !t.includes('count(')) {
+        return Promise.resolve([mergeLogRow()]);
+      }
+      if (t.includes('count(*)') && t.includes("action = 'unmerge'")) return Promise.resolve([{ count: 1 }]);
+      return Promise.resolve([]);
+    });
+    await expect(unmergeMerge(7, 'a')).rejects.toThrow(/already been un-merged/i);
+  });
+
+  it('throws when the merge log row is missing', async () => {
+    mockSql.mockImplementation(() => Promise.resolve([]));
+    await expect(unmergeMerge(99, 'a')).rejects.toThrow(/not found/i);
+  });
+});
+
+describe('listRecentMerges', () => {
+  it('maps merge rows with a reverted flag', async () => {
+    mockSql.mockImplementation(() => Promise.resolve([
+      { id: 7, source_person_id: 20, target_person_id: 10, reason: 'demographic_only_match', performed_by: 'admin@x', created_at: 'now', reverted: false },
+    ]));
+    const merges = await listRecentMerges();
+    expect(merges[0]).toEqual({
+      id: 7, sourcePersonId: 20, targetPersonId: 10, reason: 'demographic_only_match',
+      performedBy: 'admin@x', createdAt: 'now', reverted: false,
+    });
   });
 });

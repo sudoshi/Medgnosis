@@ -7,8 +7,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   dismissReview,
   listOpenReviews,
+  listRecentMerges,
   loadPersonSummaries,
   mergeReview,
+  unmergeMerge,
 } from '../../services/identity/identityReview.js';
 
 function stewardId(req: FastifyRequest): string {
@@ -50,6 +52,23 @@ export default async function identityReviewRoutes(app: FastifyInstance) {
       return { success: true, data: result };
     } catch (err) {
       return badRequest(reply, err instanceof Error ? err.message : 'merge failed');
+    }
+  });
+
+  app.get('/merges', async () => {
+    const merges = await listRecentMerges();
+    return { success: true, data: { merges } };
+  });
+
+  app.post('/merges/:id/unmerge', async (req, reply) => {
+    const mergeLogId = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(mergeLogId) || mergeLogId <= 0) return badRequest(reply, 'invalid merge id');
+    try {
+      const result = await unmergeMerge(mergeLogId, stewardId(req));
+      await req.auditLog('identity_unmerge', 'person', String(result.restoredPersonId), { mergeLogId });
+      return { success: true, data: result };
+    } catch (err) {
+      return badRequest(reply, err instanceof Error ? err.message : 'un-merge failed');
     }
   });
 

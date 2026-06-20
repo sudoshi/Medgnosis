@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GitMerge, X, Users, ShieldQuestion } from 'lucide-react';
+import { GitMerge, X, Users, ShieldQuestion, Undo2 } from 'lucide-react';
 import { useToast } from '../../stores/ui.js';
 import { api, apiErrorMessage } from '../../services/api.js';
 import { fmtDate } from './helpers.js';
@@ -35,6 +35,16 @@ export interface IdentityReview {
   persons: IdentityReviewPerson[];
 }
 
+export interface MergeLogEntry {
+  id: number;
+  sourcePersonId: number;
+  targetPersonId: number;
+  reason: string | null;
+  performedBy: string;
+  createdAt: string;
+  reverted: boolean;
+}
+
 const REASON_LABEL: Record<string, string> = {
   demographic_only_match: 'Demographic match',
   identifier_conflict: 'Identifier conflict',
@@ -57,6 +67,7 @@ export function IdentityReviewTab() {
     onSuccess: () => {
       toast.success('Persons merged');
       qc.invalidateQueries({ queryKey: ['admin', 'identity', 'reviews'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'identity', 'merges'] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Merge failed')),
   });
@@ -68,6 +79,27 @@ export function IdentityReviewTab() {
       qc.invalidateQueries({ queryKey: ['admin', 'identity', 'reviews'] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Dismiss failed')),
+  });
+
+  const { data: mergesData } = useQuery({
+    queryKey: ['admin', 'identity', 'merges'],
+    queryFn: () => api.get<{ merges: MergeLogEntry[] }>('/admin/identity/merges'),
+    staleTime: 15_000,
+  });
+  const merges = mergesData?.data?.merges ?? [];
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'identity', 'reviews'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'identity', 'merges'] });
+  };
+
+  const unmerge = useMutation({
+    mutationFn: (mergeId: number) => api.post(`/admin/identity/merges/${mergeId}/unmerge`),
+    onSuccess: () => {
+      toast.success('Merge reversed');
+      invalidateAll();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Un-merge failed')),
   });
 
   return (
@@ -103,6 +135,41 @@ export function IdentityReviewTab() {
           />
         ))}
       </div>
+
+      {merges.length > 0 && (
+        <div className="pt-2">
+          <h3 className="mb-2 text-sm font-semibold text-foreground">Recent merges</h3>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <tbody>
+                {merges.map((m) => (
+                  <tr key={m.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2 text-foreground">
+                      person #{m.sourcePersonId} → #{m.targetPersonId}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{m.performedBy}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(m.createdAt)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {m.reverted ? (
+                        <Badge variant="dim">reversed</Badge>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={unmerge.isPending}
+                          onClick={() => unmerge.mutate(m.id)}
+                        >
+                          <Undo2 className="mr-1 h-4 w-4" /> Un-merge
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

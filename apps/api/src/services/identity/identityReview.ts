@@ -166,7 +166,8 @@ export async function mergeReview(input: MergeReviewInput): Promise<MergeReviewR
       movedPatientLinks += movedLinks.length;
 
       // Move identifiers, dropping any that already exist on the survivor
-      // (UNIQUE(system,value) — survivor keeps its copy).
+      // (UNIQUE(system,value) — survivor keeps its copy; the dropped duplicates
+      // are not restorable on un-merge, but the survivor already held them).
       await tx.unsafe(
         `DELETE FROM phm_edw.patient_identifier l
          WHERE l.person_id = $1
@@ -174,8 +175,8 @@ export async function mergeReview(input: MergeReviewInput): Promise<MergeReviewR
                        WHERE s.person_id = $2 AND s.system = l.system AND s.value = l.value)`,
         [loserId, input.survivorPersonId],
       );
-      await tx.unsafe(
-        `UPDATE phm_edw.patient_identifier SET person_id = $1 WHERE person_id = $2`,
+      const movedIdentifiers = await tx.unsafe<{ system: string; value: string }[]>(
+        `UPDATE phm_edw.patient_identifier SET person_id = $1 WHERE person_id = $2 RETURNING system, value`,
         [input.survivorPersonId, loserId],
       );
 
@@ -185,7 +186,7 @@ export async function mergeReview(input: MergeReviewInput): Promise<MergeReviewR
         [input.survivorPersonId, loserId],
       );
 
-      // Append-only audit (movedPatientIds supports a future un-merge).
+      // Append-only audit; movedPatientIds + movedIdentifiers let un-merge reverse exactly what moved.
       await tx.unsafe(
         `INSERT INTO phm_edw.patient_merge_log (action, source_person_id, target_person_id, reason, performed_by, details)
          VALUES ('merge', $1, $2, $3, $4, $5::jsonb)`,
@@ -194,7 +195,11 @@ export async function mergeReview(input: MergeReviewInput): Promise<MergeReviewR
           input.survivorPersonId,
           review.reason,
           input.performedBy,
-          JSON.stringify({ reviewId: input.reviewId, movedPatientIds: movedLinks.map((r) => r.patient_id) }),
+          JSON.stringify({
+            reviewId: input.reviewId,
+            movedPatientIds: movedLinks.map((r) => r.patient_id),
+            movedIdentifiers,
+          }),
         ],
       );
     }
@@ -217,4 +222,102 @@ export async function dismissReview(reviewId: number, performedBy: string): Prom
     SET status = 'dismissed', resolved_by = ${performedBy}, resolved_at = NOW()
     WHERE id = ${reviewId}
   `;
+}
+
+export interface MergeLogEntry {
+  id: number;
+  sourcePersonId: number;
+  targetPersonId: number;
+  reason: string | null;
+  performedBy: string;
+  createdAt: string;
+  reverted: boolean;
+}
+
+interface MergeLogRow {
+  id: number | string;
+  source_person_id: number | string;
+  target_person_id: number | string;
+  reason: string | null;
+  performed_by: string;
+  created_at: string;
+  details: { movedPatientIds?: Array<number | string>; movedIdentifiers?: Array<{ system: string; value: string }> } | null;
+}
+
+/** Recent merges (most recent first), flagged if a later un-merge reversed them. */
+export async function listRecentMerges(limit = 50): Promise<MergeLogEntry[]> {
+  const rows = await sql<MergeLogRow[]>`
+    SELECT m.id, m.source_person_id, m.target_person_id, m.reason, m.performed_by,
+           m.created_at::text AS created_at,
+           EXISTS (
+             SELECT 1 FROM phm_edw.patient_merge_log u
+             WHERE u.action = 'unmerge'
+               AND (u.details ->> 'revertedLogId')::bigint = m.id
+           ) AS reverted
+    FROM phm_edw.patient_merge_log m
+    WHERE m.action = 'merge'
+    ORDER BY m.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => ({
+    id: toInt(row.id),
+    sourcePersonId: toInt(row.source_person_id),
+    targetPersonId: toInt(row.target_person_id),
+    reason: row.reason,
+    performedBy: row.performed_by,
+    createdAt: row.created_at,
+    reverted: Boolean((row as MergeLogRow & { reverted?: boolean }).reverted),
+  }));
+}
+
+/**
+ * Reverse a merge using its audit row: repoint the recorded patient links and
+ * identifiers back to the source person, reactivate it, and record an 'unmerge'
+ * audit entry. Identifiers dropped at merge time (survivor duplicates) are not
+ * restored.
+ */
+export async function unmergeMerge(mergeLogId: number, performedBy: string): Promise<{ restoredPersonId: number }> {
+  const rows = await sql<MergeLogRow[]>`
+    SELECT id, source_person_id, target_person_id, reason, performed_by, created_at::text AS created_at, details
+    FROM phm_edw.patient_merge_log
+    WHERE id = ${mergeLogId} AND action = 'merge'
+  `;
+  const row = rows[0];
+  if (!row) throw new Error(`Merge ${mergeLogId} not found`);
+
+  const sourcePersonId = toInt(row.source_person_id);
+  const targetPersonId = toInt(row.target_person_id);
+  const movedPatientIds = (row.details?.movedPatientIds ?? []).map(toInt);
+  const movedIdentifiers = row.details?.movedIdentifiers ?? [];
+
+  const already = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM phm_edw.patient_merge_log
+    WHERE action = 'unmerge' AND (details ->> 'revertedLogId')::bigint = ${mergeLogId}
+  `;
+  if (toInt(already[0]?.count) > 0) throw new Error(`Merge ${mergeLogId} has already been un-merged`);
+
+  return sql.begin(async (tx) => {
+    if (movedPatientIds.length > 0) {
+      await tx.unsafe(
+        `UPDATE phm_edw.patient_link SET person_id = $1 WHERE person_id = $2 AND patient_id = ANY($3::int[])`,
+        [sourcePersonId, targetPersonId, movedPatientIds],
+      );
+    }
+    for (const identifier of movedIdentifiers) {
+      await tx.unsafe(
+        `UPDATE phm_edw.patient_identifier SET person_id = $1 WHERE person_id = $2 AND system = $3 AND value = $4`,
+        [sourcePersonId, targetPersonId, identifier.system, identifier.value],
+      );
+    }
+    await tx.unsafe(
+      `UPDATE phm_edw.person SET status = 'active', merged_into_person_id = NULL, updated_at = NOW() WHERE person_id = $1`,
+      [sourcePersonId],
+    );
+    await tx.unsafe(
+      `INSERT INTO phm_edw.patient_merge_log (action, source_person_id, target_person_id, reason, performed_by, details)
+       VALUES ('unmerge', $1, $2, 'unmerge', $3, $4::jsonb)`,
+      [targetPersonId, sourcePersonId, performedBy, JSON.stringify({ revertedLogId: mergeLogId })],
+    );
+    return { restoredPersonId: sourcePersonId };
+  });
 }

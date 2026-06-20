@@ -85,6 +85,34 @@ describe('admin identity review routes', () => {
     await app.close();
   });
 
+  it('GET /identity/merges lists recent merges', async () => {
+    mockSql.mockImplementation(() => Promise.resolve([
+      { id: 7, source_person_id: 20, target_person_id: 10, reason: 'demographic_only_match', performed_by: 'admin@x', created_at: 'now', reverted: false },
+    ]));
+    const { app } = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/identity/merges' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.merges[0]).toMatchObject({ id: 7, sourcePersonId: 20, targetPersonId: 10, reverted: false });
+    await app.close();
+  });
+
+  it('POST /identity/merges/:id/unmerge reverses a merge and audits', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const t = strings.join('');
+      if (t.includes('FROM phm_edw.patient_merge_log') && t.includes("action = 'merge'") && !t.includes('count(')) {
+        return Promise.resolve([{ id: 7, source_person_id: 20, target_person_id: 10, reason: 'x', performed_by: 'a', created_at: 'now', details: { movedPatientIds: [101], movedIdentifiers: [] } }]);
+      }
+      if (t.includes('count(*)') && t.includes("action = 'unmerge'")) return Promise.resolve([{ count: 0 }]);
+      return Promise.resolve([]);
+    });
+    const { app, auditLog } = await buildApp();
+    const res = await app.inject({ method: 'POST', url: '/identity/merges/7/unmerge' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ restoredPersonId: 20 });
+    expect(auditLog).toHaveBeenCalledWith('identity_unmerge', 'person', '20', { mergeLogId: 7 });
+    await app.close();
+  });
+
   it('POST /identity/reviews/:id/dismiss dismisses an open review', async () => {
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
       const t = strings.join('');
