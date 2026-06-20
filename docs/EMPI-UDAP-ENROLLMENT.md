@@ -22,6 +22,28 @@ UDAP authentication is **certificate-based**. You need:
   server accepts. This is part of the broader TEFCA Subparticipant process and is
   contractual, not self-serve.
 
+> ### ⚠️ Do NOT use Let's Encrypt (or any web-PKI CA) for the UDAP identity cert
+> This is the **client identity cert** (signs the software statement, goes in `x5c`),
+> not the server's TLS cert — they are different artifacts. Let's Encrypt cannot
+> serve the UDAP identity role:
+> - **Wrong SAN type.** UDAP requires a **`uniformResourceIdentifier` (URI) SAN**
+>   equal to `UDAP_ISSUER`; the server validates the software statement's `iss`
+>   against it. Let's Encrypt only issues **DNS-type SANs** — it will not put a URI
+>   SAN in the cert, which disqualifies it outright.
+> - **Wrong trust community.** UDAP/TEFCA servers only trust certs chaining to a CA
+>   their community recognizes (often with specific policy OIDs). Let's Encrypt is
+>   general web-PKI and is in no healthcare UDAP/TEFCA trust community, so the chain
+>   fails trust validation regardless of the SAN.
+> - The mTLS client cert (UDAP tiered-OAuth) has the same community-trust requirement.
+>
+> **Where Let's Encrypt IS correct:** the **server TLS certificate** for
+> `https://medgnosis.acumenus.net` and the metadata endpoint it serves — that's its
+> job; use it there. Just never reuse it as the UDAP identity cert.
+>
+> **Exception:** a private, bilateral integration where both ends explicitly agree
+> to trust your cert (self-signed/private CA) — that is not UDAP-into-a-community /
+> TEFCA, but is valid for a closed one-to-one arrangement.
+
 ## 3. Configure (env / secret)
 Once you hold the cert chain + key:
 ```
