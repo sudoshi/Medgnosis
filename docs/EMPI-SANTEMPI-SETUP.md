@@ -1,6 +1,6 @@
 # EMPI Phase 1 — SanteMPI Probabilistic Matching
 
-**Status:** scaffolded, **off by default.** Identity resolution is deterministic-only (Phase 0) until you deploy SanteMPI and set `MPI_ENABLED=true`.
+**Status (2026-06-20):** **LIVE in production** (review-only). SanteMPI sidecar deployed, `MPI_ENABLED=true` in `.env.production`; cross-source probabilistic matches route to the steward review queue (never auto-merge with the stock match config). MPI population is **lazy** (organic via the async feed) — see §3.
 
 This document covers what was built, how to turn it on, and the SanteMPI-side configuration (matching weights, master-authority OID) you must complete for it to be useful.
 
@@ -68,9 +68,9 @@ Configure SanteMPI's matching against the **HL7 Identity Matching IG** minimum d
 Tune thresholds against a labeled sample; the `MPI_AUTO_THRESHOLD` / `MPI_REVIEW_THRESHOLD` split should track the precision you require for auto-accept vs. the steward review budget.
 
 ### 3. Feeding the index
-`$match` only returns candidates for patients SanteMPI already knows. Two feeds:
-- **New ingests** are fed automatically (best-effort) by the resolver when `MPI_ENABLED=true` — `feed()` registers demographics, a self-`$match` learns the MDM master id, and it's stored on the person.
-- **Existing population** — one-time load via `npm run mpi:backfill` (resumable; skips persons that already carry a master id; `--dry-run`, `--limit`, `--concurrency`). **Heavy:** measured ~15–21 persons/s at `--concurrency 8`, so ~1M persons is a **~13+ hour, monitored, off-hours job** (MDM matching slows as the index grows). Watch SanteDB + `santedb-db` load on the shared host. Demographics-only (no identity-domain registration needed).
+`$match` only returns candidates for patients SanteMPI already knows.
+- **New ingests (primary strategy)** are fed automatically (best-effort, async) by the resolver when `MPI_ENABLED=true` — a `medgnosis-mpi-feed` worker registers demographics, self-`$match`es to learn the MDM master id, and stores it on the person. This populates the MPI **organically** with the patients actually in active use across sources, which is where cross-source matching matters.
+- **Existing population — LAZY by decision (2026-06-20).** `npm run mpi:backfill` exists (resumable; `--dry-run`/`--limit`/`--concurrency`) but **does NOT scale to ~1M**: SanteDB MDM matches each insert against the whole growing index (O(n)); under concurrent load per-record latency exceeds the client timeout, so runs stall after ~60k. We loaded ~12% and **stopped** — relying on organic (lazy) population above. **Do not expect `mpi:backfill` to complete a 1M load.** If full pre-load is ever required, use a **SanteDB-native bulk import** (load with MDM matching deferred, then run a batch match job) — not the per-record FHIR feed.
 
 ---
 
