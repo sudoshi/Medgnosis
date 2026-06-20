@@ -13,6 +13,10 @@ export const US_CORE = {
   medicationRequest:
     'http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest',
   encounter: 'http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter',
+  diagnosticReportLab:
+    'http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab',
+  serviceRequest: 'http://hl7.org/fhir/us/core/StructureDefinition/us-core-servicerequest',
+  goal: 'http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal',
 } as const;
 
 // HL7 ActCode — FHIR Encounter.class (AMB, EMER, IMP, ...).
@@ -33,6 +37,11 @@ export const QICORE = {
     'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-medicationadministration',
   procedure: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-procedure',
   device: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-device',
+  diagnosticReportLab:
+    'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-diagnosticreport-lab',
+  serviceRequest: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-servicerequest',
+  communication: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-communication',
+  goal: 'http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-goal',
 } as const;
 
 export const US_CORE_EXT = {

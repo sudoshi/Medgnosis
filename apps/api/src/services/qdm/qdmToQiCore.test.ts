@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { QICORE, US_CORE } from '../fhir/profiles.js';
-import { normalizeObservation } from './fhirToQdm.js';
+import {
+  normalizeObservation,
+  normalizeDiagnosticReport,
+  normalizeServiceRequest,
+  normalizeDocumentReference,
+  normalizeGoal,
+} from './fhirToQdm.js';
 import type { QdmElement } from './model.js';
 import {
   QDM_IDENTIFIER_SYSTEM,
@@ -168,5 +174,103 @@ describe('qdmElementsToQiCoreBundle', () => {
         },
       ],
     });
+  });
+
+  it('round-trips a DiagnosticReport to QI-Core', () => {
+    const [qdm] = normalizeDiagnosticReport({
+      resourceType: 'DiagnosticReport',
+      id: 'dr-1',
+      status: 'final',
+      category: [{ coding: [{ code: 'LAB' }] }],
+      code: { coding: [{ system: 'http://loinc.org', code: '24323-8', display: 'CMP' }] },
+      subject: { reference: 'Patient/pat-1' },
+      effectiveDateTime: '2026-06-05T09:00:00Z',
+      issued: '2026-06-05T10:00:00Z',
+      conclusion: 'Within normal limits',
+    });
+    const resource = qdmElementToQiCore(qdm!, { now: NOW });
+    expect(resource).toMatchObject({
+      resourceType: 'DiagnosticReport',
+      id: 'qdm-DiagnosticReport-dr-1',
+      status: 'final',
+      subject: { reference: 'Patient/qdm-Patient-pat-1' },
+      effectiveDateTime: '2026-06-05T09:00:00Z',
+      issued: '2026-06-05T10:00:00Z',
+      conclusion: 'Within normal limits',
+    });
+    expect(resource?.meta?.profile).toEqual(
+      expect.arrayContaining([US_CORE.diagnosticReportLab, QICORE.diagnosticReportLab]),
+    );
+  });
+
+  it('round-trips a ServiceRequest to QI-Core Intervention order', () => {
+    const [qdm] = normalizeServiceRequest({
+      resourceType: 'ServiceRequest',
+      id: 'sr-1',
+      status: 'active',
+      intent: 'order',
+      priority: 'urgent',
+      code: { coding: [{ system: 'http://loinc.org', code: '24323-8' }] },
+      subject: { reference: 'Patient/pat-1' },
+      authoredOn: '2026-06-05T09:00:00Z',
+    });
+    const resource = qdmElementToQiCore(qdm!, { now: NOW });
+    expect(resource).toMatchObject({
+      resourceType: 'ServiceRequest',
+      id: 'qdm-ServiceRequest-sr-1',
+      status: 'active',
+      intent: 'order',
+      priority: 'urgent',
+      authoredOn: '2026-06-05T09:00:00Z',
+      subject: { reference: 'Patient/qdm-Patient-pat-1' },
+    });
+    expect(resource?.meta?.profile).toEqual(
+      expect.arrayContaining([US_CORE.serviceRequest, QICORE.serviceRequest]),
+    );
+  });
+
+  it('round-trips a DocumentReference to a QI-Core Communication', () => {
+    const [qdm] = normalizeDocumentReference({
+      resourceType: 'DocumentReference',
+      id: 'doc-1',
+      status: 'current',
+      docStatus: 'final',
+      type: { coding: [{ system: 'http://loinc.org', code: '18842-5', display: 'Discharge summary' }] },
+      subject: { reference: 'Patient/pat-1' },
+      date: '2026-06-05T09:00:00Z',
+    });
+    const resource = qdmElementToQiCore(qdm!, { now: NOW });
+    expect(resource).toMatchObject({
+      resourceType: 'Communication',
+      id: 'qdm-DocumentReference-doc-1', // id traces to the source DocumentReference
+      status: 'current',
+      subject: { reference: 'Patient/qdm-Patient-pat-1' },
+      sent: '2026-06-05T09:00:00Z',
+      topic: { coding: [{ system: 'http://loinc.org', code: '18842-5', display: 'Discharge summary' }], text: 'Discharge summary' },
+    });
+    expect(resource?.meta?.profile).toEqual(expect.arrayContaining([QICORE.communication]));
+  });
+
+  it('round-trips a Goal to QI-Core', () => {
+    const [qdm] = normalizeGoal({
+      resourceType: 'Goal',
+      id: 'goal-1',
+      lifecycleStatus: 'active',
+      description: { text: 'A1c < 7' },
+      subject: { reference: 'Patient/pat-1' },
+      startDate: '2026-01-01',
+      target: [{ dueDate: '2026-12-31' }],
+    });
+    const resource = qdmElementToQiCore(qdm!, { now: NOW });
+    expect(resource).toMatchObject({
+      resourceType: 'Goal',
+      id: 'qdm-Goal-goal-1',
+      lifecycleStatus: 'active',
+      subject: { reference: 'Patient/qdm-Patient-pat-1' },
+      startDate: '2026-01-01',
+      description: { text: 'A1c < 7' },
+      target: [{ dueDate: '2026-12-31' }],
+    });
+    expect(resource?.meta?.profile).toEqual(expect.arrayContaining([US_CORE.goal, QICORE.goal]));
   });
 });

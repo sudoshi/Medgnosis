@@ -196,6 +196,14 @@ export function qdmElementToQiCore(
       return procedureToQiCore(qdm, options);
     case 'Device':
       return deviceToQiCore(qdm, options);
+    case 'Diagnostic Study, Performed':
+      return diagnosticReportToQiCore(qdm, options);
+    case 'Intervention, Order':
+      return serviceRequestToQiCore(qdm, options);
+    case 'Communication, Performed':
+      return communicationToQiCore(qdm, options);
+    case 'Care Goal':
+      return goalToQiCore(qdm, options);
     default:
       return null;
   }
@@ -328,6 +336,68 @@ function procedureToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRR
   const reason = negationReason(qdm);
   if (notPerformed && reason) resource.statusReason = { coding: [codingFromConcept(reason)] };
   return resource;
+}
+
+function diagnosticReportToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRResource {
+  const resource = compactResource({
+    ...baseResource(qdm, 'DiagnosticReport', [US_CORE.diagnosticReportLab, QICORE.diagnosticReportLab], options),
+    status: qdm.status ?? 'final',
+    category: qdm.attributes['category'],
+    code: codeableConcept(qdm.code),
+    subject: patientReference(qdm.subject),
+    issued: qdm.timing.resultDateTime,
+    conclusion: qdm.attributes['conclusion'],
+    conclusionCode: qdm.attributes['conclusionCode'],
+    performer: qdm.attributes['performer'],
+    result: qdm.attributes['result'],
+  });
+  timing(resource, qdm, 'effective');
+  return resource;
+}
+
+function serviceRequestToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRResource {
+  const doNotPerform = qdm.attributes['doNotPerform'] === true;
+  const resource = compactResource({
+    ...baseResource(qdm, 'ServiceRequest', [US_CORE.serviceRequest, QICORE.serviceRequest], options),
+    status: qdm.status ?? 'active',
+    intent: qdm.attributes['intent'] ?? 'order',
+    priority: qdm.attributes['priority'],
+    doNotPerform: doNotPerform || undefined,
+    category: qdm.attributes['category'],
+    code: codeableConcept(qdm.code),
+    subject: patientReference(qdm.subject),
+    authoredOn: qdm.timing.authorDateTime,
+    requester: qdm.attributes['requester'],
+    reasonCode: qdm.attributes['reasonCode'],
+  });
+  const reason = negationReason(qdm);
+  if (doNotPerform && reason) resource.reasonCode = [reason];
+  return resource;
+}
+
+function communicationToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRResource {
+  return compactResource({
+    ...baseResource(qdm, 'Communication', [QICORE.communication], options),
+    status: qdm.status ?? 'completed',
+    category: qdm.attributes['category'],
+    topic: codeableConcept(qdm.code),
+    subject: patientReference(qdm.subject),
+    sent: qdm.timing.relevantDateTime,
+  });
+}
+
+function goalToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRResource {
+  const targetDate = qdm.attributes['targetDate'];
+  return compactResource({
+    ...baseResource(qdm, 'Goal', [US_CORE.goal, QICORE.goal], options),
+    lifecycleStatus: qdm.attributes['lifecycleStatus'] ?? qdm.status ?? 'active',
+    achievementStatus: qdm.attributes['achievementStatus'],
+    priority: qdm.attributes['priority'],
+    description: codeableConcept(qdm.code),
+    subject: patientReference(qdm.subject),
+    startDate: qdm.timing.relevantDateTime,
+    target: typeof targetDate === 'string' ? [{ dueDate: targetDate }] : undefined,
+  });
 }
 
 function deviceToQiCore(qdm: QdmElement, options?: QdmToQiCoreOptions): FHIRResource {
