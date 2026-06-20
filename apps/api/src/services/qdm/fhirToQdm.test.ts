@@ -222,4 +222,100 @@ describe('FHIR to QDM normalizers', () => {
 
     expect(elements.map((element) => element.datatype)).toEqual(['Patient', 'Assessment, Performed']);
   });
+
+  it('maps DiagnosticReport to Diagnostic Study, Performed', () => {
+    const [qdm] = normalizeFhirResourcesToQdm(
+      [
+        {
+          resourceType: 'DiagnosticReport',
+          id: 'dr-1',
+          status: 'final',
+          category: [{ coding: [{ code: 'LAB' }] }],
+          code: { coding: [{ system: 'http://loinc.org', code: '24323-8', display: 'CMP' }] },
+          subject: { reference: 'Patient/mgp-42' },
+          effectiveDateTime: '2026-06-05T09:00:00Z',
+          issued: '2026-06-05T10:00:00Z',
+          conclusion: 'Within normal limits',
+        },
+      ],
+      patientContext,
+    );
+
+    expect(qdm?.category).toBe('Diagnostic Study');
+    expect(qdm?.datatype).toBe('Diagnostic Study, Performed');
+    expect(qdm?.code?.code).toBe('24323-8');
+    expect(qdm?.timing.relevantDateTime).toBe('2026-06-05T09:00:00Z');
+    expect(qdm?.attributes.conclusion).toBe('Within normal limits');
+  });
+
+  it('maps ServiceRequest to Intervention, Order', () => {
+    const [qdm] = normalizeFhirResourcesToQdm(
+      [
+        {
+          resourceType: 'ServiceRequest',
+          id: 'sr-1',
+          status: 'active',
+          intent: 'order',
+          priority: 'urgent',
+          category: [{ coding: [{ code: '108252007', display: 'Laboratory procedure' }] }],
+          code: { coding: [{ system: 'http://loinc.org', code: '24323-8' }] },
+          subject: { reference: 'Patient/mgp-42' },
+          authoredOn: '2026-06-05T09:00:00Z',
+        },
+      ],
+      patientContext,
+    );
+
+    expect(qdm?.category).toBe('Intervention');
+    expect(qdm?.datatype).toBe('Intervention, Order');
+    expect(qdm?.timing.authorDateTime).toBe('2026-06-05T09:00:00Z');
+    expect(qdm?.attributes.intent).toBe('order');
+  });
+
+  it('maps DocumentReference to Communication, Performed', () => {
+    const [qdm] = normalizeFhirResourcesToQdm(
+      [
+        {
+          resourceType: 'DocumentReference',
+          id: 'doc-1',
+          status: 'current',
+          docStatus: 'final',
+          type: { coding: [{ system: 'http://loinc.org', code: '18842-5', display: 'Discharge summary' }] },
+          category: [{ coding: [{ code: 'clinical-note' }] }],
+          subject: { reference: 'Patient/mgp-42' },
+          date: '2026-06-05T09:00:00Z',
+        },
+      ],
+      patientContext,
+    );
+
+    expect(qdm?.category).toBe('Communication');
+    expect(qdm?.datatype).toBe('Communication, Performed');
+    expect(qdm?.code?.code).toBe('18842-5');
+    expect(qdm?.timing.relevantDateTime).toBe('2026-06-05T09:00:00Z');
+    expect(qdm?.attributes.docStatus).toBe('final');
+  });
+
+  it('maps Goal to Care Goal', () => {
+    const [qdm] = normalizeFhirResourcesToQdm(
+      [
+        {
+          resourceType: 'Goal',
+          id: 'goal-1',
+          lifecycleStatus: 'active',
+          description: { text: 'A1c < 7' },
+          subject: { reference: 'Patient/mgp-42' },
+          startDate: '2026-01-01',
+          target: [{ dueDate: '2026-12-31' }],
+        },
+      ],
+      patientContext,
+    );
+
+    expect(qdm?.category).toBe('Care Goal');
+    expect(qdm?.datatype).toBe('Care Goal');
+    expect(qdm?.status).toBe('active');
+    expect(qdm?.code?.text).toBe('A1c < 7');
+    expect(qdm?.attributes.targetDate).toBe('2026-12-31');
+  });
 });

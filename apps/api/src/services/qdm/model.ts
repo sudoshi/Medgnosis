@@ -15,7 +15,11 @@ export type QdmCategory =
   | 'Assessment'
   | 'Medication'
   | 'Procedure'
-  | 'Device';
+  | 'Device'
+  | 'Diagnostic Study'
+  | 'Intervention'
+  | 'Communication'
+  | 'Care Goal';
 
 export type QdmDatatype =
   | 'Patient'
@@ -30,7 +34,11 @@ export type QdmDatatype =
   | 'Medication, Not Administered'
   | 'Procedure, Performed'
   | 'Procedure, Not Performed'
-  | 'Device';
+  | 'Device'
+  | 'Diagnostic Study, Performed'
+  | 'Intervention, Order'
+  | 'Communication, Performed'
+  | 'Care Goal';
 
 export interface QdmIdentifier {
   system?: string;

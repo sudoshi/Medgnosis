@@ -475,6 +475,90 @@ export function normalizeDevice(
   return [element];
 }
 
+export function normalizeDiagnosticReport(
+  resource: FhirLikeResource,
+  context?: QdmNormalizationContext,
+): QdmElement[] {
+  const element: QdmElement = {
+    ...baseElement(resource, context, 'Diagnostic Study, Performed', effectiveTiming(resource)),
+    category: 'Diagnostic Study',
+    code: codeableConcept(resource.code),
+    attributes: compact({
+      category: codeableConcepts(resource.category),
+      conclusion: asString(resource.conclusion),
+      conclusionCode: codeableConcepts(resource.conclusionCode),
+      performer: referenceArray(resource.performer),
+      result: referenceArray(resource.result),
+    }),
+  };
+  return [element];
+}
+
+export function normalizeServiceRequest(
+  resource: FhirLikeResource,
+  context?: QdmNormalizationContext,
+): QdmElement[] {
+  const doNotPerform = asBoolean(resource.doNotPerform) === true;
+  const element: QdmElement = {
+    ...baseElement(resource, context, 'Intervention, Order', {
+      authorDateTime: asString(resource.authoredOn),
+    }),
+    category: 'Intervention',
+    code: codeableConcept(resource.code),
+    attributes: compact({
+      intent: asString(resource.intent),
+      priority: asString(resource.priority),
+      category: codeableConcepts(resource.category),
+      doNotPerform,
+      negationRationale: doNotPerform ? reasonCodes(resource) : undefined,
+      requester: reference(resource.requester),
+      reasonCode: codeableConcepts(resource.reasonCode),
+    }),
+  };
+  return [element];
+}
+
+export function normalizeDocumentReference(
+  resource: FhirLikeResource,
+  context?: QdmNormalizationContext,
+): QdmElement[] {
+  const element: QdmElement = {
+    ...baseElement(resource, context, 'Communication, Performed', {
+      relevantDateTime: asString(resource.date),
+    }),
+    category: 'Communication',
+    code: codeableConcept(resource.type),
+    attributes: compact({
+      category: codeableConcepts(resource.category),
+      docStatus: asString(resource.docStatus),
+      author: referenceArray(resource.author),
+    }),
+  };
+  return [element];
+}
+
+export function normalizeGoal(
+  resource: FhirLikeResource,
+  context?: QdmNormalizationContext,
+): QdmElement[] {
+  const target = asRecordArray(resource.target)[0];
+  const element: QdmElement = {
+    ...baseElement(resource, context, 'Care Goal', {
+      relevantDateTime: asString(resource.startDate),
+    }),
+    category: 'Care Goal',
+    status: asString(resource.lifecycleStatus) ?? asString(resource.status),
+    code: codeableConcept(resource.description),
+    attributes: compact({
+      lifecycleStatus: asString(resource.lifecycleStatus),
+      achievementStatus: codeableConcept(resource.achievementStatus),
+      priority: codeableConcept(resource.priority),
+      targetDate: target ? asString(target.dueDate) : undefined,
+    }),
+  };
+  return [element];
+}
+
 export function normalizeFhirToQdm(
   resource: FhirLikeResource,
   context?: QdmNormalizationContext,
@@ -496,6 +580,14 @@ export function normalizeFhirToQdm(
       return normalizeProcedure(resource, context);
     case 'Device':
       return normalizeDevice(resource, context);
+    case 'DiagnosticReport':
+      return normalizeDiagnosticReport(resource, context);
+    case 'ServiceRequest':
+      return normalizeServiceRequest(resource, context);
+    case 'DocumentReference':
+      return normalizeDocumentReference(resource, context);
+    case 'Goal':
+      return normalizeGoal(resource, context);
     default:
       return [];
   }
