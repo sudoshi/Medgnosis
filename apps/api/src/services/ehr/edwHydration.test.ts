@@ -27,6 +27,7 @@ import {
   upsertProviderFromReference,
   upsertOrganizationFromReference,
   upsertLocationFromReference,
+  softDeleteLocalRow,
 } from './edwHydration.js';
 
 beforeEach(() => {
@@ -891,3 +892,71 @@ const bulkPatient: FhirResource = {
   birthDate: '1980-02-03',
   gender: 'female',
 };
+
+const enteredInErrorCondition: FhirResource = {
+  resourceType: 'Condition',
+  id: 'cond-eie',
+  subject: { reference: 'Patient/pat-1' },
+  verificationStatus: { coding: [{ code: 'entered-in-error' }] },
+  code: { coding: [{ system: 'http://snomed.info/sct', code: '44054006', display: 'Diabetes' }] },
+};
+
+describe('entered-in-error soft-delete', () => {
+  it('soft-deletes an existing EDW row instead of re-hydrating it', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Condition', 'cond-eie', enteredInErrorCondition)]);
+      }
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) {
+        return Promise.resolve([{ local_table: 'phm_edw.condition_diagnosis', local_id: 654 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    const calls = mockSql.mock.calls.map(([s]) => (s as TemplateStringsArray).join(''));
+
+    expect(calls.some((c) => c.includes('UPDATE phm_edw.condition_diagnosis') && c.includes("active_ind='N'"))).toBe(true);
+    expect(calls.some((c) => c.includes('UPDATE phm_edw.ehr_resource_crosswalk') && c.includes('deleted_reason'))).toBe(true);
+    expect(calls.some((c) => c.includes('INSERT INTO phm_edw.condition_diagnosis'))).toBe(false);
+    expect(calls.some((c) => c.includes('SELECT condition_id'))).toBe(false);
+    expect(result.rowsUpdated).toBe(1);
+
+    const xwalk = mockSql.mock.calls.find(([s]) =>
+      (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.ehr_resource_crosswalk')
+      && (s as TemplateStringsArray).join('').includes('deleted_reason'),
+    );
+    expect(xwalk!.slice(1)).toEqual(expect.arrayContaining(['entered-in-error']));
+  });
+
+  it('falls through to normal hydration when no prior EDW row exists', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Condition', 'cond-eie', enteredInErrorCondition)]);
+      }
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('SELECT condition_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.condition\n')) return Promise.resolve([{ condition_id: 321 }]);
+      if (text.includes('INSERT INTO phm_edw.condition_diagnosis')) return Promise.resolve([{ condition_diagnosis_id: 654 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    const calls = mockSql.mock.calls.map(([s]) => (s as TemplateStringsArray).join(''));
+
+    expect(calls.some((c) => c.includes('deleted_reason'))).toBe(false);
+    expect(calls.some((c) => c.includes('INSERT INTO phm_edw.condition_diagnosis'))).toBe(true);
+    expect(result.rowsInserted).toBe(1);
+  });
+
+  it('softDeleteLocalRow is a no-op for a table outside the allowlist', async () => {
+    const unsafe = vi.fn(async () => []);
+    const tx = { unsafe } as never;
+    await softDeleteLocalRow(tx, 'phm_edw.unknown_table', 5);
+    expect(unsafe).not.toHaveBeenCalled();
+  });
+});

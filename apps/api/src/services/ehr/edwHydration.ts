@@ -224,12 +224,67 @@ function hydrateStagedResource(row: StagedFhirResourceRow): Promise<HydratedReso
     if (patientId === null) return null;
 
     const existing = await findExistingLocalTarget(tx, row);
+
+    // A resource that has flipped to entered-in-error soft-deletes the EDW row it
+    // previously hydrated (active_ind='N') rather than re-hydrating it. Only
+    // previously-seen resources are soft-deleted; a never-seen entered-in-error
+    // resource falls through to normal hydration.
+    if (isEnteredInError(row.resource) && existing.localTable && existing.localId !== null) {
+      await softDeleteLocalRow(tx, existing.localTable, existing.localId);
+      await markCrosswalkDeleted(tx, row, 'entered-in-error');
+      return { localTable: existing.localTable, localId: existing.localId, operation: 'updated' };
+    }
+
     const target = await hydrateByResourceType(tx, row, patientId, existing);
     if (!target) return null;
 
     await upsertResourceCrosswalk(tx, row, patientId, target);
     return target;
   });
+}
+
+function isEnteredInError(resource: FhirResource): boolean {
+  if (cleanString(resource['status']) === 'entered-in-error') return true;
+  const vs = firstConcept(resource['verificationStatus']).code;
+  const cs = firstConcept(resource['clinicalStatus']).code;
+  return vs === 'entered-in-error' || cs === 'entered-in-error';
+}
+
+// Closed allowlist of soft-deletable EDW tables -> primary key column. The
+// table/pk identifiers here are NEVER user input (they come from this fixed map
+// / our own crosswalk), so interpolating them into the UPDATE is safe; Postgres
+// cannot bind identifiers as parameters. phm_edw.patient is intentionally absent
+// (patients are never soft-deleted via this path).
+const SOFT_DELETE_PK: Record<string, string> = {
+  'phm_edw.encounter': 'encounter_id',
+  'phm_edw.condition_diagnosis': 'condition_diagnosis_id',
+  'phm_edw.observation': 'observation_id',
+  'phm_edw.medication_order': 'medication_order_id',
+  'phm_edw.procedure_performed': 'procedure_performed_id',
+  'phm_edw.patient_allergy': 'patient_allergy_id',
+  'phm_edw.immunization': 'immunization_id',
+  'phm_edw.clinical_order': 'order_id',
+  'phm_edw.diagnostic_report': 'report_id',
+  'phm_edw.document_reference': 'document_id',
+  'phm_edw.care_plan': 'care_plan_id',
+  'phm_edw.care_plan_item': 'item_id',
+  'phm_edw.care_team': 'care_team_id',
+  'phm_edw.patient_insurance_coverage': 'coverage_id',
+};
+
+export async function softDeleteLocalRow(tx: Tx, localTable: string, localId: number): Promise<void> {
+  const pk = SOFT_DELETE_PK[localTable];
+  if (!pk) return;
+  await tx.unsafe(`UPDATE ${localTable} SET active_ind='N', updated_date=NOW() WHERE ${pk}=$1`, [localId]);
+}
+
+async function markCrosswalkDeleted(tx: Tx, row: StagedFhirResourceRow, reason: string): Promise<void> {
+  await tx.unsafe(
+    `UPDATE phm_edw.ehr_resource_crosswalk
+     SET deleted_at=NOW(), deleted_reason=$4, last_seen_at=NOW()
+     WHERE ehr_tenant_id=$1 AND resource_type=$2 AND ehr_resource_id=$3`,
+    [Number(row.ehr_tenant_id), row.resource_type, row.resource_id, truncate(reason, 50)],
+  );
 }
 
 async function hydratePatient(row: StagedFhirResourceRow): Promise<HydratedResourceTarget | null> {
