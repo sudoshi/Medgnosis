@@ -494,6 +494,139 @@ describe('hydrateEncounter provider/org backfill', () => {
   });
 });
 
+const serviceRequest = {
+  resourceType: 'ServiceRequest', id: 'sr-1',
+  subject: { reference: 'Patient/pat-1' },
+  encounter: { reference: 'Encounter/enc-1' },
+  status: 'active', priority: 'urgent',
+  category: [{ text: 'Laboratory' }],
+  code: { coding: [{ system: 'http://loinc.org', code: '24323-8', display: 'Comprehensive metabolic panel' }] },
+  authoredOn: '2026-06-05T09:00:00Z',
+} as unknown as FhirResource;
+
+const diagnosticReport = {
+  resourceType: 'DiagnosticReport', id: 'dr-1',
+  subject: { reference: 'Patient/pat-1' },
+  encounter: { reference: 'Encounter/enc-1' },
+  status: 'final',
+  category: [{ text: 'Laboratory' }],
+  code: { coding: [{ system: 'http://loinc.org', code: '58410-2', display: 'CBC panel' }] },
+  effectiveDateTime: '2026-06-06T08:00:00Z',
+  issued: '2026-06-06T10:00:00Z',
+  performer: [{ display: 'Acme Labs' }],
+  conclusion: 'Within normal limits',
+} as unknown as FhirResource;
+
+const documentReference = {
+  resourceType: 'DocumentReference', id: 'doc-1',
+  subject: { reference: 'Patient/pat-1' },
+  context: { encounter: { reference: 'Encounter/enc-1' } },
+  status: 'current', docStatus: 'final',
+  category: [{ text: 'Clinical Note' }],
+  type: { coding: [{ system: 'http://loinc.org', code: '18842-5', display: 'Discharge summary' }] },
+  author: [{ display: 'Dr. Jane Roe' }],
+  date: '2026-06-07T08:00:00Z',
+  content: [{ attachment: { contentType: 'application/pdf', url: 'http://x/y.pdf', title: 'Discharge Summary' } }],
+} as unknown as FhirResource;
+
+describe('Phase C batch 1 hydrators', () => {
+  it('hydrates a ServiceRequest into clinical_order (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'ServiceRequest', 'sr-1', serviceRequest)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.clinical_order')) return Promise.resolve([{ order_id: 700 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['ServiceRequest']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.clinical_order'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123])); // patientId
+  });
+
+  it('updates an existing clinical_order on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'ServiceRequest', 'sr-1', serviceRequest)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.clinical_order', local_id: 700 }]);
+      if (text.includes('UPDATE phm_edw.clinical_order')) return Promise.resolve([{ order_id: 700 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.clinical_order'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.clinical_order'))).toBe(false);
+  });
+
+  it('hydrates a DiagnosticReport into diagnostic_report (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'DiagnosticReport', 'dr-1', diagnosticReport)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.diagnostic_report')) return Promise.resolve([{ report_id: 800 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['DiagnosticReport']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.diagnostic_report'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123])); // patientId
+  });
+
+  it('updates an existing diagnostic_report on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'DiagnosticReport', 'dr-1', diagnosticReport)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.diagnostic_report', local_id: 800 }]);
+      if (text.includes('UPDATE phm_edw.diagnostic_report')) return Promise.resolve([{ report_id: 800 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.diagnostic_report'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.diagnostic_report'))).toBe(false);
+  });
+
+  it('hydrates a DocumentReference into document_reference (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'DocumentReference', 'doc-1', documentReference)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.document_reference')) return Promise.resolve([{ document_id: 900 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['DocumentReference']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.document_reference'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123])); // patientId
+  });
+
+  it('updates an existing document_reference on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'DocumentReference', 'doc-1', documentReference)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.document_reference', local_id: 900 }]);
+      if (text.includes('UPDATE phm_edw.document_reference')) return Promise.resolve([{ document_id: 900 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.document_reference'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.document_reference'))).toBe(false);
+  });
+});
+
 const bulkPatient: FhirResource = {
   resourceType: 'Patient',
   id: 'pat-1',

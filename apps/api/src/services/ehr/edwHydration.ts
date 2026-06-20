@@ -23,6 +23,9 @@ const SUPPORTED_RESOURCE_TYPES = [
   'Procedure',
   'AllergyIntolerance',
   'Immunization',
+  'ServiceRequest',
+  'DiagnosticReport',
+  'DocumentReference',
 ] as const;
 
 type SupportedResourceType = (typeof SUPPORTED_RESOURCE_TYPES)[number];
@@ -175,7 +178,10 @@ async function findHydratableStagedResources(
                WHEN 'Procedure' THEN 5
                WHEN 'AllergyIntolerance' THEN 6
                WHEN 'Immunization' THEN 7
-               ELSE 9
+               WHEN 'ServiceRequest' THEN 8
+               WHEN 'DiagnosticReport' THEN 9
+               WHEN 'DocumentReference' THEN 10
+               ELSE 90
              END,
              received_at ASC,
              id ASC
@@ -287,6 +293,12 @@ async function hydrateByResourceType(
       return hydrateAllergyIntolerance(tx, row, patientId, existing);
     case 'Immunization':
       return hydrateImmunization(tx, row, patientId, existing);
+    case 'ServiceRequest':
+      return hydrateServiceRequest(tx, row, patientId, existing);
+    case 'DiagnosticReport':
+      return hydrateDiagnosticReport(tx, row, patientId, existing);
+    case 'DocumentReference':
+      return hydrateDocumentReference(tx, row, patientId, existing);
     default:
       return null;
   }
@@ -782,6 +794,131 @@ async function hydrateImmunization(
     localId: Number(rows[0]!.immunization_id),
     operation: 'inserted',
   };
+}
+
+async function hydrateServiceRequest(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const code = firstConcept(resource['code']);
+  const encounterId = await resolveEncounterId(tx, row, referenceId(resource['encounter'], 'Encounter'));
+  const providerId =
+    (await resolveProviderId(tx, row, referenceId(resource['requester'], 'Practitioner')))
+    ?? (await upsertProviderFromReference(tx, containedResource(resource, 'Practitioner', referenceId(resource['requester'], 'Practitioner'))));
+  const orderName = truncate(conceptLabel(code) ?? code.code ?? `ServiceRequest ${row.resource_id}`, 255);
+  const orderType = truncate(conceptLabel(firstConcept(resource['category'])) ?? 'PROCEDURE', 30);
+  const orderStatus = truncate(cleanString(resource['status']) ?? 'unknown', 30);
+  const priority = truncate(cleanString(resource['priority']) ?? 'routine', 20);
+  const orderedAt = cleanString(resource['authoredOn']) ?? row.source_last_updated ?? row.received_at;
+  const loinc = code.system?.toLowerCase().includes('loinc') ? truncateNullable(code.code, 20) : null;
+  const instructions = truncateNullable(cleanString(firstRecord(resource['note'])?.['text']), 1000);
+
+  if (existing.localTable === 'phm_edw.clinical_order' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ order_id: number | string }[]>(
+      `UPDATE phm_edw.clinical_order
+       SET patient_id=$2, encounter_id=$3, ordering_provider_id=$4, order_type=$5, order_name=$6,
+           loinc_code=$7, priority=$8, order_datetime=$9::timestamp, order_status=$10, instructions=$11,
+           updated_date=NOW()
+       WHERE order_id=$1 RETURNING order_id`,
+      [existing.localId, patientId, encounterId, providerId, orderType, orderName, loinc, priority, orderedAt, orderStatus, instructions],
+    );
+    return { localTable: 'phm_edw.clinical_order', localId: Number(rows[0]?.order_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ order_id: number | string }[]>(
+    `INSERT INTO phm_edw.clinical_order
+       (patient_id, encounter_id, ordering_provider_id, order_type, order_name, loinc_code,
+        priority, order_datetime, order_status, instructions, fasting_required, order_source,
+        active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamp,$9,$10, false, 'FHIR', 'Y', NOW(), NOW())
+     RETURNING order_id`,
+    [patientId, encounterId, providerId, orderType, orderName, loinc, priority, orderedAt, orderStatus, instructions],
+  );
+  return { localTable: 'phm_edw.clinical_order', localId: Number(rows[0]!.order_id), operation: 'inserted' };
+}
+
+async function hydrateDiagnosticReport(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const code = firstConcept(resource['code']);
+  const encounterId = await resolveEncounterId(tx, row, referenceId(resource['encounter'], 'Encounter'));
+  const reportCode = truncate(code.code ?? `FHIR-${row.resource_id}`, 50);
+  const reportName = truncateNullable(conceptLabel(code) ?? reportCode, 255);
+  const codeSystem = edwGeneralCodeSystem(code.system);
+  const category = truncateNullable(conceptLabel(firstConcept(resource['category'])), 100);
+  const status = truncateNullable(cleanString(resource['status']), 50);
+  const effective = cleanString(resource['effectiveDateTime']) ?? periodStart(resource['effectivePeriod']);
+  const issued = cleanString(resource['issued']) ?? row.source_last_updated ?? row.received_at;
+  const performer = truncateNullable(cleanString(firstRecord(resource['performer'])?.['display']), 255);
+  const conclusion = cleanString(resource['conclusion']);
+
+  if (existing.localTable === 'phm_edw.diagnostic_report' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ report_id: number | string }[]>(
+      `UPDATE phm_edw.diagnostic_report
+       SET patient_id=$2, encounter_id=$3, report_code=$4, report_name=$5, code_system=$6,
+           category=$7, status=$8, effective_datetime=$9::timestamp, issued_datetime=$10::timestamp,
+           performer=$11, conclusion=$12, updated_date=NOW()
+       WHERE report_id=$1 RETURNING report_id`,
+      [existing.localId, patientId, encounterId, reportCode, reportName, codeSystem, category, status, effective, issued, performer, conclusion],
+    );
+    return { localTable: 'phm_edw.diagnostic_report', localId: Number(rows[0]?.report_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ report_id: number | string }[]>(
+    `INSERT INTO phm_edw.diagnostic_report
+       (patient_id, encounter_id, report_code, report_name, code_system, category, status,
+        effective_datetime, issued_datetime, performer, conclusion, active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamp,$9::timestamp,$10,$11,'Y',NOW(),NOW())
+     RETURNING report_id`,
+    [patientId, encounterId, reportCode, reportName, codeSystem, category, status, effective, issued, performer, conclusion],
+  );
+  return { localTable: 'phm_edw.diagnostic_report', localId: Number(rows[0]!.report_id), operation: 'inserted' };
+}
+
+async function hydrateDocumentReference(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const type = firstConcept(resource['type']);
+  const encounterId = await resolveEncounterId(
+    tx, row, referenceId(firstRecord(resource['context'])?.['encounter'] ?? resource['encounter'], 'Encounter'),
+  );
+  const attachment = record(firstRecord(resource['content'])?.['attachment']);
+  const docTypeCode = truncateNullable(type.code, 50);
+  const docTypeName = truncateNullable(conceptLabel(type), 255);
+  const codeSystem = edwGeneralCodeSystem(type.system);
+  const category = truncateNullable(conceptLabel(firstConcept(resource['category'])), 100);
+  const status = truncateNullable(cleanString(resource['status']), 50);
+  const docStatus = truncateNullable(cleanString(resource['docStatus']), 50);
+  const contentType = truncateNullable(cleanString(attachment?.['contentType']), 100);
+  const contentUrl = cleanString(attachment?.['url']);
+  const contentTitle = truncateNullable(cleanString(attachment?.['title']), 255);
+  const authorDisplay = truncateNullable(cleanString(firstRecord(resource['author'])?.['display']), 255);
+  const docDate = cleanString(resource['date']) ?? cleanString(attachment?.['creation']) ?? row.source_last_updated ?? row.received_at;
+
+  if (existing.localTable === 'phm_edw.document_reference' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ document_id: number | string }[]>(
+      `UPDATE phm_edw.document_reference
+       SET patient_id=$2, encounter_id=$3, doc_type_code=$4, doc_type_name=$5, code_system=$6,
+           category=$7, status=$8, doc_status=$9, content_type=$10, content_url=$11, content_title=$12,
+           author_display=$13, document_datetime=$14::timestamp, updated_date=NOW()
+       WHERE document_id=$1 RETURNING document_id`,
+      [existing.localId, patientId, encounterId, docTypeCode, docTypeName, codeSystem, category, status, docStatus, contentType, contentUrl, contentTitle, authorDisplay, docDate],
+    );
+    return { localTable: 'phm_edw.document_reference', localId: Number(rows[0]?.document_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ document_id: number | string }[]>(
+    `INSERT INTO phm_edw.document_reference
+       (patient_id, encounter_id, doc_type_code, doc_type_name, code_system, category, status,
+        doc_status, content_type, content_url, content_title, author_display, document_datetime,
+        active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamp,'Y',NOW(),NOW())
+     RETURNING document_id`,
+    [patientId, encounterId, docTypeCode, docTypeName, codeSystem, category, status, docStatus, contentType, contentUrl, contentTitle, authorDisplay, docDate],
+  );
+  return { localTable: 'phm_edw.document_reference', localId: Number(rows[0]!.document_id), operation: 'inserted' };
 }
 
 async function resolvePatientId(tx: Tx, row: StagedFhirResourceRow): Promise<number | null> {
