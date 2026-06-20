@@ -319,6 +319,37 @@ async function markCrosswalkDeleted(tx: Tx, row: StagedFhirResourceRow, reason: 
   );
 }
 
+// Soft-delete an EDW row identified only by its source (tenant, resourceType,
+// resourceId) via the crosswalk. Used by the Bulk Data `deleted` manifest path,
+// which references resources by ResourceType/id without a staged payload.
+// Returns true if a crosswalk-mapped EDW row was soft-deleted.
+export async function softDeleteByCrosswalk(
+  ehrTenantId: number,
+  resourceType: string,
+  resourceId: string,
+  reason: string,
+): Promise<boolean> {
+  return sql.begin(async (tx) => {
+    const rows = await tx.unsafe<Array<{ local_table: string | null; local_id: number | string | null }>>(
+      `SELECT local_table, local_id FROM phm_edw.ehr_resource_crosswalk
+       WHERE ehr_tenant_id = $1 AND resource_type = $2 AND ehr_resource_id = $3
+       LIMIT 1`,
+      [ehrTenantId, resourceType, resourceId],
+    );
+    const localTable = cleanString(rows[0]?.local_table);
+    const localId = optionalPositiveNumber(rows[0]?.local_id);
+    if (!localTable || localId === null) return false;
+    await softDeleteLocalRow(tx, localTable, localId);
+    await tx.unsafe(
+      `UPDATE phm_edw.ehr_resource_crosswalk
+       SET deleted_at = NOW(), deleted_reason = $4, last_seen_at = NOW()
+       WHERE ehr_tenant_id = $1 AND resource_type = $2 AND ehr_resource_id = $3`,
+      [ehrTenantId, resourceType, resourceId, truncate(reason, 50)],
+    );
+    return true;
+  });
+}
+
 async function hydratePatient(row: StagedFhirResourceRow): Promise<HydratedResourceTarget | null> {
   const patient = row.resource;
   const ehrTenantId = Number(row.ehr_tenant_id);

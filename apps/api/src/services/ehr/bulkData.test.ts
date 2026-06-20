@@ -17,12 +17,15 @@ import {
   kickoffBulkExportWithBackendServices,
   importCompletedBulkExportJob,
   importBulkExportJob,
+  extractDeletedReferences,
+  processBulkDeletions,
   kickoffBulkExport,
   listBulkJobs,
   parseBulkManifest,
   pollBulkExportJob,
   pollBulkExportJobWithBackendServices,
 } from './bulkData.js';
+import type { FhirResource } from './types.js';
 import type { EhrBulkJob, ImportBulkExportJobResult } from './bulkData.js';
 
 const jobId = '00000000-0000-4000-8000-000000000067';
@@ -1425,5 +1428,78 @@ describe('importBulkExportJob', () => {
         ...manifest,
         output: [{ type: 'Patient', url: 'https://ehr.example.test/bulk/patient.ndjson', size: -1 }],
       })).toThrow('output[0].size');
+    });
+  });
+
+  describe('processBulkDeletions + extractDeletedReferences', () => {
+    it('extracts DELETE entries and ignores non-deletions / malformed entries', () => {
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'transaction',
+        entry: [
+          { request: { method: 'DELETE', url: 'Condition/cond-1' } },
+          { request: { method: 'DELETE', url: 'https://ehr.example.test/fhir/R4/Observation/obs-9' } },
+          { request: { method: 'POST', url: 'Patient/should-ignore' } },
+          { request: { url: 'NoMethod/x' } },
+          { note: 'no request' },
+        ],
+      } as unknown as FhirResource;
+
+      expect(extractDeletedReferences(bundle)).toEqual([
+        { resourceType: 'Condition', id: 'cond-1' },
+        { resourceType: 'Observation', id: 'obs-9' },
+      ]);
+    });
+
+    it('soft-deletes each referenced resource via the crosswalk', async () => {
+      const ndjson = `${JSON.stringify({
+        resourceType: 'Bundle',
+        type: 'transaction',
+        entry: [
+          { request: { method: 'DELETE', url: 'Condition/cond-1' } },
+          { request: { method: 'DELETE', url: 'MedicationRequest/med-7' } },
+        ],
+      })}\n`;
+      const fetchMock = vi.fn<FetchLike>().mockResolvedValue(
+        new Response(ndjson, { status: 200, headers: { 'content-type': 'application/fhir+ndjson' } }),
+      );
+      const softDeleteByCrosswalk = vi.fn(async () => true);
+
+      const result = await processBulkDeletions({
+        tenant,
+        job: { statusUrl: 'https://ehr.example.test/status', requestUrl: 'https://ehr.example.test/req' } as never,
+        manifest: {
+          ...manifest,
+          deleted: [{ type: 'Bundle', url: 'https://ehr.example.test/bulk/deleted.ndjson' }],
+        } as never,
+        token,
+        fetchImpl: fetchMock,
+        softDeleteByCrosswalk,
+      });
+
+      expect(result).toEqual({ filesProcessed: 1, entriesSeen: 2, softDeleted: 2, errorCount: 0 });
+      expect(softDeleteByCrosswalk).toHaveBeenCalledWith(42, 'Condition', 'cond-1', 'bulk-deleted');
+      expect(softDeleteByCrosswalk).toHaveBeenCalledWith(42, 'MedicationRequest', 'med-7', 'bulk-deleted');
+    });
+
+    it('counts a file error without throwing when the deleted-output fetch fails', async () => {
+      const fetchMock = vi.fn<FetchLike>().mockResolvedValue(new Response('nope', { status: 500 }));
+      const softDeleteByCrosswalk = vi.fn(async () => true);
+
+      const result = await processBulkDeletions({
+        tenant,
+        job: {} as never,
+        manifest: {
+          ...manifest,
+          deleted: [{ type: 'Bundle', url: 'https://ehr.example.test/bulk/deleted.ndjson' }],
+        } as never,
+        token,
+        fetchImpl: fetchMock,
+        softDeleteByCrosswalk,
+      });
+
+      expect(result.errorCount).toBe(1);
+      expect(result.softDeleted).toBe(0);
+      expect(softDeleteByCrosswalk).not.toHaveBeenCalled();
     });
   });

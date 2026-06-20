@@ -28,6 +28,7 @@ import {
   upsertOrganizationFromReference,
   upsertLocationFromReference,
   softDeleteLocalRow,
+  softDeleteByCrosswalk,
 } from './edwHydration.js';
 
 beforeEach(() => {
@@ -958,6 +959,34 @@ describe('entered-in-error soft-delete', () => {
     const tx = { unsafe } as never;
     await softDeleteLocalRow(tx, 'phm_edw.unknown_table', 5);
     expect(unsafe).not.toHaveBeenCalled();
+  });
+
+  it('softDeleteByCrosswalk soft-deletes the mapped EDW row and stamps the crosswalk', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT local_table, local_id FROM phm_edw.ehr_resource_crosswalk')) {
+        return Promise.resolve([{ local_table: 'phm_edw.condition_diagnosis', local_id: 654 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const removed = await softDeleteByCrosswalk(42, 'Condition', 'cond-1', 'bulk-deleted');
+    const calls = mockSql.mock.calls.map(([s]) => (s as TemplateStringsArray).join(''));
+
+    expect(removed).toBe(true);
+    expect(calls.some((c) => c.includes('UPDATE phm_edw.condition_diagnosis') && c.includes("active_ind='N'"))).toBe(true);
+    const xwalk = mockSql.mock.calls.find(([s]) =>
+      (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.ehr_resource_crosswalk')
+      && (s as TemplateStringsArray).join('').includes('deleted_reason'),
+    );
+    expect(xwalk!.slice(1)).toEqual(expect.arrayContaining(['bulk-deleted']));
+  });
+
+  it('softDeleteByCrosswalk returns false when no crosswalk row maps the resource', async () => {
+    mockSql.mockImplementation(() => Promise.resolve([]));
+    const removed = await softDeleteByCrosswalk(42, 'Condition', 'missing', 'bulk-deleted');
+    expect(removed).toBe(false);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw'))).toBe(false);
   });
 });
 

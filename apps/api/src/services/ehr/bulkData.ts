@@ -20,6 +20,7 @@ import {
 } from './ingestRuns.js';
 import {
   hydrateStagedRunToEdw as hydrateStagedRunToEdwDefault,
+  softDeleteByCrosswalk as softDeleteByCrosswalkDefault,
   type HydrateStagedRunToEdwResult,
 } from './edwHydration.js';
 import {
@@ -117,6 +118,7 @@ export interface ImportBulkExportJobInput {
   finishIngestRun?: typeof finishIngestRunWithQdmBridgeDefault;
   failIngestRun?: typeof failIngestRunDefault;
   hydrateStagedRunToEdw?: typeof hydrateStagedRunToEdwDefault;
+  softDeleteByCrosswalk?: typeof softDeleteByCrosswalkDefault;
 }
 
 export interface ImportCompletedBulkExportJobInput {
@@ -861,6 +863,7 @@ export async function importBulkExportJob(
   const failIngestRun = input.failIngestRun ?? failIngestRunDefault;
   const hydrateStagedRunToEdw = input.hydrateStagedRunToEdw ?? hydrateStagedRunToEdwDefault;
   const stageFhirResource = input.stageFhirResource ?? stageFhirResourceDefault;
+  const softDeleteByCrosswalk = input.softDeleteByCrosswalk ?? softDeleteByCrosswalkDefault;
 
   const ingestRun = await startIngestRun({
     orgId: input.tenant.orgId ?? input.job.orgId ?? null,
@@ -908,6 +911,17 @@ export async function importBulkExportJob(
         limit: Math.max(resourcesStaged, 1),
       })
     : null;
+  const deletions = (manifest.deleted?.length ?? 0) > 0
+    ? await processBulkDeletions({
+        tenant: input.tenant,
+        job: linkedJob,
+        manifest,
+        token: input.token,
+        fetchImpl,
+        softDeleteByCrosswalk,
+      })
+    : null;
+
   const errorCount = resourcesFailed + (edwHydration?.resourcesFailed ?? 0);
   const metadata = {
     bulkJobId: input.job.id,
@@ -917,6 +931,7 @@ export async function importBulkExportJob(
       resourcesStaged,
       resourcesFailed,
       edwHydration,
+      deletions,
     },
   };
 
@@ -972,6 +987,88 @@ export async function importBulkExportJob(
     edwHydration,
     qdmBridge: finished.qdmBridge,
   };
+}
+
+export interface ProcessBulkDeletionsInput {
+  tenant: EhrTenantRef & { id: number; orgId?: number | null };
+  job: EhrBulkJob;
+  manifest: BulkManifest;
+  token: FhirAccessTokenRef | undefined;
+  fetchImpl: FetchLike;
+  softDeleteByCrosswalk: typeof softDeleteByCrosswalkDefault;
+}
+
+export interface BulkDeletionsResult {
+  filesProcessed: number;
+  entriesSeen: number;
+  softDeleted: number;
+  errorCount: number;
+}
+
+// Processes the Bulk Data `deleted` manifest outputs (NDJSON of FHIR Bundles
+// whose entries carry request.method=DELETE and request.url=ResourceType/id) and
+// soft-deletes each referenced resource via the crosswalk. Per-file errors are
+// counted, not thrown, so a deleted-output transport failure never fails an
+// otherwise-successful import.
+export async function processBulkDeletions(input: ProcessBulkDeletionsInput): Promise<BulkDeletionsResult> {
+  const deleted = input.manifest.deleted ?? [];
+  let filesProcessed = 0;
+  let entriesSeen = 0;
+  let softDeleted = 0;
+  let errorCount = 0;
+
+  for (const output of deleted) {
+    try {
+      validateBulkOutputUrl(input.tenant, input.job, output.url, input.manifest.requiresAccessToken);
+      const response = await input.fetchImpl(output.url, {
+        method: 'GET',
+        headers: bulkOutputHeaders(input.manifest, input.token),
+      });
+      if (!response.ok) {
+        throw new BulkDataError(
+          'bulk_deleted_fetch_failed',
+          `Bulk Data deleted-output fetch failed with HTTP ${response.status}`,
+          response.status,
+        );
+      }
+      validateNdjsonContentType(response.headers.get('content-type'));
+
+      let lineNumber = 0;
+      for await (const line of responseNdjsonLines(response, new BulkOutputDownloadDigest())) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        lineNumber += 1;
+        const bundle = parseNdjsonResource(trimmed, 'Bundle', lineNumber);
+        for (const ref of extractDeletedReferences(bundle)) {
+          entriesSeen += 1;
+          const removed = await input.softDeleteByCrosswalk(input.tenant.id, ref.resourceType, ref.id, 'bulk-deleted');
+          if (removed) softDeleted += 1;
+        }
+      }
+      filesProcessed += 1;
+    } catch {
+      errorCount += 1;
+    }
+  }
+
+  return { filesProcessed, entriesSeen, softDeleted, errorCount };
+}
+
+export function extractDeletedReferences(bundle: FhirResource): Array<{ resourceType: string; id: string }> {
+  const refs: Array<{ resourceType: string; id: string }> = [];
+  const entries = Array.isArray(bundle['entry']) ? bundle['entry'] : [];
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    const request = isRecord(entry['request']) ? entry['request'] : null;
+    const method = typeof request?.['method'] === 'string' ? request['method'].toUpperCase() : null;
+    const url = typeof request?.['url'] === 'string' ? request['url'] : null;
+    if (method !== 'DELETE' || !url) continue;
+    const parts = url.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      refs.push({ resourceType: parts[parts.length - 2]!, id: parts[parts.length - 1]! });
+    }
+  }
+  return refs;
 }
 
 export function buildBulkExportRequest(input: KickoffBulkExportInput): BulkRequestParts {
