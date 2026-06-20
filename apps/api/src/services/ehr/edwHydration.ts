@@ -517,6 +517,7 @@ async function hydrateObservation(
         status,
       ],
     );
+    await foldVitalSign(tx, row, patientId, encounterId, code, value, observedAt);
     return { localTable: 'phm_edw.observation', localId: Number(rows[0]?.observation_id ?? existing.localId), operation: 'updated' };
   }
 
@@ -540,7 +541,95 @@ async function hydrateObservation(
       status,
     ],
   );
+  await foldVitalSign(tx, row, patientId, encounterId, code, value, observedAt);
   return { localTable: 'phm_edw.observation', localId: Number(rows[0]!.observation_id), operation: 'inserted' };
+}
+
+// FHIR vital-sign Observations are additionally folded into the wide
+// phm_edw.vital_sign row keyed by (patient_id, encounter_id, recorded_datetime).
+// This is a side-effect dual write; the flat phm_edw.observation write above is
+// unchanged. Panel resources (e.g. blood pressure) carry per-reading values in
+// `component[]` rather than a top-level valueQuantity, so when the top-level
+// numeric is absent we fold each component instead.
+const VITAL_LOINC: Record<string, 'bp_systolic'|'bp_diastolic'|'heart_rate'|'temperature_f'|'respiratory_rate'|'spo2_percent'|'weight_lbs'|'height_in'|'bmi'|'pain_score'> = {
+  '8480-6': 'bp_systolic', '8462-4': 'bp_diastolic', '8867-4': 'heart_rate',
+  '8310-5': 'temperature_f', '9279-1': 'respiratory_rate', '2708-6': 'spo2_percent',
+  '59408-5': 'spo2_percent', '29463-7': 'weight_lbs', '8302-2': 'height_in',
+  '39156-5': 'bmi', '72514-3': 'pain_score',
+};
+
+async function foldVitalSign(
+  tx: Tx,
+  row: StagedFhirResourceRow,
+  patientId: number,
+  encounterId: number | null,
+  code: CodeConcept,
+  value: { numeric: number | null; text: string | null; unit: string | null },
+  observedAt: string,
+): Promise<void> {
+  if (!isVitalSignObservation(row.resource)) return;
+  const column = code.code ? VITAL_LOINC[code.code] : undefined;
+  if (!column || value.numeric === null) {
+    await foldComponentVitals(tx, patientId, encounterId, row.resource, observedAt);
+    return;
+  }
+  await upsertVitalColumn(tx, patientId, encounterId, observedAt, column, convertVital(column, value.numeric, value.unit));
+}
+
+async function upsertVitalColumn(
+  tx: Tx, patientId: number, encounterId: number | null, observedAt: string,
+  column: string, numeric: number,
+): Promise<void> {
+  // SAFE: `column` is never user/FHIR input — it is only ever a value from the
+  // fixed VITAL_LOINC allowlist (closed set of literal column names). Postgres
+  // cannot bind identifiers, so interpolation is the only option here.
+  const existing = await tx.unsafe<{ vital_id: number | string }[]>(
+    `SELECT vital_id FROM phm_edw.vital_sign
+     WHERE patient_id=$1 AND recorded_datetime=$2::timestamp
+       AND (encounter_id=$3 OR ($3 IS NULL AND encounter_id IS NULL))
+     ORDER BY vital_id LIMIT 1`,
+    [patientId, observedAt, encounterId],
+  );
+  if (existing[0]) {
+    await tx.unsafe(
+      `UPDATE phm_edw.vital_sign SET ${column}=$2, updated_date=NOW() WHERE vital_id=$1`,
+      [Number(existing[0].vital_id), numeric],
+    );
+    return;
+  }
+  await tx.unsafe(
+    `INSERT INTO phm_edw.vital_sign (patient_id, encounter_id, recorded_datetime, ${column}, active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3::timestamp,$4,'Y',NOW(),NOW())`,
+    [patientId, encounterId, observedAt, numeric],
+  );
+}
+
+function isVitalSignObservation(resource: FhirResource): boolean {
+  return recordArray(resource['category']).some((cat) =>
+    recordArray(cat['coding']).some((c) => cleanString(c['code']) === 'vital-signs'),
+  );
+}
+
+function convertVital(column: string, numeric: number, unit: string | null): number {
+  const u = (unit ?? '').toLowerCase();
+  if (column === 'weight_lbs' && (u === 'kg' || u === 'kilogram')) return Math.round(numeric * 2.20462 * 10) / 10;
+  if (column === 'height_in' && (u === 'cm' || u === 'centimeter')) return Math.round(numeric / 2.54 * 10) / 10;
+  if (column === 'temperature_f' && (u === 'cel' || u.includes('cel'))) return Math.round((numeric * 9 / 5 + 32) * 10) / 10;
+  return numeric;
+}
+
+async function foldComponentVitals(
+  tx: Tx, patientId: number, encounterId: number | null, resource: FhirResource, observedAt: string,
+): Promise<void> {
+  for (const component of recordArray(resource['component'])) {
+    const ccode = firstConcept(component['code']);
+    const column = ccode.code ? VITAL_LOINC[ccode.code] : undefined;
+    const q = record(component['valueQuantity']);
+    const num = optionalNumber(q?.['value']);
+    if (column && num !== null) {
+      await upsertVitalColumn(tx, patientId, encounterId, observedAt, column, convertVital(column, num, cleanString(q?.['unit'])));
+    }
+  }
 }
 
 async function hydrateMedicationRequest(

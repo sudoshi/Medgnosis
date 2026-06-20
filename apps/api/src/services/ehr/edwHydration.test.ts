@@ -772,6 +772,111 @@ describe('Phase C batch 2 hydrators', () => {
   });
 });
 
+describe('vital-sign dual-write', () => {
+  it('folds a heart-rate Observation into vital_sign alongside the observation insert', async () => {
+    const heartRate: FhirResource = {
+      resourceType: 'Observation',
+      id: 'vs-hr',
+      subject: { reference: 'Patient/pat-1' },
+      encounter: { reference: 'Encounter/enc-1' },
+      status: 'final',
+      category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/observation-category', code: 'vital-signs' }] }],
+      code: { coding: [{ system: 'http://loinc.org', code: '8867-4', display: 'Heart rate' }] },
+      effectiveDateTime: '2026-06-02T08:00:00Z',
+      valueQuantity: { value: 72, unit: '/min' },
+    };
+
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Observation', 'vs-hr', heartRate)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.observation')) return Promise.resolve([{ observation_id: 50 }]);
+      if (text.includes('SELECT vital_id FROM phm_edw.vital_sign')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.vital_sign')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.byResourceType['Observation']).toMatchObject({ hydrated: 1 });
+
+    const observationInsert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.observation'));
+    expect(observationInsert).toBeDefined();
+
+    const vitalInsert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.vital_sign'));
+    expect(vitalInsert).toBeDefined();
+    expect((vitalInsert![0] as TemplateStringsArray).join('')).toContain('heart_rate');
+    expect(vitalInsert!.slice(1)).toEqual(expect.arrayContaining([72]));
+  });
+
+  it('folds blood-pressure components into systolic and diastolic on one vital row', async () => {
+    const bloodPressure: FhirResource = {
+      resourceType: 'Observation',
+      id: 'vs-bp',
+      subject: { reference: 'Patient/pat-1' },
+      encounter: { reference: 'Encounter/enc-1' },
+      status: 'final',
+      category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/observation-category', code: 'vital-signs' }] }],
+      code: { coding: [{ code: '85354-9' }] },
+      effectiveDateTime: '2026-06-02T08:00:00Z',
+      component: [
+        { code: { coding: [{ code: '8480-6' }] }, valueQuantity: { value: 120, unit: 'mmHg' } },
+        { code: { coding: [{ code: '8462-4' }] }, valueQuantity: { value: 80, unit: 'mmHg' } },
+      ],
+    };
+
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Observation', 'vs-bp', bloodPressure)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.observation')) return Promise.resolve([{ observation_id: 51 }]);
+      if (text.includes('SELECT vital_id FROM phm_edw.vital_sign')) return Promise.resolve([]);
+      if (text.includes('UPDATE phm_edw.vital_sign')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.vital_sign')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.byResourceType['Observation']).toMatchObject({ hydrated: 1 });
+
+    const vitalWrites = mockSql.mock.calls
+      .map(([s]) => (s as TemplateStringsArray).join(''))
+      .filter((q) => q.includes('INSERT INTO phm_edw.vital_sign') || q.includes('UPDATE phm_edw.vital_sign'));
+    expect(vitalWrites.length).toBeGreaterThanOrEqual(2);
+    const vitalSql = vitalWrites.join('\n');
+    expect(vitalSql).toContain('bp_systolic');
+    expect(vitalSql).toContain('bp_diastolic');
+  });
+
+  it('does not touch vital_sign for a non-vital (laboratory) Observation', async () => {
+    const lab: FhirResource = {
+      resourceType: 'Observation',
+      id: 'lab-1',
+      subject: { reference: 'Patient/pat-1' },
+      encounter: { reference: 'Encounter/enc-1' },
+      status: 'final',
+      category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/observation-category', code: 'laboratory' }] }],
+      code: { coding: [{ system: 'http://loinc.org', code: '4548-4', display: 'HbA1c' }] },
+      effectiveDateTime: '2026-06-02T08:00:00Z',
+      valueQuantity: { value: 8.2, unit: '%' },
+    };
+
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Observation', 'lab-1', lab)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.observation')) return Promise.resolve([{ observation_id: 52 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.byResourceType['Observation']).toMatchObject({ hydrated: 1 });
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('phm_edw.vital_sign'))).toBe(false);
+  });
+});
+
 const bulkPatient: FhirResource = {
   resourceType: 'Patient',
   id: 'pat-1',
