@@ -627,6 +627,151 @@ describe('Phase C batch 1 hydrators', () => {
   });
 });
 
+const carePlan = {
+  resourceType: 'CarePlan', id: 'cp-1',
+  subject: { reference: 'Patient/pat-1' },
+  status: 'active',
+  category: [{ text: 'Diabetes management' }],
+  period: { start: '2026-01-01' },
+} as unknown as FhirResource;
+
+const goal = {
+  resourceType: 'Goal', id: 'goal-1',
+  subject: { reference: 'Patient/pat-1' },
+  lifecycleStatus: 'active',
+  description: { text: 'A1c < 7' },
+  target: [{ dueDate: '2026-12-31' }],
+} as unknown as FhirResource;
+
+const careTeam = {
+  resourceType: 'CareTeam', id: 'ct-1',
+  subject: { reference: 'Patient/pat-1' },
+  name: 'Diabetes Care Team',
+  participant: [
+    { member: { display: 'Dr A' }, role: [{ text: 'physician' }] },
+    { member: { display: 'Nurse B' }, role: [{ text: 'nurse' }] },
+  ],
+} as unknown as FhirResource;
+
+const coverage = {
+  resourceType: 'Coverage', id: 'cov-1',
+  beneficiary: { reference: 'Patient/pat-1' },
+  status: 'active',
+  subscriberId: 'POL123',
+  order: 1,
+  payor: [{ display: 'Aetna' }],
+  period: { start: '2026-01-01' },
+} as unknown as FhirResource;
+
+describe('Phase C batch 2 hydrators', () => {
+  it('hydrates a CarePlan into care_plan (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'CarePlan', 'cp-1', carePlan)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.care_plan')) return Promise.resolve([{ care_plan_id: 800 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['CarePlan']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.care_plan'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123])); // patientId
+  });
+
+  it('updates an existing care_plan on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'CarePlan', 'cp-1', carePlan)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.care_plan', local_id: 800 }]);
+      if (text.includes('UPDATE phm_edw.care_plan')) return Promise.resolve([{ care_plan_id: 800 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.care_plan'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.care_plan'))).toBe(false);
+  });
+
+  it('hydrates a Goal into care_plan_item via a synthetic imported-goals plan (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Goal', 'goal-1', goal)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.care_plan_item')) return Promise.resolve([{ item_id: 900 }]);
+      if (text.includes('SELECT care_plan_id FROM phm_edw.care_plan')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.care_plan')) return Promise.resolve([{ care_plan_id: 801 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['Goal']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.care_plan_item'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123])); // patientId
+    // synthetic plan was created and reused as care_plan_id 801
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([801]));
+  });
+
+  it('hydrates a CareTeam plus its members (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'CareTeam', 'ct-1', careTeam)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.care_team ')) return Promise.resolve([{ care_team_id: 500 }]);
+      if (text.includes('UPDATE phm_edw.care_team_member')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.care_team_member')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['CareTeam']).toMatchObject({ hydrated: 1 });
+    const memberInserts = mockSql.mock.calls.filter(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.care_team_member'));
+    expect(memberInserts).toHaveLength(2);
+  });
+
+  it('hydrates a Coverage into patient_insurance_coverage, upserting the payer (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Coverage', 'cov-1', coverage)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('SELECT payer_id FROM phm_edw.payer')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.payer')) return Promise.resolve([{ payer_id: 12 }]);
+      if (text.includes('INSERT INTO phm_edw.patient_insurance_coverage')) return Promise.resolve([{ coverage_id: 33 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['Coverage']).toMatchObject({ hydrated: 1 });
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.payer'))).toBe(true);
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.patient_insurance_coverage'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123, 12])); // patientId, payerId
+  });
+
+  it('updates an existing patient_insurance_coverage on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'Coverage', 'cov-1', coverage)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.patient_insurance_coverage', local_id: 33 }]);
+      if (text.includes('SELECT payer_id FROM phm_edw.payer')) return Promise.resolve([{ payer_id: 12 }]);
+      if (text.includes('UPDATE phm_edw.patient_insurance_coverage')) return Promise.resolve([{ coverage_id: 33 }]);
+      return Promise.resolve([]);
+    });
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.patient_insurance_coverage'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.patient_insurance_coverage'))).toBe(false);
+  });
+});
+
 const bulkPatient: FhirResource = {
   resourceType: 'Patient',
   id: 'pat-1',

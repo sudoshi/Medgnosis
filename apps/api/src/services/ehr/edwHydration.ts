@@ -26,6 +26,10 @@ const SUPPORTED_RESOURCE_TYPES = [
   'ServiceRequest',
   'DiagnosticReport',
   'DocumentReference',
+  'CarePlan',
+  'Goal',
+  'CareTeam',
+  'Coverage',
 ] as const;
 
 type SupportedResourceType = (typeof SUPPORTED_RESOURCE_TYPES)[number];
@@ -181,6 +185,10 @@ async function findHydratableStagedResources(
                WHEN 'ServiceRequest' THEN 8
                WHEN 'DiagnosticReport' THEN 9
                WHEN 'DocumentReference' THEN 10
+               WHEN 'CarePlan' THEN 11
+               WHEN 'Goal' THEN 12
+               WHEN 'CareTeam' THEN 13
+               WHEN 'Coverage' THEN 14
                ELSE 90
              END,
              received_at ASC,
@@ -299,6 +307,14 @@ async function hydrateByResourceType(
       return hydrateDiagnosticReport(tx, row, patientId, existing);
     case 'DocumentReference':
       return hydrateDocumentReference(tx, row, patientId, existing);
+    case 'CarePlan':
+      return hydrateCarePlan(tx, row, patientId, existing);
+    case 'Goal':
+      return hydrateGoal(tx, row, patientId, existing);
+    case 'CareTeam':
+      return hydrateCareTeam(tx, row, patientId, existing);
+    case 'Coverage':
+      return hydrateCoverage(tx, row, patientId, existing);
     default:
       return null;
   }
@@ -919,6 +935,191 @@ async function hydrateDocumentReference(
     [patientId, encounterId, docTypeCode, docTypeName, codeSystem, category, status, docStatus, contentType, contentUrl, contentTitle, authorDisplay, docDate],
   );
   return { localTable: 'phm_edw.document_reference', localId: Number(rows[0]!.document_id), operation: 'inserted' };
+}
+
+async function hydrateCarePlan(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const planName = truncate(
+    conceptLabel(firstConcept(resource['category'])) ?? cleanString(resource['title']) ?? `CarePlan ${row.resource_id}`, 200,
+  );
+  const planType = truncate(conceptLabel(firstConcept(resource['category'])) ?? 'GENERAL', 50);
+  const status = truncate(cleanString(resource['status']) ?? 'unknown', 20);
+  const period = record(resource['period']);
+  const effective = datePart(cleanString(period?.['start']) ?? row.source_last_updated ?? row.received_at) ?? datePart(row.received_at);
+  const review = datePart(cleanString(period?.['end']));
+  const notes = truncateNullable(cleanString(firstRecord(resource['note'])?.['text']), 2000);
+
+  if (existing.localTable === 'phm_edw.care_plan' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ care_plan_id: number | string }[]>(
+      `UPDATE phm_edw.care_plan
+       SET patient_id=$2, plan_name=$3, plan_type=$4, effective_date=$5::date, review_date=$6::date,
+           status=$7, notes=$8, updated_date=NOW()
+       WHERE care_plan_id=$1 RETURNING care_plan_id`,
+      [existing.localId, patientId, planName, planType, effective, review, status, notes],
+    );
+    return { localTable: 'phm_edw.care_plan', localId: Number(rows[0]?.care_plan_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ care_plan_id: number | string }[]>(
+    `INSERT INTO phm_edw.care_plan
+       (patient_id, plan_name, plan_type, effective_date, review_date, status, notes,
+        active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,'Y',NOW(),NOW())
+     RETURNING care_plan_id`,
+    [patientId, planName, planType, effective, review, status, notes],
+  );
+  return { localTable: 'phm_edw.care_plan', localId: Number(rows[0]!.care_plan_id), operation: 'inserted' };
+}
+
+async function hydrateGoal(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const carePlanId = await getOrCreateImportedGoalsPlan(tx, patientId);
+  const description = truncate(
+    conceptLabel(firstConcept(resource['description'])) ?? cleanString(record(resource['description'])?.['text']) ?? `Goal ${row.resource_id}`, 2000,
+  );
+  const target = firstRecord(resource['target']);
+  const targetValue = truncateNullable(
+    conceptLabel(firstConcept(target?.['measure'])) ?? cleanString(record(target?.['detailQuantity'])?.['value']), 100,
+  );
+  const status = truncate(cleanString(resource['lifecycleStatus']) ?? 'active', 20);
+  const dueDate = datePart(cleanString(target?.['dueDate']));
+
+  if (existing.localTable === 'phm_edw.care_plan_item' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ item_id: number | string }[]>(
+      `UPDATE phm_edw.care_plan_item
+       SET care_plan_id=$2, patient_id=$3, description=$4, target_value=$5, due_date=$6::date,
+           status=$7, updated_date=NOW()
+       WHERE item_id=$1 RETURNING item_id`,
+      [existing.localId, carePlanId, patientId, description, targetValue, dueDate, status],
+    );
+    return { localTable: 'phm_edw.care_plan_item', localId: Number(rows[0]?.item_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ item_id: number | string }[]>(
+    `INSERT INTO phm_edw.care_plan_item
+       (care_plan_id, patient_id, item_category, description, target_value, due_date, status, ordinal,
+        active_ind, created_date, updated_date)
+     VALUES ($1,$2,'GOAL',$3,$4,$5::date,$6,0,'Y',NOW(),NOW())
+     RETURNING item_id`,
+    [carePlanId, patientId, description, targetValue, dueDate, status],
+  );
+  return { localTable: 'phm_edw.care_plan_item', localId: Number(rows[0]!.item_id), operation: 'inserted' };
+}
+
+async function getOrCreateImportedGoalsPlan(tx: Tx, patientId: number): Promise<number> {
+  const found = await tx.unsafe<{ care_plan_id: number | string }[]>(
+    `SELECT care_plan_id FROM phm_edw.care_plan
+     WHERE patient_id=$1 AND plan_name='Imported FHIR Goals' ORDER BY care_plan_id LIMIT 1`,
+    [patientId],
+  );
+  if (found[0]) return Number(found[0].care_plan_id);
+  const inserted = await tx.unsafe<{ care_plan_id: number | string }[]>(
+    `INSERT INTO phm_edw.care_plan
+       (patient_id, plan_name, plan_type, effective_date, status, active_ind, created_date, updated_date)
+     VALUES ($1,'Imported FHIR Goals','GOAL',CURRENT_DATE,'active','Y',NOW(),NOW())
+     RETURNING care_plan_id`,
+    [patientId],
+  );
+  return Number(inserted[0]!.care_plan_id);
+}
+
+async function hydrateCareTeam(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  void patientId; // CareTeam is org-scoped in EDW; patientId kept for dispatch signature parity
+  const resource = row.resource;
+  const orgId = optionalPositiveNumber(row.org_id);
+  const teamName = truncate(cleanString(resource['name']) ?? `Care Team ${row.resource_id}`, 200);
+  const teamType = truncate(conceptLabel(firstConcept(resource['category'])) ?? 'GENERAL', 50);
+
+  let careTeamId: number;
+  let operation: 'inserted' | 'updated';
+  if (existing.localTable === 'phm_edw.care_team' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ care_team_id: number | string }[]>(
+      `UPDATE phm_edw.care_team SET team_name=$2, org_id=$3, team_type=$4, updated_date=NOW()
+       WHERE care_team_id=$1 RETURNING care_team_id`,
+      [existing.localId, teamName, orgId, teamType],
+    );
+    careTeamId = Number(rows[0]?.care_team_id ?? existing.localId);
+    operation = 'updated';
+  } else {
+    const rows = await tx.unsafe<{ care_team_id: number | string }[]>(
+      `INSERT INTO phm_edw.care_team (team_name, org_id, team_type, active_ind, created_date, updated_date)
+       VALUES ($1,$2,$3,'Y',NOW(),NOW()) RETURNING care_team_id`,
+      [teamName, orgId, teamType],
+    );
+    careTeamId = Number(rows[0]!.care_team_id);
+    operation = 'inserted';
+  }
+
+  await tx.unsafe(`UPDATE phm_edw.care_team_member SET active_ind='N', updated_date=NOW() WHERE care_team_id=$1`, [careTeamId]);
+  for (const participant of recordArray(resource['participant'])) {
+    const member = record(participant['member']);
+    const name = truncate(cleanString(member?.['display']) ?? 'Unknown Member', 200);
+    const role = truncate(conceptLabel(firstConcept(participant['role'])) ?? 'member', 100);
+    await tx.unsafe(
+      `INSERT INTO phm_edw.care_team_member
+         (care_team_id, member_name, role, is_lead, joined_date, active_ind, created_date, updated_date)
+       VALUES ($1,$2,$3,false,CURRENT_DATE,'Y',NOW(),NOW())`,
+      [careTeamId, name, role],
+    );
+  }
+
+  return { localTable: 'phm_edw.care_team', localId: careTeamId, operation };
+}
+
+async function hydrateCoverage(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const payerId = await upsertPayer(tx, resource);
+  const policyNumber = truncateNullable(
+    cleanString(resource['subscriberId']) ?? cleanString(firstRecord(resource['identifier'])?.['value']), 50,
+  );
+  const period = record(resource['period']);
+  const start = datePart(cleanString(period?.['start'])) ?? datePart(row.received_at);
+  const end = datePart(cleanString(period?.['end']));
+  const isPrimary = cleanString(resource['order']) === '1' ? 'Y' : 'N';
+
+  if (existing.localTable === 'phm_edw.patient_insurance_coverage' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ coverage_id: number | string }[]>(
+      `UPDATE phm_edw.patient_insurance_coverage
+       SET patient_id=$2, payer_id=$3, policy_number=$4, coverage_start_date=$5::date,
+           coverage_end_date=$6::date, primary_indicator=$7, updated_date=NOW()
+       WHERE coverage_id=$1 RETURNING coverage_id`,
+      [existing.localId, patientId, payerId, policyNumber, start, end, isPrimary],
+    );
+    return { localTable: 'phm_edw.patient_insurance_coverage', localId: Number(rows[0]?.coverage_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ coverage_id: number | string }[]>(
+    `INSERT INTO phm_edw.patient_insurance_coverage
+       (patient_id, payer_id, policy_number, coverage_start_date, coverage_end_date,
+        primary_indicator, active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4::date,$5::date,$6,'Y',NOW(),NOW())
+     RETURNING coverage_id`,
+    [patientId, payerId, policyNumber, start, end, isPrimary],
+  );
+  return { localTable: 'phm_edw.patient_insurance_coverage', localId: Number(rows[0]!.coverage_id), operation: 'inserted' };
+}
+
+async function upsertPayer(tx: Tx, coverage: FhirResource): Promise<number> {
+  const name = truncate(cleanString(firstRecord(coverage['payor'])?.['display']) ?? 'Unknown Payer', 200);
+  const found = await tx.unsafe<{ payer_id: number | string }[]>(
+    `SELECT payer_id FROM phm_edw.payer WHERE payer_name=$1 ORDER BY payer_id LIMIT 1`,
+    [name],
+  );
+  if (found[0]) return Number(found[0].payer_id);
+  const inserted = await tx.unsafe<{ payer_id: number | string }[]>(
+    `INSERT INTO phm_edw.payer (payer_name, active_ind, created_date, updated_date)
+     VALUES ($1,'Y',NOW(),NOW()) RETURNING payer_id`,
+    [name],
+  );
+  return Number(inserted[0]!.payer_id);
 }
 
 async function resolvePatientId(tx: Tx, row: StagedFhirResourceRow): Promise<number | null> {
