@@ -3,7 +3,7 @@
 - **Date:** 2026-06-20
 - **Branch:** `feature/fhir-edw-ingestion-expansion` (10 commits, not yet merged)
 - **Plan:** `docs/superpowers/plans/2026-06-20-fhir-edw-ingestion-expansion.md`
-- **Status:** Phases A, B, C, D, E1, F, G's clean parts (scopes + CapabilityStatement), and G1 (standalone dimension dispatch) COMPLETE and verified (full suite 772 passed). E2 and the Epic re-onboard remain as precisely-specified follow-ups (below).
+- **Status:** Phases A, B, C, D, E1, E2, F, G's clean parts (scopes + CapabilityStatement), and G1 (standalone dimension dispatch) COMPLETE and verified (full suite 777 passed). Merged to `main`. Only the operational Epic re-onboard (+ optional QI-Core builders) remains.
 
 ## Sequence-drift investigation (2026-06-20)
 
@@ -30,11 +30,14 @@ Final verification: `tsc --noEmit` clean, `tsc` build clean, **full apps/api sui
 
 Each code phase was verified at three levels: (1) mockSql unit tests asserting emitted SQL/params; (2) **real-schema execution** of every new INSERT/UPDATE inside `BEGIN…ROLLBACK` against `medgnosis` (zero data change) — this caught what mocks cannot; (3) independent re-run of `tsc` + the test suite by the orchestrator, not trusting subagent self-reports. The subagent test harness was corrected up front (the suite mocks `@medgnosis/db`; it does NOT touch a DB).
 
+## E2 — Bulk `deleted` manifest (DONE 2026-06-20, commit e37b32a)
+
+`softDeleteByCrosswalk` (resolves a resource by tenant/type/id via the crosswalk → soft-deletes the mapped EDW row + audit stamp) and `processBulkDeletions` + `extractDeletedReferences` (download each `$export` `deleted` output — NDJSON of FHIR Bundles with `request.method=DELETE`/`request.url=ResourceType/id` — parse and soft-delete each) are wired into `importBulkExportJob` after hydration. Per-file fetch errors are counted, not fatal; results recorded in ingest-run metadata. 5 tests; full apps/api suite 777 green.
+
 ## Follow-ups (deferred — specified, not started)
 
-1. **E2 — Bulk `deleted` manifest** (`bulkData.ts`, ~2000 lines). Parse the `$export` output's `deleted` entries (deletion Bundles), resolve each `ResourceType/id` against `ehr_resource_crosswalk`, and call the exported `softDeleteLocalRow` + crosswalk stamp. Add `softDeleteByCrosswalk` and wire it into the import-completion path (~`bulkData.ts:904`). Plan task E2 has the code.
-2. **Epic re-onboard + portal scopes** (operational, prod). Re-run `ehr:onboard` for tenant id=2 (command in `2026-06-20-epic-app-registration-prep.md`) to push the expanded backend/SMART scopes into the registry. Epic only grants scopes that are ALSO checked in the app portal — the human must select the new `system/*.rs` scopes for App A on `fhir.epic.com`. Gate this behind the token-exchange propagation already pending in the Epic registration work.
-3. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
+1. **Epic re-onboard + portal scopes** (operational, prod). Re-run `ehr:onboard` for tenant id=2 (command in `2026-06-20-epic-app-registration-prep.md`) to push the expanded backend/SMART scopes into the registry. Epic only grants scopes that are ALSO checked in the app portal — the human must select the new `system/*.rs` scopes for App A on `fhir.epic.com`. Gate this behind the token-exchange propagation already pending in the Epic registration work.
+2. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
 
 ## Honest scope notes (carried from the plan)
 
