@@ -9,6 +9,7 @@
 // =============================================================================
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import identityReviewRoutes from './identityReview.js';
 import {
   exportPatientsToOmop,
   exportConditionsToOmop,
@@ -253,6 +254,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   // Require admin role for all admin routes
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireRole(['admin']));
+
+  // Identity steward review (EMPI) — inherits the admin hooks above.
+  await app.register(identityReviewRoutes, { prefix: '/identity' });
 
   // ---- Authentication Providers ----
 
