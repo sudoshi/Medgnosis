@@ -56,10 +56,11 @@ Ran a real group `$export` against the Epic sandbox group `e3iabhmS8rsueyz7vaimu
 
 Crosswalk ownership verified clean (no EDW/QDM conflict): EDW-hydrated resources own their clinical `local_table`; the rest point at `phm_edw.qdm_event`.
 
-## Follow-ups (remaining)
+## Follow-ups
 
-1. **Bulk hydration throughput / batched drain** (finding #4 above) — the highest-value next item for production-scale exports.
-2. **QI-Core builders for new QDM datatypes** — DONE (commit `1ed0a1e`): DiagnosticReport/ServiceRequest/DocumentReference→Communication/Goal projections + profile canonicals.
+1. **Batched, resumable EDW drain** (finding #4) — DONE (commit `2c837fb`). `drainStagedRunToEdw` loops hydration in bounded 500-row batches until staging is exhausted; `findHydratableStagedResources` excludes rows already hydrated into a real EDW `local_table` at the current content hash (the crosswalk distinguishes EDW tables from `phm_edw.qdm_event`), so batches advance, memory stays bounded, and re-imports/interrupted runs are idempotent. Verified live (re-drain of already-hydrated new types → seen=0, no duplicates). Remaining deeper optimization: the per-resource `sql.begin` transaction is the throughput floor — multi-resource-per-transaction batching (trading per-resource error isolation) would speed large drains further.
+2. **QI-Core builders for new QDM datatypes** — DONE (commit `1ed0a1e`).
+3. **Frontend panels for DiagnosticReport / DocumentReference** — data now lands in `phm_edw.diagnostic_report` / `document_reference`, but the Patient Detail UI has no panels for these new tables yet (separate frontend task).
 
 ## Honest scope notes (carried from the plan)
 
