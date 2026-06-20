@@ -37,16 +37,21 @@ devlogs do not override the current codebase state.
   launch-context staging for supported patient-context resources with first-pass
   EDW hydration and automatic QDM replay, backend-services queued refresh with
   continuation jobs, recent tenant ingest-run sync visibility, diagnostics,
-  onboarding scripts, Bulk kickoff/polling ledger support, completed-job
-  NDJSON import worker support, manual/admin Bulk kickoff, vendor-safe worker
-  polling, automatic import enqueue on completion, manual completed-job import
-  replay, failed-file-only resume, active-job cancellation, tenant-specific
-  recurring Bulk schedules, optional manifest checksum/size validation, and
-  admin Bulk job/file/schedule visibility.
+  tenant readiness evidence, onboarding scripts, SMART lifecycle audit/rate
+  limits, Bulk kickoff/polling ledger support, completed-job NDJSON import
+  worker support, manual/admin Bulk kickoff, vendor-safe worker polling,
+  PHI-safe automated Bulk worker audit, automatic import enqueue on completion,
+  manual completed-job import replay, failed-file-only resume, active-job
+  cancellation, tenant-specific recurring Bulk schedules, optional manifest
+  checksum/size validation, Bulk Patient EMPI/crosswalk seeding, and admin Bulk
+  job/file/schedule visibility with worker failure/overdue-poll sync metrics.
+- EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
+  as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
+  has not been applied to production.
 - EHR production completion still requires all-domain EDW normalization for
   remaining staged resource families, deeper Bulk replay/dead-letter runbooks,
   vendor sandbox evidence, broader patient/resource last-success rollups,
-  broader automated/tenant audit coverage, and alerting.
+  FHIR-read/QDM-promotion audit coverage, and alerting.
 
 ## First Implementation Priorities
 
@@ -54,6 +59,6 @@ devlogs do not override the current codebase state.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
 4. Add broader patient/resource last-success rollups and capture vendor sandbox evidence.
-5. Add deeper Bulk replay/dead-letter runbooks on top of the manual/admin kickoff and recurring schedule path.
+5. Add deeper Bulk replay/dead-letter runbooks on top of the manual/admin kickoff, resume, recurring schedule, and EMPI-seeded Patient crosswalk path.
 6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and alert readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.

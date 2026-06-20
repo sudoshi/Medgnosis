@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
+  AlertTriangle,
   CheckCircle2,
   ClipboardCheck,
   Database,
@@ -46,6 +47,8 @@ import type {
   EhrIngestRun,
   EhrTenant,
   EhrTenantDetail,
+  EhrTenantReadinessEvidence,
+  EhrTenantSyncStatus,
   EhrVendor,
 } from './types.js';
 
@@ -95,6 +98,16 @@ interface EhrBulkSchedulesResponse {
   bulkSchedules: EhrBulkSchedule[];
   latest: EhrBulkSchedule | null;
   count: number;
+}
+
+interface EhrSyncStatusResponse {
+  tenant: EhrTenant;
+  syncStatus: EhrTenantSyncStatus;
+}
+
+interface EhrReadinessEvidenceResponse {
+  tenant: EhrTenant;
+  readinessEvidence: EhrTenantReadinessEvidence;
 }
 
 interface EhrBulkScheduleResponse {
@@ -277,6 +290,26 @@ export function EhrIntegrationsTab() {
     staleTime: 15_000,
   });
 
+  const syncStatusQuery = useQuery({
+    queryKey: ['ehr', 'tenant-sync-status', selectedTenantId],
+    queryFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.get<EhrSyncStatusResponse>(`/ehr/admin/tenants/${selectedTenantId}/sync-status`);
+    },
+    enabled: selectedTenantId !== null,
+    staleTime: 15_000,
+  });
+
+  const readinessEvidenceQuery = useQuery({
+    queryKey: ['ehr', 'tenant-readiness-evidence', selectedTenantId],
+    queryFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.get<EhrReadinessEvidenceResponse>(`/ehr/admin/tenants/${selectedTenantId}/readiness-evidence`);
+    },
+    enabled: selectedTenantId !== null,
+    staleTime: 15_000,
+  });
+
   const detail = detailQuery.data?.data;
   const ingestRuns = ingestRunsQuery.data?.data?.ingestRuns ?? [];
   const latestIngestRun = ingestRunsQuery.data?.data?.latest ?? null;
@@ -284,6 +317,8 @@ export function EhrIntegrationsTab() {
   const latestBulkJob = bulkJobsQuery.data?.data?.latest ?? null;
   const bulkSchedules = bulkSchedulesQuery.data?.data?.bulkSchedules ?? [];
   const latestBulkSchedule = bulkSchedulesQuery.data?.data?.latest ?? null;
+  const syncStatus = syncStatusQuery.data?.data?.syncStatus ?? null;
+  const readinessEvidence = readinessEvidenceQuery.data?.data?.readinessEvidence ?? null;
   const canStartBulkExport = isBulkExportFormValid(bulkForm);
   const canSaveBulkSchedule = canStartBulkExport && isBulkScheduleIntervalValid(bulkForm);
   const readinessBlocked = useMemo(
@@ -299,6 +334,8 @@ export function EhrIntegrationsTab() {
       if (tenantId !== null) setSelectedTenantId(tenantId);
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenants'] });
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-detail'] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status'] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-readiness-evidence'] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save EHR tenant')),
   });
@@ -308,6 +345,7 @@ export function EhrIntegrationsTab() {
     onSuccess: () => {
       toast.success('Diagnostics completed');
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-detail', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-readiness-evidence', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Diagnostics failed')),
   });
@@ -327,6 +365,7 @@ export function EhrIntegrationsTab() {
         toast.warning(`Bulk export not queued: ${response.data?.bulkExport.reason ?? 'queue unavailable'}`);
       }
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Bulk export queueing failed')),
   });
@@ -342,6 +381,7 @@ export function EhrIntegrationsTab() {
     onSuccess: () => {
       toast.success('Bulk schedule saved');
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-schedules', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Bulk schedule save failed')),
   });
@@ -371,6 +411,7 @@ export function EhrIntegrationsTab() {
       }
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Bulk import queueing failed')),
     onSettled: () => setBulkImportJobId(null),
@@ -387,6 +428,7 @@ export function EhrIntegrationsTab() {
     onSuccess: () => {
       toast.success('Bulk export canceled');
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Bulk export cancellation failed')),
     onSettled: () => setBulkCancelJobId(null),
@@ -409,10 +451,12 @@ export function EhrIntegrationsTab() {
             if (selectedTenantId !== null) void ingestRunsQuery.refetch();
             if (selectedTenantId !== null) void bulkJobsQuery.refetch();
             if (selectedTenantId !== null) void bulkSchedulesQuery.refetch();
+            if (selectedTenantId !== null) void syncStatusQuery.refetch();
+            if (selectedTenantId !== null) void readinessEvidenceQuery.refetch();
           }}
-          disabled={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching}
+          disabled={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching || syncStatusQuery.isFetching || readinessEvidenceQuery.isFetching}
         >
-          <RefreshCw className={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching ? 'animate-spin' : ''} />
+          <RefreshCw className={tenantsQuery.isFetching || ingestRunsQuery.isFetching || bulkJobsQuery.isFetching || bulkSchedulesQuery.isFetching || syncStatusQuery.isFetching || readinessEvidenceQuery.isFetching ? 'animate-spin' : ''} />
           Refresh
         </Button>
       </div>
@@ -721,6 +765,18 @@ export function EhrIntegrationsTab() {
               />
             </div>
 
+            <ReadinessEvidencePanel
+              evidence={readinessEvidence}
+              isFetching={readinessEvidenceQuery.isFetching}
+              onRefresh={() => void readinessEvidenceQuery.refetch()}
+            />
+
+            <SyncStatusPanel
+              status={syncStatus}
+              isFetching={syncStatusQuery.isFetching}
+              onRefresh={() => void syncStatusQuery.refetch()}
+            />
+
             <IngestRunsPanel
               runs={ingestRuns}
               latest={latestIngestRun}
@@ -855,6 +911,305 @@ function ReadinessMetric({
     <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
       <p className="text-xs text-ghost uppercase tracking-wider mb-1">{label}</p>
       <p className={`font-data text-lg tabular-nums ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function ReadinessEvidencePanel({
+  evidence,
+  isFetching,
+  onRefresh,
+}: {
+  evidence: EhrTenantReadinessEvidence | null;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const issues = evidence?.issues ?? [];
+  const issueTone = highestIssueSeverity(issues);
+  const discovery = evidence?.discovery;
+  const launch = evidence?.launch;
+
+  return (
+    <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
+        <div>
+          <p className="text-xs text-ghost uppercase tracking-wider mb-1">Tenant readiness evidence</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={issueTone === 'critical' ? 'crimson' : issueTone === 'warning' ? 'amber' : 'emerald'}>
+              {evidence ? syncStatusLabel(issueTone, issues.length) : 'No evidence'}
+            </Badge>
+            {evidence && <span className="font-data text-xs text-ghost">{fmtDateTime(evidence.generatedAt)}</span>}
+          </div>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onRefresh} disabled={isFetching}>
+          <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+          Refresh evidence
+        </Button>
+      </div>
+
+      {!evidence ? (
+        <p className="text-sm text-ghost py-8 text-center">Select a tenant to load readiness evidence.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+            <SnapshotItem
+              label="SMART"
+              value={discovery?.smartOk ? 'OK' : 'Issue'}
+              tone={discovery?.smartOk ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Metadata"
+              value={discovery?.capabilityOk ? 'OK' : 'Issue'}
+              tone={discovery?.capabilityOk ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Issuer"
+              value={discovery?.issuerMatches === false ? 'Drift' : discovery?.issuerMatches === true ? 'Match' : 'Unknown'}
+              tone={discovery?.issuerMatches === false ? 'amber' : discovery?.issuerMatches === true ? 'emerald' : 'dim'}
+            />
+            <SnapshotItem label="Resources" value={formatCount(discovery?.resourceCount ?? 0)} />
+            <SnapshotItem label="Launch 24h" value={formatCount(launch?.launchesStarted24h ?? 0)} />
+            <SnapshotItem
+              label="Callbacks"
+              value={formatCount(launch?.callbacksSucceeded24h ?? 0)}
+              tone={(launch?.callbacksSucceeded24h ?? 0) > 0 ? 'emerald' : 'dim'}
+            />
+            <SnapshotItem
+              label="Failures"
+              value={formatCount((launch?.launchesDenied24h ?? 0) + (launch?.callbacksFailed24h ?? 0))}
+              tone={(launch?.launchesDenied24h ?? 0) + (launch?.callbacksFailed24h ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Pending"
+              value={formatCount(launch?.activePendingLaunches ?? 0)}
+              tone={(launch?.activePendingLaunches ?? 0) > 0 ? 'amber' : 'dim'}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+            <div className="border border-edge/20 rounded-card p-3">
+              <p className="text-xs text-ghost uppercase tracking-wider mb-3">Discovery</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <EvidenceLine label="Captured" value={discovery?.capturedAt ? fmtDateTime(discovery.capturedAt) : 'None'} />
+                <EvidenceLine label="FHIR" value={discovery?.fhirVersion ?? 'Unknown'} />
+                <EvidenceLine label="Registered issuer" value={discovery?.registeredIssuer ?? 'None'} />
+                <EvidenceLine label="Discovered issuer" value={discovery?.discoveredIssuer ?? 'None'} />
+              </div>
+            </div>
+            <div className="border border-edge/20 rounded-card p-3">
+              <p className="text-xs text-ghost uppercase tracking-wider mb-3">Launch</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <EvidenceLine label="Started" value={launch?.latestLaunchStartedAt ? fmtDateTime(launch.latestLaunchStartedAt) : 'None'} />
+                <EvidenceLine label="Callback" value={launch?.latestCallbackSucceededAt ? fmtDateTime(launch.latestCallbackSucceededAt) : 'None'} />
+                <EvidenceLine label="Handoff" value={launch?.latestHandoffCompletedAt ? fmtDateTime(launch.latestHandoffCompletedAt) : 'None'} />
+                <EvidenceLine label="Expired pending" value={formatCount(launch?.expiredPendingLaunches ?? 0)} />
+              </div>
+            </div>
+          </div>
+
+          {issues.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {issues.slice(0, 6).map((issue) => (
+                <Badge key={issue.code} variant={issueVariant(issue.severity)}>
+                  {issue.code.replace(/_/g, ' ')}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EvidenceLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] text-ghost uppercase tracking-wider mb-1">{label}</p>
+      <p className="font-data text-xs text-dim truncate">{value}</p>
+    </div>
+  );
+}
+
+function SyncStatusPanel({
+  status,
+  isFetching,
+  onRefresh,
+}: {
+  status: EhrTenantSyncStatus | null;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const crosswalk = status?.crosswalk;
+  const bulkWorker = status?.bulkWorker;
+  const resources = status?.resources ?? [];
+  const visibleIssues = status?.issues.slice(0, 5) ?? [];
+  const issueTone = highestIssueSeverity(status?.issues ?? []);
+
+  return (
+    <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle size={14} className={issueTone === 'critical' ? 'text-crimson' : issueTone === 'warning' ? 'text-amber' : 'text-[var(--primary)]'} />
+            <p className="text-xs text-ghost uppercase tracking-wider">Sync status</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={issueTone === 'critical' ? 'crimson' : issueTone === 'warning' ? 'amber' : 'emerald'}>
+              {status ? syncStatusLabel(issueTone, status.issues.length) : 'No status'}
+            </Badge>
+            {status && <span className="font-data text-xs text-ghost">{fmtDateTime(status.generatedAt)}</span>}
+          </div>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onRefresh} disabled={isFetching}>
+          <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+          Refresh status
+        </Button>
+      </div>
+
+      {!status ? (
+        <p className="text-sm text-ghost py-8 text-center">Select a tenant to load sync status.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3">
+            <SnapshotItem label="Resources" value={formatCount(crosswalk?.totalResources ?? 0)} />
+            <SnapshotItem label="Patients" value={formatCount(crosswalk?.patientCrosswalks ?? 0)} />
+            <SnapshotItem
+              label="Mapped"
+              value={formatCount(crosswalk?.localTargetResources ?? 0)}
+              tone={(crosswalk?.localTargetResources ?? 0) > 0 ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Unmapped"
+              value={formatCount(crosswalk?.unmappedLocalResources ?? 0)}
+              tone={(crosswalk?.unmappedLocalResources ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Patient gaps"
+              value={formatCount(crosswalk?.missingPatientResources ?? 0)}
+              tone={(crosswalk?.missingPatientResources ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Collisions"
+              value={formatCount(crosswalk?.collisionTargets ?? 0)}
+              tone={(crosswalk?.collisionTargets ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Last seen"
+              value={status.lastSeenAt ? fmtDateTime(status.lastSeenAt) : 'None'}
+              tone={status.lastSeenAt ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Worker failures"
+              value={formatCount(bulkWorker?.failures24h ?? 0)}
+              tone={(bulkWorker?.failures24h ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Overdue polls"
+              value={formatCount(bulkWorker?.activeOverdueJobs ?? 0)}
+              tone={(bulkWorker?.activeOverdueJobs ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Resource</TableHead>
+                <TableHead>Crosswalk</TableHead>
+                <TableHead>FHIR sync</TableHead>
+                <TableHead>Bulk import</TableHead>
+                <TableHead>Issues</TableHead>
+                <TableHead className="text-right">Seen</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {resources.map((resource) => (
+                <TableRow key={resource.resourceType}>
+                  <TableCell>
+                    <div>
+                      <p className="text-sm font-medium text-bright">{resource.resourceType}</p>
+                      <p className="font-data text-[11px] text-ghost">{formatCount(resource.totalResources)} source rows</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-data text-xs text-dim tabular-nums">
+                      {formatCount(resource.localTargetResources)}/{formatCount(resource.totalResources)} mapped
+                    </span>
+                    {(resource.unmappedLocalResources > 0 || resource.missingPatientResources > 0) && (
+                      <p className="text-[11px] text-amber">
+                        {formatCount(resource.unmappedLocalResources)} unmapped / {formatCount(resource.missingPatientResources)} patient gaps
+                      </p>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="font-data text-xs text-dim tabular-nums">
+                        {formatCount(resource.ingestResourcesStaged)}/{formatCount(resource.ingestResourcesReceived)} staged
+                      </p>
+                      <p className="text-[11px] text-ghost">{resource.lastIngestSucceededAt ? fmtDateTime(resource.lastIngestSucceededAt) : 'No success'}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="font-data text-xs text-dim tabular-nums">
+                        {formatCount(resource.bulkResourcesStaged)}/{formatCount(resource.bulkRowsRead)} staged
+                      </p>
+                      <p className="text-[11px] text-ghost">{resource.lastBulkImportSucceededAt ? fmtDateTime(resource.lastBulkImportSucceededAt) : 'No import'}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <ResourceIssueBadges resource={resource} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-data text-[11px] text-ghost">{resource.lastSeenAt ? fmtDateTime(resource.lastSeenAt) : '-'}</span>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {resources.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-ghost">No sync resources found</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+
+          {visibleIssues.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              {visibleIssues.map((issue) => (
+                <div key={`${issue.code}:${issue.resourceType ?? 'tenant'}:${issue.count ?? 'n'}`} className="border border-edge/20 rounded-card px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <Badge variant={issueVariant(issue.severity)} className="shrink-0">{titleCase(issue.severity)}</Badge>
+                    <div className="min-w-0">
+                      <p className="text-xs text-bright">{issue.message}</p>
+                      <p className="font-data text-[11px] text-ghost mt-0.5">
+                        {issue.resourceType ?? 'tenant'} / {issue.code}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResourceIssueBadges({ resource }: { resource: EhrTenantSyncStatus['resources'][number] }) {
+  const issues: Array<{ label: string; variant: 'amber' | 'crimson' | 'emerald' | 'dim' }> = [];
+  if (resource.collisionTargets > 0) issues.push({ label: `${formatCount(resource.collisionTargets)} collisions`, variant: 'crimson' });
+  if (resource.unmappedLocalResources > 0) issues.push({ label: `${formatCount(resource.unmappedLocalResources)} unmapped`, variant: 'amber' });
+  if (resource.missingPatientResources > 0) issues.push({ label: `${formatCount(resource.missingPatientResources)} patient`, variant: 'amber' });
+  if (resource.staleResources > 0) issues.push({ label: `${formatCount(resource.staleResources)} stale`, variant: 'amber' });
+  if (resource.bulkFailedFileCount > 0 || resource.bulkErrorCount > 0) issues.push({ label: `${formatCount(resource.bulkErrorCount)} bulk errors`, variant: 'amber' });
+  if (issues.length === 0) issues.push({ label: 'Clear', variant: 'emerald' });
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {issues.map((issue) => (
+        <Badge key={issue.label} variant={issue.variant}>{issue.label}</Badge>
+      ))}
     </div>
   );
 }
@@ -1427,6 +1782,32 @@ function clientTypeLabel(value: EhrClientType): string {
   if (value === 'smart_launch') return 'SMART launch';
   if (value === 'backend_services') return 'Backend Services';
   return 'CDS Hooks';
+}
+
+function syncStatusLabel(severity: 'none' | 'info' | 'warning' | 'critical', count: number): string {
+  if (count === 0) return 'Clear';
+  if (severity === 'critical') return `${count} critical`;
+  if (severity === 'warning') return `${count} warnings`;
+  return `${count} notices`;
+}
+
+function highestIssueSeverity(
+  issues: Array<{ severity: 'info' | 'warning' | 'critical' }>,
+): 'none' | 'info' | 'warning' | 'critical' {
+  if (issues.some((issue) => issue.severity === 'critical')) return 'critical';
+  if (issues.some((issue) => issue.severity === 'warning')) return 'warning';
+  if (issues.length > 0) return 'info';
+  return 'none';
+}
+
+function issueVariant(severity: EhrTenantSyncStatus['issues'][number]['severity']): 'crimson' | 'amber' | 'info' {
+  if (severity === 'critical') return 'crimson';
+  if (severity === 'warning') return 'amber';
+  return 'info';
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString('en-US');
 }
 
 function runStatusVariant(status: EhrIngestRun['status']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {

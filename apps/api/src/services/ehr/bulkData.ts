@@ -310,17 +310,6 @@ interface BulkOutputDownloadValidation extends JsonObject {
   checksumAlgorithm: 'sha256' | null;
 }
 
-interface LocalPatientProfile {
-  mrn: string;
-  firstName: string;
-  middleName: string | null;
-  lastName: string;
-  dateOfBirth: string;
-  gender: string | null;
-  primaryPhone: string | null;
-  email: string | null;
-}
-
 export class BulkDataError extends Error {
   readonly code: string;
   readonly status: number;
@@ -1246,9 +1235,6 @@ async function importBulkOutputFile(input: {
       }
 
       const resource = parseNdjsonResource(trimmed, input.output.type, rowsRead);
-      if (resource.resourceType === 'Patient') {
-        await reconcileBulkPatientResource(input.tenant, resource);
-      }
       await input.stageFhirResource({
         orgId: input.tenant.orgId ?? input.job.orgId ?? null,
         ehrTenantId: input.tenant.id,
@@ -1775,35 +1761,10 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-function optionalPositiveNumber(value: unknown): number | null {
-  const parsed = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
 function boundedListLimit(value: number | undefined, fallback: number, min: number, max: number): number {
   if (value === undefined) return fallback;
   if (!Number.isInteger(value)) return fallback;
   return Math.max(min, Math.min(value, max));
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
-}
-
-function recordArray(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function identifierArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function truncate(value: string, maxLength: number): string {
-  return value.length > maxLength ? value.slice(0, maxLength) : value;
-}
-
-function truncateNullable(value: string | null, maxLength: number): string | null {
-  return value ? truncate(value, maxLength) : null;
 }
 
 function outputArray(value: unknown): BulkManifestOutput[] {
@@ -2145,127 +2106,6 @@ function scopeItems(scope: string | undefined): string[] {
   return typeof scope === 'string'
     ? scope.split(/\s+/).map((item) => item.trim()).filter(Boolean)
     : [];
-}
-
-async function reconcileBulkPatientResource(
-  tenant: EhrTenantRef & { id: number; orgId?: number | null },
-  resource: FhirResource,
-): Promise<number | null> {
-  const patientResourceId = optionalString(resource.id);
-  if (!patientResourceId) return null;
-
-  const existing = await sql<Array<{ patient_id: number | string | null; local_id: number | string | null }>>`
-    SELECT patient_id, local_id
-    FROM phm_edw.ehr_resource_crosswalk
-    WHERE ehr_tenant_id = ${tenant.id}
-      AND resource_type = 'Patient'
-      AND ehr_resource_id = ${patientResourceId}
-      AND (patient_id IS NOT NULL OR local_id IS NOT NULL)
-    ORDER BY last_seen_at DESC
-    LIMIT 1
-  `;
-  const existingPatientId = optionalPositiveNumber(existing[0]?.patient_id) ?? optionalPositiveNumber(existing[0]?.local_id);
-  if (existingPatientId !== null) return existingPatientId;
-
-  const profile = bulkPatientProfileFromFhir(resource, tenant.id, patientResourceId);
-  if (!profile) return null;
-
-  const inserted = await sql<Array<{ patient_id: number | string }>>`
-    INSERT INTO phm_edw.patient
-      (mrn, first_name, middle_name, last_name, date_of_birth, gender,
-       primary_phone, email, active_ind, created_date, updated_date)
-    VALUES (
-      ${profile.mrn},
-      ${profile.firstName},
-      ${profile.middleName},
-      ${profile.lastName},
-      ${profile.dateOfBirth}::date,
-      ${profile.gender},
-      ${profile.primaryPhone},
-      ${profile.email},
-      'Y',
-      NOW(),
-      NOW()
-    )
-    RETURNING patient_id
-  `;
-  const patientId = optionalPositiveNumber(inserted[0]?.patient_id);
-  if (patientId === null) return null;
-
-  await sql`
-    INSERT INTO phm_edw.ehr_resource_crosswalk
-      (ehr_tenant_id, resource_type, ehr_resource_id, ehr_identifier,
-       local_table, local_id, patient_id, source_version_id,
-       source_last_updated, hash, last_seen_at)
-    VALUES (
-      ${tenant.id},
-      'Patient',
-      ${patientResourceId},
-      ${sql.json(asSqlJson(identifierArray(resource['identifier'])))},
-      'phm_edw.patient',
-      ${patientId},
-      ${patientId},
-      ${optionalString(record(resource['meta'])?.['versionId'])},
-      ${optionalString(record(resource['meta'])?.['lastUpdated'])}::timestamptz,
-      NULL,
-      NOW()
-    )
-    ON CONFLICT ON CONSTRAINT uq_ehr_resource_crosswalk_source
-    DO UPDATE SET
-      ehr_identifier = EXCLUDED.ehr_identifier,
-      local_table = COALESCE(phm_edw.ehr_resource_crosswalk.local_table, EXCLUDED.local_table),
-      local_id = COALESCE(phm_edw.ehr_resource_crosswalk.local_id, phm_edw.ehr_resource_crosswalk.patient_id, EXCLUDED.local_id),
-      patient_id = COALESCE(phm_edw.ehr_resource_crosswalk.patient_id, EXCLUDED.patient_id),
-      source_version_id = EXCLUDED.source_version_id,
-      source_last_updated = EXCLUDED.source_last_updated,
-      last_seen_at = NOW()
-  `;
-  return patientId;
-}
-
-function bulkPatientProfileFromFhir(
-  resource: FhirResource,
-  ehrTenantId: number,
-  patientResourceId: string,
-): LocalPatientProfile | null {
-  const name = preferredHumanName(resource['name']);
-  const family = optionalString(name?.['family']);
-  const given = stringArray(name?.['given']);
-  const birthDate = optionalString(resource['birthDate']);
-  if (!family || given.length === 0 || !birthDate) return null;
-
-  return {
-    mrn: bulkPatientMrn(ehrTenantId, patientResourceId),
-    firstName: truncate(given[0]!, 100),
-    middleName: given.length > 1 ? truncate(given.slice(1).join(' '), 100) : null,
-    lastName: truncate(family, 100),
-    dateOfBirth: birthDate.slice(0, 10),
-    gender: truncateNullable(optionalString(resource['gender']), 50),
-    primaryPhone: truncateNullable(patientTelecom(resource, 'phone'), 20),
-    email: truncateNullable(patientTelecom(resource, 'email'), 100),
-  };
-}
-
-function preferredHumanName(value: unknown): Record<string, unknown> | null {
-  const names = Array.isArray(value) ? value.filter(isRecord) : [];
-  return names.find((name) => optionalString(name['use']) === 'official')
-    ?? names[0]
-    ?? null;
-}
-
-function patientTelecom(resource: FhirResource, system: string): string | null {
-  const telecom = recordArray(resource['telecom']);
-  const preferred = telecom.find((item) => optionalString(item['system']) === system && optionalString(item['use']) === 'mobile')
-    ?? telecom.find((item) => optionalString(item['system']) === system);
-  return optionalString(preferred?.['value']);
-}
-
-function bulkPatientMrn(ehrTenantId: number, patientResourceId: string): string {
-  const hash = createHash('sha256')
-    .update(`${ehrTenantId}:Patient:${patientResourceId}`)
-    .digest('hex')
-    .slice(0, 20);
-  return `EHR-${ehrTenantId}-${hash}`.slice(0, 50);
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {

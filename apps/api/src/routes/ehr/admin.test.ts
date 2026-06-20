@@ -386,6 +386,22 @@ describe('EHR admin routes', () => {
     expect(mockSql.mock.calls[1]!.slice(1)).toEqual(
       expect.arrayContaining(['env:EHR_SMART_CLIENT_SECRET', 'client_secret_basic']),
     );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_tenant_upsert',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        environment: 'sandbox',
+        status: 'testing',
+        clientCount: 1,
+        clientTypes: ['smart_launch'],
+        enabledClientCount: 1,
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('EHR_SMART_CLIENT_SECRET');
     await app.close();
   });
 
@@ -490,6 +506,84 @@ describe('EHR admin routes', () => {
     await app.close();
   });
 
+  it('returns tenant readiness evidence for discovery drift and SMART launch health', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.ehr_tenant') && text.includes('WHERE id =')) {
+        return Promise.resolve([tenantRow]);
+      }
+      if (text.includes('FROM phm_edw.ehr_capability_snapshot')) {
+        return Promise.resolve([snapshotRow]);
+      }
+      if (text.includes('FROM phm_edw.smart_launch_session')) {
+        return Promise.resolve([
+          {
+            latest_session_created_at: '2026-06-18 12:00:00+00',
+            latest_session_consumed_at: '2026-06-18 12:02:00+00',
+            latest_session_handoff_consumed_at: '2026-06-18 12:03:00+00',
+            active_pending_launches: 0,
+            expired_pending_launches: 1,
+          },
+        ]);
+      }
+      if (text.includes('FROM audit_log')) {
+        return Promise.resolve([
+          {
+            latest_launch_started_at: '2026-06-18 12:00:00+00',
+            latest_launch_denied_at: null,
+            latest_callback_succeeded_at: '2026-06-18 12:02:00+00',
+            latest_callback_failed_at: null,
+            latest_handoff_completed_at: '2026-06-18 12:03:00+00',
+            launches_started_24h: 1,
+            launches_denied_24h: 0,
+            callbacks_succeeded_24h: 1,
+            callbacks_failed_24h: 0,
+            handoffs_completed_24h: 1,
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/ehr/admin/tenants/42/readiness-evidence',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        tenant: { id: 42, orgId: 7 },
+        readinessEvidence: {
+          ehrTenantId: 42,
+          discovery: {
+            latestSnapshotId: 12,
+            smartOk: true,
+            capabilityOk: true,
+            discoveredIssuer: null,
+            resourceCount: 1,
+          },
+          launch: {
+            latestLaunchStartedAt: '2026-06-18 12:00:00+00',
+            latestCallbackSucceededAt: '2026-06-18 12:02:00+00',
+            latestHandoffCompletedAt: '2026-06-18 12:03:00+00',
+            expiredPendingLaunches: 1,
+            launchesStarted24h: 1,
+            callbacksSucceeded24h: 1,
+          },
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'expired_pending_launches',
+            }),
+          ]),
+        },
+      },
+    });
+    await app.close();
+  });
+
   it('lists recent EHR ingest runs for tenant sync visibility', async () => {
     mockSql
       .mockResolvedValueOnce([tenantRow])
@@ -556,6 +650,132 @@ describe('EHR admin routes', () => {
       error: { code: 'BAD_REQUEST', message: "Unsupported ingest run status 'stale'" },
     });
     expect(mockSql).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('returns tenant sync status rollups for EHR operators', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.ehr_tenant') && text.includes('WHERE id =')) {
+        return Promise.resolve([tenantRow]);
+      }
+      if (text.includes('crosswalk_by_resource')) {
+        return Promise.resolve([
+          {
+            resource_type: 'Patient',
+            total_resources: 2,
+            local_target_resources: 2,
+            unmapped_local_resources: 0,
+            patient_linked_resources: 2,
+            missing_patient_resources: 0,
+            stale_resources: 0,
+            last_seen_at: '2026-06-18 13:00:00+00',
+            collision_resources: 0,
+            collision_targets: 0,
+          },
+          {
+            resource_type: 'Observation',
+            total_resources: 4,
+            local_target_resources: 3,
+            unmapped_local_resources: 1,
+            patient_linked_resources: 3,
+            missing_patient_resources: 1,
+            stale_resources: 0,
+            last_seen_at: '2026-06-18 12:00:00+00',
+            collision_resources: 0,
+            collision_targets: 0,
+          },
+        ]);
+      }
+      if (text.includes('latest_ingest_by_resource')) {
+        return Promise.resolve([
+          {
+            resource_type: 'Observation',
+            last_ingest_succeeded_at: '2026-06-18 12:05:00+00',
+            last_ingest_started_at: '2026-06-18 12:00:00+00',
+            ingest_resources_received: 4,
+            ingest_resources_staged: 4,
+            ingest_resources_updated: 3,
+          },
+        ]);
+      }
+      if (text.includes('bulk_by_resource')) {
+        return Promise.resolve([
+          {
+            resource_type: 'Observation',
+            last_bulk_export_succeeded_at: '2026-06-17 12:05:00+00',
+            last_bulk_import_succeeded_at: '2026-06-17 12:06:00+00',
+            bulk_rows_read: 4,
+            bulk_resources_staged: 4,
+            bulk_error_count: 0,
+            bulk_failed_file_count: 0,
+            bulk_active_file_count: 0,
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_bulk_schedule')) {
+        return Promise.resolve([
+          {
+            enabled_schedules: 1,
+            due_schedules: 0,
+            next_bulk_schedule_at: '2026-06-19 12:00:00+00',
+            last_bulk_schedule_success_at: '2026-06-17 12:10:00+00',
+            last_bulk_schedule_failure_at: null,
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/ehr/admin/tenants/42/sync-status',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        tenant: { id: 42, orgId: 7 },
+        syncStatus: {
+          ehrTenantId: 42,
+          crosswalk: {
+            totalResources: 6,
+            localTargetResources: 5,
+            patientCrosswalks: 2,
+            missingPatientResources: 1,
+          },
+          bulkSchedule: {
+            enabledSchedules: 1,
+            dueSchedules: 0,
+          },
+          resources: [
+            {
+              resourceType: 'Patient',
+              totalResources: 2,
+            },
+            {
+              resourceType: 'Observation',
+              totalResources: 4,
+              unmappedLocalResources: 1,
+              lastIngestSucceededAt: '2026-06-18 12:05:00+00',
+              lastBulkImportSucceededAt: '2026-06-17 12:06:00+00',
+            },
+          ],
+          issues: [
+            {
+              code: 'crosswalk_unmapped_local_target',
+              resourceType: 'Observation',
+            },
+            {
+              code: 'crosswalk_missing_patient',
+              resourceType: 'Observation',
+            },
+          ],
+        },
+      },
+    });
     await app.close();
   });
 
@@ -668,6 +888,21 @@ describe('EHR admin routes', () => {
       'https://ehr.example.test/fhir/metadata',
       expect.objectContaining({ method: 'GET' }),
     );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_diagnostics_run',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        environment: 'sandbox',
+        snapshotId: 12,
+        smartOk: true,
+        capabilityOk: true,
+        resourceSupportCount: 1,
+      }),
+    );
     await app.close();
   });
 
@@ -768,6 +1003,25 @@ describe('EHR admin routes', () => {
       pageSize: 25,
       maxPages: 3,
     });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_patient_context_refresh_enqueue',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        triggeredBy: 'manual',
+        hasLocalPatientId: true,
+        requestedSinceProvided: true,
+        resourceTypeCount: 2,
+        pageSize: 25,
+        maxPages: 3,
+        enqueued: true,
+        queueName: 'medgnosis-ehr-patient-context-refresh',
+        hasQueueJobId: true,
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('pat-1');
     await app.close();
   });
 
@@ -1366,6 +1620,21 @@ describe('EHR admin routes', () => {
       limit: 25,
       sourceSystem: 'admin-test',
     });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_qdm_normalization_replay',
+      'ehr_ingest_run',
+      '00000000-0000-4000-8000-000000000068',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        limit: 25,
+        sourceSystem: 'admin-test',
+        resourcesSeen: 3,
+        resourcesNormalized: 2,
+        resourcesFailed: 0,
+        eventsUpserted: 2,
+      }),
+    );
     await app.close();
   });
 

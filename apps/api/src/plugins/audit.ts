@@ -5,7 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
-import { sql } from '@medgnosis/db';
+import { writeAuditLog } from '../services/auditLog.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -31,18 +31,7 @@ async function auditPlugin(fastify: FastifyInstance): Promise<void> {
       const userAgent = request.headers['user-agent'] ?? null;
 
       try {
-        await sql`
-          INSERT INTO audit_log (user_id, action, resource_type, resource_id, details, ip_address, user_agent)
-          VALUES (
-            ${userId}::UUID,
-            ${action},
-            ${resourceType},
-            ${resourceId ?? null},
-            ${details ? JSON.stringify(details) : null}::JSONB,
-            ${ipAddress},
-            ${userAgent}
-          )
-        `;
+        await writeAuditLog({ userId, action, resourceType, resourceId, details, ipAddress, userAgent });
       } catch (err) {
         request.log.error({ err }, 'Failed to write audit log');
       }

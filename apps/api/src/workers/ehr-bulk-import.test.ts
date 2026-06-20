@@ -10,6 +10,7 @@ const {
   mockMarkBulkScheduleBulkJob,
   mockMarkBulkScheduleFailure,
   mockMarkBulkScheduleSuccess,
+  mockWriteSystemAuditLog,
   MockQueue,
   MockWorker,
   getProcessor,
@@ -24,6 +25,7 @@ const {
   const mockMarkBulkScheduleBulkJob = vi.fn();
   const mockMarkBulkScheduleFailure = vi.fn();
   const mockMarkBulkScheduleSuccess = vi.fn();
+  const mockWriteSystemAuditLog = vi.fn();
 
   class MockQueue {
     add(name: string, data: unknown, options: unknown) {
@@ -59,6 +61,7 @@ const {
     mockMarkBulkScheduleBulkJob,
     mockMarkBulkScheduleFailure,
     mockMarkBulkScheduleSuccess,
+    mockWriteSystemAuditLog,
     MockQueue,
     MockWorker,
     getProcessor: () => processor,
@@ -91,6 +94,10 @@ vi.mock('../services/ehr/vendorAdapters/index.js', () => ({
       pollingMaxSeconds: 5,
     },
   }),
+}));
+
+vi.mock('../services/auditLog.js', () => ({
+  writeSystemAuditLog: mockWriteSystemAuditLog,
 }));
 
 import {
@@ -147,6 +154,7 @@ beforeEach(() => {
   mockMarkBulkScheduleBulkJob.mockReset();
   mockMarkBulkScheduleFailure.mockReset();
   mockMarkBulkScheduleSuccess.mockReset();
+  mockWriteSystemAuditLog.mockReset();
   process.env['EHR_BULK_IMPORT_QUEUE_ENABLED'] = 'true';
 });
 
@@ -303,6 +311,29 @@ describe('EHR Bulk import worker orchestration', () => {
         options: expect.objectContaining({ delay: 2000 }),
       }),
     ]));
+    expect(mockWriteSystemAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_worker_kickoff',
+      'ehr_bulk_job',
+      '00000000-0000-4000-8000-000000000067',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        scheduleId: '00000000-0000-4000-8000-000000000091',
+        queueName: 'medgnosis-ehr-bulk-import',
+        jobAction: 'kickoff',
+        status: 'accepted',
+        resourceTypeCount: 1,
+        exportLevel: 'group',
+        triggeredBy: 'manual',
+        nextAction: 'poll_enqueued',
+        nextPollDelayMs: 2000,
+      }),
+    );
+    const auditDetails = JSON.stringify(mockWriteSystemAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('group-1');
+    expect(auditDetails).not.toContain('Observation?date=ge2026-01-01');
+    expect(auditDetails).not.toContain('accessToken');
   });
 
   it('chains completed polling into an import job', async () => {
@@ -342,6 +373,20 @@ describe('EHR Bulk import worker orchestration', () => {
         }),
       }),
     ]));
+    expect(mockWriteSystemAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_worker_poll',
+      'ehr_bulk_job',
+      '00000000-0000-4000-8000-000000000067',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        scheduleId: '00000000-0000-4000-8000-000000000091',
+        jobAction: 'poll',
+        status: 'completed',
+        nextAction: 'import_enqueued',
+      }),
+    );
   });
 
   it('marks scheduled poll terminal failures on the schedule', async () => {
@@ -370,6 +415,18 @@ describe('EHR Bulk import worker orchestration', () => {
     expect(mockMarkBulkScheduleFailure).toHaveBeenCalledWith(
       '00000000-0000-4000-8000-000000000091',
       'Bulk export ended with status=failed',
+    );
+    expect(mockWriteSystemAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_worker_poll',
+      'ehr_bulk_job',
+      '00000000-0000-4000-8000-000000000067',
+      expect.objectContaining({
+        tenantId: 42,
+        scheduleId: '00000000-0000-4000-8000-000000000091',
+        jobAction: 'poll',
+        status: 'failed',
+        nextAction: 'terminal_failure',
+      }),
     );
   });
 
@@ -408,6 +465,26 @@ describe('EHR Bulk import worker orchestration', () => {
       '00000000-0000-4000-8000-000000000067',
       '2026-06-17T12:00:00.000Z',
     );
+    expect(mockWriteSystemAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_worker_import',
+      'ehr_bulk_job',
+      '00000000-0000-4000-8000-000000000067',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        scheduleId: '00000000-0000-4000-8000-000000000091',
+        jobAction: 'import',
+        ingestRunId: '00000000-0000-4000-8000-000000000085',
+        ingestStatus: 'succeeded',
+        resourcesStaged: 3,
+        resourcesFailed: 0,
+        triggeredBy: 'poll_completion',
+        resumeFailedOnly: true,
+        scheduleMarkedSuccess: true,
+      }),
+    );
+    expect(JSON.stringify(mockWriteSystemAuditLog.mock.calls[0]?.[3])).not.toContain('__bulk_output__');
   });
 
   it('treats incomplete imports as failed queue jobs so BullMQ retries and retains them', async () => {
@@ -442,6 +519,22 @@ describe('EHR Bulk import worker orchestration', () => {
     expect(mockMarkBulkScheduleFailure).toHaveBeenCalledWith(
       '00000000-0000-4000-8000-000000000091',
       'Bulk import incomplete: status=failed resourcesFailed=1',
+    );
+    expect(mockWriteSystemAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_worker_import_incomplete',
+      'ehr_bulk_job',
+      '00000000-0000-4000-8000-000000000067',
+      expect.objectContaining({
+        tenantId: 42,
+        scheduleId: '00000000-0000-4000-8000-000000000091',
+        jobAction: 'import',
+        ingestRunId: '00000000-0000-4000-8000-000000000085',
+        ingestStatus: 'failed',
+        resourcesStaged: 0,
+        resourcesFailed: 1,
+        triggeredBy: 'poll_completion',
+        resumeFailedOnly: true,
+      }),
     );
     expect(mockMarkBulkScheduleSuccess).not.toHaveBeenCalled();
   });

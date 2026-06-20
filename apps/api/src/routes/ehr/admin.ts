@@ -42,6 +42,8 @@ import {
   type EhrOnboardingRegistrationInput,
 } from '../../services/ehr/onboardingRegistration.js';
 import { normalizeStagedRunToQdm } from '../../services/ehr/qdmBridge.js';
+import { getTenantReadinessEvidence } from '../../services/ehr/readinessEvidence.js';
+import { getTenantSyncStatus } from '../../services/ehr/syncStatus.js';
 import { loadQdmEventsToCqlEngine } from '../../services/qdm/index.js';
 import { enqueueEhrBulkExport, enqueueEhrBulkImport } from '../../workers/ehr-bulk-import.js';
 import { enqueueSmartPatientContextRefresh } from '../../workers/ehr-patient-context-refresh.js';
@@ -247,6 +249,16 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
     }
 
     const result = await applyEhrOnboardingRegistration(parsed.input);
+    await request.auditLog('ehr_tenant_upsert', 'ehr_tenant', String(result.tenant.id), {
+      tenantId: result.tenant.id,
+      orgId: result.tenant.orgId,
+      vendor: result.tenant.vendor,
+      environment: result.tenant.environment,
+      status: result.tenant.status,
+      clientCount: result.clients.length,
+      clientTypes: result.clients.map((client) => client.clientType),
+      enabledClientCount: result.clients.filter((client) => client.enabled).length,
+    });
     return reply.status(201).send({
       success: true,
       data: result,
@@ -316,6 +328,10 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
     });
   });
 
+  app.get<{ Params: TenantIdParams }>('/tenants/:id/readiness-evidence', async (request, reply) =>
+    sendTenantReadinessEvidence(request, reply),
+  );
+
   app.get<{ Querystring: OnboardingProfileQuery }>('/onboarding-profile', async (request, reply) => {
     const parsed = parseOnboardingProfileQuery(request.query);
     if ('error' in parsed) {
@@ -348,6 +364,11 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
   app.get<{ Params: TenantIdParams; Querystring: IngestRunListQuery }>(
     '/tenants/:id/ingest-runs',
     async (request, reply) => sendTenantIngestRuns(request, reply),
+  );
+
+  app.get<{ Params: TenantIdParams }>(
+    '/tenants/:id/sync-status',
+    async (request, reply) => sendTenantSyncStatus(request, reply),
   );
 
   app.post<{ Params: IngestRunQdmParams; Body: IngestRunQdmBody }>(
@@ -396,6 +417,36 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
   );
 }
 
+async function sendTenantReadinessEvidence(
+  request: FastifyRequest<{ Params: TenantIdParams }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const readinessEvidence = await getTenantReadinessEvidence(tenant);
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      readinessEvidence,
+    },
+  });
+}
+
 async function sendTenantDiagnostics(
   request: FastifyRequest<{ Params: TenantIdParams }>,
   reply: FastifyReply,
@@ -424,6 +475,18 @@ async function sendTenantDiagnostics(
       capabilityStatement: discoveryDocumentToJson(diagnostics.capabilityStatement),
       resourceSupport: diagnostics.capabilityStatement.summary?.resourceSupport ?? {},
     });
+    await request.auditLog('ehr_diagnostics_run', 'ehr_tenant', String(tenant.id), {
+      tenantId: tenant.id,
+      orgId: tenant.orgId,
+      vendor: tenant.vendor,
+      environment: tenant.environment,
+      snapshotId: snapshot.id,
+      smartOk: diagnostics.smartConfiguration.ok,
+      capabilityOk: diagnostics.capabilityStatement.ok,
+      resourceSupportCount: Object.keys(diagnostics.capabilityStatement.summary?.resourceSupport ?? {}).length,
+      smartStatus: diagnostics.smartConfiguration.status ?? null,
+      capabilityStatus: diagnostics.capabilityStatement.status ?? null,
+    });
     return reply.send({
       success: true,
       data: {
@@ -434,6 +497,13 @@ async function sendTenantDiagnostics(
     });
   } catch (error) {
     request.log.error({ err: error, tenantId }, '[ehr-admin] SMART discovery failed');
+    await request.auditLog('ehr_diagnostics_failed', 'ehr_tenant', String(tenant.id), {
+      tenantId: tenant.id,
+      orgId: tenant.orgId,
+      vendor: tenant.vendor,
+      environment: tenant.environment,
+      error: errorMessage(error),
+    });
     return reply.status(502).send({
       success: false,
       error: {
@@ -531,6 +601,16 @@ async function sendQdmNormalizationReplay(
     limit: parsedBody.input.limit,
     sourceSystem: parsedBody.input.sourceSystem ?? 'ehr-admin-qdm-replay',
   });
+  await request.auditLog('ehr_qdm_normalization_replay', 'ehr_ingest_run', runId, {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    limit: parsedBody.input.limit ?? null,
+    sourceSystem: parsedBody.input.sourceSystem ?? 'ehr-admin-qdm-replay',
+    resourcesSeen: numberDetail(result, 'resourcesSeen'),
+    resourcesNormalized: numberDetail(result, 'resourcesNormalized'),
+    resourcesFailed: numberDetail(result, 'resourcesFailed'),
+    eventsUpserted: numberDetail(result, 'eventsUpserted'),
+  });
 
   return reply.send({
     success: true,
@@ -618,6 +698,20 @@ async function sendTenantPatientContextRefresh(
     orgId: tenant.orgId,
     triggeredBy: 'manual',
     ...parsedBody.input,
+  });
+  await request.auditLog('ehr_patient_context_refresh_enqueue', 'ehr_tenant', String(tenant.id), {
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    triggeredBy: 'manual',
+    hasLocalPatientId: parsedBody.input.localPatientId !== undefined,
+    requestedSinceProvided: parsedBody.input.requestedSince !== undefined,
+    resourceTypeCount: parsedBody.input.resourceTypes?.length ?? 0,
+    pageSize: parsedBody.input.pageSize ?? null,
+    maxPages: parsedBody.input.maxPages ?? null,
+    enqueued: refresh.enqueued,
+    queueName: refresh.queueName,
+    hasQueueJobId: Boolean(refresh.jobId),
+    reason: refresh.reason ?? null,
   });
 
   return reply.status(refresh.enqueued ? 202 : 200).send({
@@ -931,6 +1025,36 @@ async function sendTenantBulkJobCancel(
     data: {
       tenant,
       bulkCancel,
+    },
+  });
+}
+
+async function sendTenantSyncStatus(
+  request: FastifyRequest<{ Params: TenantIdParams }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const syncStatus = await getTenantSyncStatus(tenant.id);
+  return reply.send({
+    success: true,
+    data: {
+      tenant,
+      syncStatus,
     },
   });
 }
@@ -1683,6 +1807,12 @@ function discoveryDocumentToJson(document: {
     error: document.error,
     summary: isRecord(document.summary) ? document.summary : {},
   };
+}
+
+function numberDetail(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const detail = value[key];
+  return typeof detail === 'number' && Number.isFinite(detail) ? detail : null;
 }
 
 function errorMessage(error: unknown): string {

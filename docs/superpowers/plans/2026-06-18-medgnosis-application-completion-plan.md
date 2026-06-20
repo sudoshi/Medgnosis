@@ -22,6 +22,9 @@ Validation performed:
 - `./scripts/fhir-validate.sh` - passed with 0 errors and 0 warnings for the current FHIR fixtures.
 - `./scripts/deqm-validate.sh` - passed with 0 errors and 0 warnings for the current DEQM Gaps-in-Care fixture.
 - `npm run test:e2e --workspace=apps/web` - passed 25 tests, including MFA login challenge, MFA setup/disable coverage, auth/admin/settings smoke paths, and SMART launch completion/patient-import failure coverage. The earlier `/api/v1/auth/providers` and `/ws` proxy failures are fixed for the frontend-only Playwright server.
+- Production deployment checkpoint on 2026-06-19: migrations `080` through `087` were applied against `.env.production`, follow-up dry-run reported 86 applied and no pending migrations, `main`/`origin/main` deployed at `c8d662f`, `medgnosis-api` and `medgnosis-worker` were active, and the public health endpoint returned healthy.
+- Focused continuation validation after Bulk Patient EMPI hydration and removal of the older direct Bulk Patient insert path: `npm run test --workspace=apps/api -- src/services/ehr/edwHydration.test.ts src/services/ehr/bulkData.test.ts src/services/ehr/identity` passed 5 files and 50 tests; `npm run typecheck --workspace=apps/api`, `npm run build --workspace=apps/api`, `npm run typecheck --workspace=packages/db`, and `npm run build --workspace=packages/db` passed. Local `npm run db:backfill-empi -- --dry-run` with the `.env` host override reported 1,005,791 unlinked legacy patients, all linkable by the Phase 0 demographic floor. Final slice gates also passed: `npm run typecheck`, `npm run build`, and `git diff --check`.
+- Focused non-EMPI EHR readiness/audit/sync validation after the latest continuation: `npm run test --workspace=apps/api -- launch.test.ts`, `npm run test --workspace=apps/api -- readinessEvidence.test.ts admin.test.ts`, and `npm run test --workspace=apps/api -- auditLog.test.ts ehr-bulk-import.test.ts syncStatus.test.ts admin.test.ts` passed; the final focused run covered 4 files and 51 tests. `npm run typecheck --workspace=apps/api`, `npm run lint --workspace=apps/api`, `npm run build --workspace=apps/api`, `npm run typecheck --workspace=apps/web`, `npm run lint --workspace=apps/web`, `npm run build --workspace=apps/web`, and `git diff --check` passed.
 
 Areas examined:
 
@@ -42,10 +45,10 @@ Medgnosis is not a prototype shell. The core application builds, tests, serves h
 The unfinished work is concentrated in productionizing those foundations:
 
 - Auth/security claims are now closer to implementation. MFA has TOTP setup, QR/manual secret delivery, challenge verification before session issuance, hashed recovery codes, disable flow, OIDC/local enforcement, refresh-token MFA gating, and Settings UX. Admin-created users have tokenized invite activation with revoke/status UX, password reset uses one-time token links that revoke refresh tokens when complete, and Settings exposes active-session/device visibility with per-session revoke controls.
-- EHR integration has credible tenant registry, strict SMART launch validation, short-lived Medgnosis handoff binding, initial launch Patient import/crosswalk, bounded launch-context resource staging with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh plus continuation jobs for supported patient-context resources, tenant ingest-run status API and recent-sync panel, JWKS, discovery, onboarding, Bulk kickoff/polling ledger, manual/admin Bulk kickoff, worker polling/import orchestration, manual completed-job import replay, failed-file-only resume, active-job cancellation, tenant-specific recurring Bulk schedules, and admin Bulk job/file/schedule visibility. It still lacks all-domain EDW normalization for remaining staged resource families, deeper Bulk replay/dead-letter runbooks, vendor sandbox evidence, broader patient-sync last-success rollups, audit coverage, and alerting.
+- EHR integration has credible tenant registry, strict SMART launch validation, short-lived Medgnosis handoff binding, initial launch Patient import/crosswalk, bounded launch-context resource staging with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh plus continuation jobs for supported patient-context resources, tenant ingest-run status API and recent-sync panel, readiness evidence API/UI, JWKS, discovery, onboarding, SMART lifecycle audit/rate limits, Bulk kickoff/polling ledger, manual/admin Bulk kickoff, worker polling/import orchestration, PHI-safe automated Bulk worker audit, manual completed-job import replay, failed-file-only resume, active-job cancellation, tenant-specific recurring Bulk schedules, Bulk Patient EMPI/crosswalk seeding, legacy-patient EMPI backfill tooling, and admin Bulk job/file/schedule visibility. It still lacks all-domain EDW normalization for remaining staged resource families, deeper Bulk replay/dead-letter runbooks, vendor sandbox evidence, broader patient/resource last-success rollups, FHIR-read/QDM-promotion audit coverage, and alerting.
 - CQL/QDM/quality reporting has a real seam and governance path, but SQL remains authoritative by default, CMS122 promotion is intentionally blocked by semantic drift, local CMS measure content is minimal, test-deck coverage is not surfaced in dossiers, and QRDA/QPP conformance validation is not yet in CI.
 - Some clinical workflows are intentionally simulated or narrow: the surveillance lane is synthetic, the rules worker evaluates only care-gap-overdue, and the AI worker has a `population_summary` job type without implementation.
-- Frontend/admin coverage is functional but incomplete for production operations: System Health does not show queues/workers/EHR/Bulk/CQL readiness, EHR Integrations now shows recent ingest runs, Bulk job/file status, completed-job import replay, failed-file-only resume, active-job cancellation, and Bulk schedule next/last-success state but not broader patient-sync rollups or deeper dead-letter runbooks, Measure Governance defaults around CMS122, and E2E tests are still narrower than full product workflows.
+- Frontend/admin coverage is functional but incomplete for production operations: System Health now shows workers, queues, and EHR Bulk readiness, EHR Integrations now shows tenant readiness evidence, recent ingest runs, worker failure/overdue-poll sync metrics, Bulk job/file status, completed-job import replay, failed-file-only resume, active-job cancellation, and Bulk schedule next/last-success state but not broader patient/resource rollups or deeper dead-letter runbooks, Measure Governance defaults around CMS122, and E2E tests are still narrower than full product workflows.
 - Historical documentation still has drift. README and `.env.example` have been brought closer to current behavior, but the design log still mixes old audit findings with "complete" phase status.
 
 ## Definition Of Complete
@@ -151,8 +154,10 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add audit entries for admin invite create/resend/revoke.
   - [x] Add audit entries for password reset request/completion.
   - [x] Add audit entries for MFA setup start, enable, verify, and disable.
-  - [ ] Add audit entries for SMART launch callback, EHR tenant changes, QDM promotion, auth provider changes, and automated Bulk worker events.
+  - [x] Add audit entries for SMART launch lifecycle, EHR tenant upsert, diagnostics success/failure, manual patient-context refresh, and QDM replay.
   - [x] Add audit entries for manual Bulk kickoff, import replay/resume, and cancellation controls.
+  - [x] Add audit entries for automated Bulk worker kickoff, polling, import, incomplete import, and failure events.
+  - [ ] Add audit entries or coverage proof for QDM promotion, auth provider changes, and tenant FHIR-read paths.
   - [ ] Add PHI redaction tests for Pino and Sentry paths.
 - [ ] Tighten production headers and CSP.
   - [ ] Review `apps/api/src/app.ts` CSP settings.
@@ -176,8 +181,8 @@ Objective: turn the current EHR foundation into a safe EHR-launched application 
 - [x] Harden SMART launch initiation in `apps/api/src/routes/ehr/launch.ts`.
   - [x] Require and validate `iss` for EHR launch against tenant issuer/FHIR base URL.
   - [x] Preserve standalone launch behavior with explicit launch-mode rules.
-  - [ ] Log and audit launch attempts, denials, tenant mismatches, and callback failures.
-  - [ ] Rate-limit launch and callback endpoints.
+  - [x] Log and audit launch attempts, denials, tenant mismatches, callback outcomes, and handoff outcomes.
+  - [x] Rate-limit SMART launch, callback, and handoff endpoints.
 - [x] Validate SMART callback tokens beyond basic token exchange.
   - [x] Validate `id_token` signature when OpenID scope is requested or an ID token is returned.
   - [x] Validate nonce against stored nonce hash.
@@ -199,9 +204,11 @@ Objective: turn the current EHR foundation into a safe EHR-launched application 
   - [x] Provide clear completion failure states for missing/expired handoff and resolver failures.
   - [ ] Add tenant policy for provider access/PCP attribution after imported Patient creation.
 - [ ] Complete tenant readiness gates.
+  - [x] Expose tenant readiness evidence API/UI for SMART discovery, launch, callback, and handoff health.
   - [ ] Enforce HTTPS and known vendor metadata for production tenants.
   - [ ] Detect drift between registered tenant values and discovered SMART/CapabilityStatement metadata.
-  - [ ] Store last successful discovery, last launch, last callback, and last token-refresh timestamps.
+  - [x] Surface last successful discovery, launch, callback, and handoff evidence from capability snapshots, launch sessions, and audit rows.
+  - [ ] Store or surface backend token-refresh timestamps.
 - [ ] Complete vendor sandbox validation.
   - [ ] Epic sandbox: registration, launch, callback, FHIR read, patient context, and evidence capture.
   - [ ] Oracle Cerner sandbox: registration, launch, callback, FHIR read, patient context, and evidence capture.
@@ -211,7 +218,7 @@ Acceptance gate:
 
 - [ ] A sandbox EHR launch lands the user in the correct Medgnosis patient workspace.
 - [x] Invalid issuer, invalid state, expired session, nonce mismatch, wrong org, callback claim failures, handoff failures, and unsupported auth method are tested.
-- [ ] Admin EHR readiness shows launch health and last-success evidence.
+- [x] Admin EHR readiness shows launch health and last-success evidence.
 
 ### Phase 4 - EHR Data Ingestion, Bulk Data, And Patient Sync
 
@@ -236,6 +243,9 @@ Objective: move from EHR connectivity metadata to repeatable ingestion that upda
 - [ ] Stage and normalize FHIR resources.
   - [x] Use existing resource staging and QDM bridge services for completed Bulk import files.
   - [x] Add Patient crosswalk creation before downstream EDW/QDM normalization when a Bulk Patient can be mapped safely.
+  - [x] Route staged Bulk `Patient` hydration through EMPI so strong identifiers attach to `phm_edw.person` and local `phm_edw.patient` rows are linked before child resources normalize.
+  - [x] Remove the older direct Bulk Patient insert/crosswalk helper so Bulk Patient creation has one EMPI chokepoint.
+  - [x] Add an explicit dry-run/apply operator script for legacy `phm_edw.patient` to `phm_edw.person`/`patient_link` backfill.
   - [x] Record provenance per resource, run, tenant, and source file ledger.
   - [ ] Normalize all staged Bulk resource families into durable EDW domain tables.
   - [ ] Define delete/tombstone behavior for Bulk `deleted` output.
@@ -257,9 +267,10 @@ Objective: move from EHR connectivity metadata to repeatable ingestion that upda
   - [x] Add manual completed-job import replay and active-job cancel actions.
   - [ ] Extend Bulk jobs table with poll count, normalized row counts, and QDM replay links.
   - [x] Add failed-import resume controls for completed jobs with failed file rows.
-  - [ ] Expand patient sync panel with last launch sync, last Bulk import, crosswalk status, conflicts, and broader patient/resource last-success rollups.
+  - [ ] Expand beyond tenant ingest/readiness/worker rollups with patient/resource last-success rollups, conflicts, and stale-data warnings.
   - [x] Add Bulk schedule next-run and last-success visibility to the EHR Integrations Bulk panel.
   - [x] Add audit coverage for manual Bulk kickoff, import replay/resume, and cancellation controls.
+  - [x] Add audit coverage for automated Bulk worker lifecycle events and expose worker failures/overdue polls in sync status.
 - [ ] Add integration fixtures.
   - [x] Mock Bulk server with 202, retry-after, completed manifest, NDJSON files, cancellation, and output-fetch errors.
   - [ ] Epic/Cerner sandbox replay fixtures where allowed.
@@ -359,8 +370,10 @@ Objective: expose the production-critical back-end state to users and operators.
 - [ ] Expand EHR Integrations UI.
   - [x] Add Bulk job status and file-level import status.
   - [x] Add Bulk schedule next-run and last-success visibility.
+  - [x] Add tenant readiness evidence for discovery, launch, callback, and handoff health.
+  - [x] Add tenant sync-status metrics for crosswalk, ingest, Bulk import, Bulk schedule, worker failures, and overdue polls.
   - [ ] Add import-run drilldowns, QDM normalization run links, and richer patient sync status.
-  - [ ] Add capability drift warnings and last successful launch/backend token checks.
+  - [ ] Add capability drift warnings and backend token checks.
   - [ ] Add manual diagnostic actions for Bulk controls.
   - [x] Add audit coverage for Bulk kickoff/import/resume/cancel controls.
 - [ ] Expand System Health UI.
@@ -510,6 +523,8 @@ Recommended first sprint:
 - [x] Phase 4: broaden EDW hydration to Procedure, AllergyIntolerance, and Immunization with source crosswalk targets.
 - [x] Phase 4: add tenant ingest-run status API for admin sync visibility.
 - [x] Phase 4: surface recent tenant ingest runs in the EHR Integrations readiness panel.
+- [x] Phase 4: add tenant readiness evidence API/UI for discovery, launch, callback, and handoff evidence.
+- [x] Phase 4: add PHI-safe automated Bulk worker audit and surface worker failures/overdue polls in sync status.
 - [x] Phase 4: design Bulk NDJSON download/import schema and worker.
 - [x] Phase 4: add manual/admin Bulk kickoff, worker polling, automatic completed-job import enqueueing, and admin Bulk status UI.
 - [x] Phase 4: add manual completed-job Bulk import replay and active-job cancellation controls.
@@ -529,8 +544,8 @@ Recommended second sprint:
 
 ## Key Risks
 
-- EHR integration risk: SMART launch can appear complete while still lacking all-domain EDW normalization, vendor sandbox evidence, audit visibility, durable sync status, and access-policy attribution.
-- Data risk: Bulk Data kickoff/poll/import/scheduling can create a false sense of production readiness until vendor sandbox evidence, deeper replay/dead-letter runbooks, audit coverage, and broader patient/resource last-success rollups are proven.
+- EHR integration risk: SMART launch can appear complete while still lacking all-domain EDW normalization, vendor sandbox evidence, remaining FHIR-read/token audit surfaces, durable patient/resource sync status, and access-policy attribution.
+- Data risk: Bulk Data kickoff/poll/import/scheduling can create a false sense of production readiness until vendor sandbox evidence, deeper replay/dead-letter runbooks, tombstone behavior, and broader patient/resource last-success rollups are proven.
 - Measurement risk: SQL and CQL semantics can diverge; per-measure promotion must stay evidence-gated.
 - Compliance risk: remaining audit, PHI logging, and AI claims must continue to match implemented controls as auth and EHR surfaces expand.
 - Test risk: current E2E no longer passes with known API proxy errors, but it still needs broader authenticated provider, analyst, super-admin, EHR, and Measure Governance workflows.

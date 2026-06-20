@@ -943,15 +943,6 @@ describe('importBulkExportJob', () => {
       if (text.includes('INSERT INTO phm_edw.ehr_bulk_import_file')) {
         return Promise.resolve([{ id: '00000000-0000-4000-8000-000000000086' }]);
       }
-      if (text.includes('SELECT patient_id, local_id')) {
-        return Promise.resolve([]);
-      }
-      if (text.includes('INSERT INTO phm_edw.patient')) {
-        return Promise.resolve([{ patient_id: 123 }]);
-      }
-      if (text.includes('INSERT INTO phm_edw.ehr_resource_crosswalk')) {
-        return Promise.resolve([]);
-      }
       if (text.includes("SET status = 'completed'")) {
         return Promise.resolve([{ id: '00000000-0000-4000-8000-000000000086' }]);
       }
@@ -1029,7 +1020,7 @@ describe('importBulkExportJob', () => {
       },
     }));
     const sqlText = mockSql.mock.calls.map((call) => (call[0] as TemplateStringsArray).join('')).join('\n');
-    expect(sqlText).toContain('INSERT INTO phm_edw.patient');
+    expect(sqlText).not.toContain('INSERT INTO phm_edw.patient');
     expect(sqlText).toContain('INSERT INTO phm_edw.ehr_bulk_import_file');
   });
 
@@ -1079,15 +1070,6 @@ describe('importBulkExportJob', () => {
       }
       if (text.includes('INSERT INTO phm_edw.ehr_bulk_import_file')) {
         return Promise.resolve([{ id: '00000000-0000-4000-8000-000000000086' }]);
-      }
-      if (text.includes('SELECT patient_id, local_id')) {
-        return Promise.resolve([]);
-      }
-      if (text.includes('INSERT INTO phm_edw.patient')) {
-        return Promise.resolve([{ patient_id: 123 }]);
-      }
-      if (text.includes('INSERT INTO phm_edw.ehr_resource_crosswalk')) {
-        return Promise.resolve([]);
       }
       if (text.includes("SET status = 'completed'")) {
         return Promise.resolve([{ id: '00000000-0000-4000-8000-000000000086' }]);
@@ -1172,15 +1154,6 @@ describe('importBulkExportJob', () => {
       }
       if (text.includes('INSERT INTO phm_edw.ehr_bulk_import_file') || text.includes("SET status = 'failed'")) {
         return Promise.resolve([{ id: '00000000-0000-4000-8000-000000000086' }]);
-      }
-      if (text.includes('SELECT patient_id, local_id')) {
-        return Promise.resolve([]);
-      }
-      if (text.includes('INSERT INTO phm_edw.patient')) {
-        return Promise.resolve([{ patient_id: 123 }]);
-      }
-      if (text.includes('INSERT INTO phm_edw.ehr_resource_crosswalk')) {
-        return Promise.resolve([]);
       }
       return Promise.resolve([]);
     });

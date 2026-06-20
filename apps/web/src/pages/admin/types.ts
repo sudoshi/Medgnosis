@@ -506,6 +506,146 @@ export interface EhrBulkSchedule {
   updatedAt: string;
 }
 
+export type EhrSyncIssueSeverity = 'info' | 'warning' | 'critical';
+
+export interface EhrSyncResourceStatus {
+  resourceType: string;
+  totalResources: number;
+  localTargetResources: number;
+  unmappedLocalResources: number;
+  patientLinkedResources: number;
+  missingPatientResources: number;
+  staleResources: number;
+  collisionResources: number;
+  collisionTargets: number;
+  lastSeenAt: string | null;
+  lastIngestSucceededAt: string | null;
+  lastIngestStartedAt: string | null;
+  ingestResourcesReceived: number;
+  ingestResourcesStaged: number;
+  ingestResourcesUpdated: number;
+  lastBulkExportSucceededAt: string | null;
+  lastBulkImportSucceededAt: string | null;
+  bulkRowsRead: number;
+  bulkResourcesStaged: number;
+  bulkErrorCount: number;
+  bulkFailedFileCount: number;
+  bulkActiveFileCount: number;
+}
+
+export interface EhrCrosswalkSummary {
+  totalResources: number;
+  localTargetResources: number;
+  unmappedLocalResources: number;
+  patientLinkedResources: number;
+  missingPatientResources: number;
+  staleResources: number;
+  collisionResources: number;
+  collisionTargets: number;
+  patientCrosswalks: number;
+  resourceTypes: number;
+  lastSeenAt: string | null;
+  staleAfterDays: number;
+}
+
+export interface EhrBulkScheduleSyncSummary {
+  enabledSchedules: number;
+  dueSchedules: number;
+  nextBulkScheduleAt: string | null;
+  lastBulkScheduleSuccessAt: string | null;
+  lastBulkScheduleFailureAt: string | null;
+}
+
+export interface EhrBulkWorkerSyncSummary {
+  lastEventAt: string | null;
+  latestAction: string | null;
+  lastFailureAt: string | null;
+  failures24h: number;
+  incompleteImports24h: number;
+  activeOverdueJobs: number;
+  oldestOverdueJobAt: string | null;
+}
+
+export interface EhrSyncIssue {
+  severity: EhrSyncIssueSeverity;
+  code: string;
+  message: string;
+  resourceType: string | null;
+  count: number | null;
+  lastSeenAt: string | null;
+}
+
+export interface EhrTenantSyncStatus {
+  ehrTenantId: number;
+  generatedAt: string;
+  crosswalk: EhrCrosswalkSummary;
+  resources: EhrSyncResourceStatus[];
+  bulkSchedule: EhrBulkScheduleSyncSummary;
+  bulkWorker: EhrBulkWorkerSyncSummary;
+  lastSuccessfulIngestAt: string | null;
+  lastSuccessfulBulkExportAt: string | null;
+  lastSuccessfulBulkImportAt: string | null;
+  lastSeenAt: string | null;
+  issues: EhrSyncIssue[];
+}
+
+export type EhrReadinessIssueSeverity = 'info' | 'warning' | 'critical';
+
+export interface EhrDiscoveryDriftIssue {
+  code: string;
+  severity: EhrReadinessIssueSeverity;
+  message: string;
+}
+
+export interface EhrDiscoveryEvidence {
+  latestSnapshotId: number | null;
+  capturedAt: string | null;
+  smartConfigurationUrl: string | null;
+  capabilityStatementUrl: string | null;
+  smartOk: boolean;
+  capabilityOk: boolean;
+  registeredIssuer: string | null;
+  discoveredIssuer: string | null;
+  issuerMatches: boolean | null;
+  authorizationEndpointPresent: boolean;
+  tokenEndpointPresent: boolean;
+  fhirVersion: string | null;
+  resourceCount: number;
+  drift: EhrDiscoveryDriftIssue[];
+}
+
+export interface EhrLaunchEvidence {
+  latestLaunchStartedAt: string | null;
+  latestLaunchDeniedAt: string | null;
+  latestCallbackSucceededAt: string | null;
+  latestCallbackFailedAt: string | null;
+  latestHandoffCompletedAt: string | null;
+  latestSessionCreatedAt: string | null;
+  latestSessionConsumedAt: string | null;
+  latestSessionHandoffConsumedAt: string | null;
+  activePendingLaunches: number;
+  expiredPendingLaunches: number;
+  launchesStarted24h: number;
+  launchesDenied24h: number;
+  callbacksSucceeded24h: number;
+  callbacksFailed24h: number;
+  handoffsCompleted24h: number;
+}
+
+export interface EhrReadinessIssue {
+  severity: EhrReadinessIssueSeverity;
+  code: string;
+  message: string;
+}
+
+export interface EhrTenantReadinessEvidence {
+  ehrTenantId: number;
+  generatedAt: string;
+  discovery: EhrDiscoveryEvidence;
+  launch: EhrLaunchEvidence;
+  issues: EhrReadinessIssue[];
+}
+
 export interface AuditLog {
   audit_id: number;
   event_type: string;

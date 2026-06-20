@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { Queue, Worker, type JobsOptions } from 'bullmq';
 import {
+  BulkDataError,
   kickoffBulkExportWithBackendServices,
   importCompletedBulkExportJob,
   pollBulkExportJobWithBackendServices,
@@ -23,6 +24,7 @@ import {
   type EhrBulkSchedule,
 } from '../services/ehr/bulkSchedules.js';
 import { getVendorAdapter } from '../services/ehr/vendorAdapters/index.js';
+import { writeSystemAuditLog } from '../services/auditLog.js';
 
 export const EHR_BULK_IMPORT_QUEUE_NAME = 'medgnosis-ehr-bulk-import';
 
@@ -250,6 +252,9 @@ async function processBulkQueueJob(
     if (data.scheduleId && !(err instanceof BulkImportIncompleteError)) {
       await markScheduleFailureSafe(data.scheduleId, errorMessage(err));
     }
+    if (!(err instanceof BulkImportIncompleteError)) {
+      await auditBulkWorkerFailure(data, err);
+    }
     throw err;
   }
 }
@@ -275,6 +280,7 @@ async function processBulkQueueJobInternal(
     if (data.scheduleId) {
       await markBulkScheduleBulkJob(data.scheduleId, result.job.id);
     }
+    const nextPollDelayMs = pollDelayMs(result.job.retryAfterSeconds, data.vendor ?? result.tenant.vendor);
     await enqueueEhrBulkPoll({
       scheduleId: data.scheduleId,
       ehrTenantId: data.ehrTenantId,
@@ -283,7 +289,17 @@ async function processBulkQueueJobInternal(
       bulkJobId: result.job.id,
       maxResourcesPerFile: data.maxResourcesPerFile,
     }, {
-      delay: pollDelayMs(result.job.retryAfterSeconds, data.vendor ?? result.tenant.vendor),
+      delay: nextPollDelayMs,
+    });
+    await auditBulkWorkerEvent('ehr_bulk_worker_kickoff', 'ehr_bulk_job', result.job.id, data, {
+      status: result.job.status,
+      resourceTypeCount: data.resourceTypes.length,
+      exportLevel: data.exportLevel,
+      triggeredBy: data.triggeredBy,
+      retryAfterSeconds: result.job.retryAfterSeconds ?? null,
+      nextAction: 'poll_enqueued',
+      nextPollDelayMs,
+      tokenMetadataPersisted: Boolean(result.tokenMetadataId),
     });
     console.info(
       `[ehr-bulk-import] kickoff tenant=${data.ehrTenantId} bulkJob=${result.job.id}` +
@@ -297,6 +313,8 @@ async function processBulkQueueJobInternal(
       ehrTenantId: data.ehrTenantId,
       bulkJobId: data.bulkJobId,
     });
+    let nextAction = 'none';
+    let nextPollDelayMs: number | null = null;
     if (result.job.status === 'completed') {
       await enqueueEhrBulkImport({
         scheduleId: data.scheduleId,
@@ -308,16 +326,27 @@ async function processBulkQueueJobInternal(
         maxResourcesPerFile: data.maxResourcesPerFile,
         resumeFailedOnly: true,
       });
+      nextAction = 'import_enqueued';
     } else if (result.job.status === 'accepted' || result.job.status === 'in_progress') {
+      nextPollDelayMs = pollDelayMs(result.job.retryAfterSeconds, data.vendor ?? result.tenant.vendor);
       await enqueueEhrBulkPoll({
         ...data,
         vendor: data.vendor ?? result.tenant.vendor ?? null,
       }, {
-        delay: pollDelayMs(result.job.retryAfterSeconds, data.vendor ?? result.tenant.vendor),
+        delay: nextPollDelayMs,
       });
+      nextAction = 'poll_rescheduled';
     } else if (data.scheduleId && (result.job.status === 'failed' || result.job.status === 'canceled')) {
       await markScheduleFailureSafe(data.scheduleId, `Bulk export ended with status=${result.job.status}`);
+      nextAction = 'terminal_failure';
     }
+    await auditBulkWorkerEvent('ehr_bulk_worker_poll', 'ehr_bulk_job', result.job.id, data, {
+      status: result.job.status,
+      retryAfterSeconds: result.job.retryAfterSeconds ?? null,
+      nextAction,
+      nextPollDelayMs,
+      tokenMetadataPersisted: Boolean(result.tokenMetadataId),
+    });
     console.info(
       `[ehr-bulk-import] poll tenant=${data.ehrTenantId} bulkJob=${result.job.id}` +
         ` status=${result.job.status}`,
@@ -343,6 +372,15 @@ async function processBulkQueueJobInternal(
         `Bulk import incomplete: status=${result.ingestRun.status} resourcesFailed=${result.resourcesFailed}`,
       );
     }
+    await auditBulkWorkerEvent('ehr_bulk_worker_import_incomplete', 'ehr_bulk_job', data.bulkJobId, data, {
+      ingestRunId: result.ingestRun.id,
+      ingestStatus: result.ingestRun.status,
+      resourcesStaged: result.resourcesStaged,
+      resourcesFailed: result.resourcesFailed,
+      triggeredBy: data.triggeredBy,
+      resumeFailedOnly: data.resumeFailedOnly ?? data.triggeredBy !== 'manual',
+      tokenMetadataPersisted: Boolean(result.tokenMetadataId),
+    });
     throw new BulkImportIncompleteError(
       data.ehrTenantId,
       data.bulkJobId,
@@ -353,6 +391,16 @@ async function processBulkQueueJobInternal(
   if (data.scheduleId) {
     await markBulkScheduleSuccess(data.scheduleId, data.bulkJobId, bulkJobTransactionTime(result.job));
   }
+  await auditBulkWorkerEvent('ehr_bulk_worker_import', 'ehr_bulk_job', data.bulkJobId, data, {
+    ingestRunId: result.ingestRun.id,
+    ingestStatus: result.ingestRun.status,
+    resourcesStaged: result.resourcesStaged,
+    resourcesFailed: result.resourcesFailed,
+    triggeredBy: data.triggeredBy,
+    resumeFailedOnly: data.resumeFailedOnly ?? data.triggeredBy !== 'manual',
+    scheduleMarkedSuccess: Boolean(data.scheduleId),
+    tokenMetadataPersisted: Boolean(result.tokenMetadataId),
+  });
   return result;
 }
 
@@ -418,6 +466,43 @@ async function markScheduleFailureSafe(scheduleId: string, message: string): Pro
     await markBulkScheduleFailure(scheduleId, message);
   } catch (err) {
     console.error(`[ehr-bulk-import] failed to mark schedule=${scheduleId} failed:`, errorMessage(err));
+  }
+}
+
+async function auditBulkWorkerFailure(data: EhrBulkQueueJobData, error: unknown): Promise<void> {
+  const resourceId = 'bulkJobId' in data ? data.bulkJobId : null;
+  await auditBulkWorkerEvent(
+    'ehr_bulk_worker_failed',
+    resourceId ? 'ehr_bulk_job' : 'ehr_tenant',
+    resourceId ?? String(data.ehrTenantId),
+    data,
+    {
+      errorClass: error instanceof Error ? error.name : typeof error,
+      errorCode: error instanceof BulkDataError ? error.code : null,
+      errorStatus: error instanceof BulkDataError ? error.status : null,
+    },
+  );
+}
+
+async function auditBulkWorkerEvent(
+  action: string,
+  resourceType: string,
+  resourceId: string,
+  data: EhrBulkQueueJobData,
+  details: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await writeSystemAuditLog(action, resourceType, resourceId, {
+      tenantId: data.ehrTenantId,
+      orgId: data.orgId ?? null,
+      vendor: data.vendor ?? null,
+      scheduleId: data.scheduleId ?? null,
+      queueName: EHR_BULK_IMPORT_QUEUE_NAME,
+      jobAction: data.action,
+      ...details,
+    });
+  } catch (err) {
+    console.error(`[ehr-bulk-import] failed to audit worker event action=${action}:`, errorMessage(err));
   }
 }
 

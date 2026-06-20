@@ -17,6 +17,7 @@
     "db:migrate:list": "turbo run db:migrate:list --filter=@medgnosis/db",
     "db:seed": "turbo run db:seed --filter=@medgnosis/db",
     "db:seed-ehr-sandbox": "turbo run db:seed-ehr-sandbox --filter=@medgnosis/db",
+    "db:backfill-empi": "npm run db:backfill-empi --workspace=@medgnosis/db --",
     "ehr:smoke": "npm run ehr:smoke --workspace=apps/api --",
     "ehr:keygen": "npm run ehr:keygen --workspace=apps/api --",
     "ehr:onboard": "npm run ehr:onboard --workspace=apps/api --",

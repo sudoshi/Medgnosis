@@ -48,6 +48,10 @@
         "EHR_SMART_SANDBOX_REDIRECT_URI"
       ]
     },
+    "db:backfill-empi": {
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
+    },
     "solr:reindex": {
       "cache": false,
       "passThroughEnv": ["DATABASE_URL", "SOLR_URL", "SOLR_AUTH_USER", "SOLR_AUTH_PASSWORD"]

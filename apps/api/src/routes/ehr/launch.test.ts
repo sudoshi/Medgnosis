@@ -27,6 +27,8 @@ import type {
   SmartLaunchSession,
 } from '../../services/ehr/smartLaunch.js';
 
+const mockAuditLog = vi.fn();
+
 const PROVIDER_USER: JwtPayload = {
   sub: '22222222-2222-4222-8222-222222222222',
   email: 'provider@example.test',
@@ -86,6 +88,7 @@ const session: SmartLaunchSession = {
 
 async function buildApp(user: JwtPayload | undefined = PROVIDER_USER): Promise<FastifyInstance> {
   const app = Fastify();
+  app.decorateRequest('auditLog', mockAuditLog);
   app.decorate('authenticate', async (request: FastifyRequest) => {
     if (user) request.user = { ...user, session_id: '33333333-3333-4333-8333-333333333333' };
   });
@@ -104,6 +107,7 @@ beforeEach(() => {
   vi.mocked(completeSmartLaunchCallback).mockReset();
   vi.mocked(createSmartLaunchHandoff).mockReset();
   vi.mocked(consumeSmartLaunchHandoff).mockReset();
+  mockAuditLog.mockReset();
 });
 
 describe('EHR SMART launch routes', () => {
@@ -138,6 +142,18 @@ describe('EHR SMART launch routes', () => {
         issuer: 'https://ehr.example.test',
         launch: 'launch-opaque',
         scope: 'openid fhirUser launch patient/Patient.r',
+      }),
+    );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_smart_launch_start',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        launchMode: 'ehr',
+        smartSessionId: session.id,
+        orgId: 7,
+        userBound: true,
+        issuerValidated: true,
       }),
     );
     await app.close();
@@ -185,6 +201,16 @@ describe('EHR SMART launch routes', () => {
       error: { code: 'SMART_ISSUER_REQUIRED' },
     });
     expect(createSmartLaunchState).not.toHaveBeenCalled();
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_smart_launch_denied',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        launchMode: 'ehr',
+        status: 400,
+        code: 'SMART_ISSUER_REQUIRED',
+      }),
+    );
     await app.close();
   });
 
@@ -326,6 +352,18 @@ describe('EHR SMART launch routes', () => {
       },
     });
     expect(createSmartLaunchHandoff).toHaveBeenCalledWith(session.id);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_smart_callback_success',
+      'ehr_smart_launch_session',
+      session.id,
+      expect.objectContaining({
+        ehrTenantId: 42,
+        orgId: 7,
+        userBound: true,
+        hasPatientContext: true,
+        handoffCreated: true,
+      }),
+    );
     await app.close();
   });
 
@@ -367,6 +405,18 @@ describe('EHR SMART launch routes', () => {
       orgId: 7,
       appSessionId: '33333333-3333-4333-8333-333333333333',
     });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_smart_handoff_complete',
+      'ehr_smart_launch_session',
+      session.id,
+      expect.objectContaining({
+        ehrTenantId: 42,
+        orgId: 7,
+        userBound: true,
+        appSessionBound: true,
+        patientResolved: true,
+      }),
+    );
     await app.close();
   });
 });
