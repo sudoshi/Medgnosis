@@ -128,4 +128,40 @@ describe('patient route authorization', () => {
     ).toBe(false);
     await app.close();
   });
+
+  it('returns diagnostic reports for an in-panel patient', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT pcp_provider_id')) return Promise.resolve([{ pcp_provider_id: 7 }]);
+      if (text.includes('FROM phm_edw.diagnostic_report')) {
+        return Promise.resolve([{ id: 1, name: 'Comprehensive metabolic panel', status: 'final' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/42/diagnostic-reports' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ success: true, data: [{ id: 1, name: 'Comprehensive metabolic panel' }] });
+    await app.close();
+  });
+
+  it('returns documents for an in-panel patient', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT pcp_provider_id')) return Promise.resolve([{ pcp_provider_id: 7 }]);
+      if (text.includes('FROM phm_edw.document_reference')) {
+        return Promise.resolve([{ id: 5, content_title: 'Discharge Summary', doc_status: 'final' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/42/documents' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ success: true, data: [{ id: 5, content_title: 'Discharge Summary' }] });
+    await app.close();
+  });
 });

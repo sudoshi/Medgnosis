@@ -339,6 +339,58 @@ export default async function patientRoutes(fastify: FastifyInstance): Promise<v
     return reply.send({ success: true, data: allergies });
   });
 
+  // GET /patients/:id/diagnostic-reports — Diagnostic reports (labs/imaging/etc.)
+  fastify.get<{ Params: { id: string } }>('/:id/diagnostic-reports', async (request, reply) => {
+    const { id } = request.params;
+
+    const reports = await sql`
+      SELECT
+        dr.report_id AS id,
+        dr.report_code AS code,
+        dr.report_name AS name,
+        dr.code_system,
+        dr.category,
+        dr.status,
+        dr.effective_datetime,
+        dr.issued_datetime,
+        dr.performer,
+        dr.conclusion,
+        dr.encounter_id
+      FROM phm_edw.diagnostic_report dr
+      WHERE dr.patient_id = ${id}::int AND dr.active_ind = 'Y'
+      ORDER BY COALESCE(dr.effective_datetime, dr.issued_datetime) DESC NULLS LAST
+    `;
+
+    return reply.send({ success: true, data: reports });
+  });
+
+  // GET /patients/:id/documents — Document references (notes, summaries, attachments)
+  fastify.get<{ Params: { id: string } }>('/:id/documents', async (request, reply) => {
+    const { id } = request.params;
+
+    const documents = await sql`
+      SELECT
+        d.document_id AS id,
+        d.doc_type_code AS code,
+        d.doc_type_name AS name,
+        d.code_system,
+        d.category,
+        d.status,
+        d.doc_status,
+        d.content_type,
+        d.content_url,
+        d.content_title,
+        d.author_display,
+        d.document_datetime,
+        d.encounter_id
+      FROM phm_edw.document_reference d
+      WHERE d.patient_id = ${id}::int AND d.active_ind = 'Y'
+      ORDER BY d.document_datetime DESC NULLS LAST
+    `;
+
+    return reply.send({ success: true, data: documents });
+  });
+
   // GET /patients/:id/observations — Paginated observations with full metadata
   fastify.get<{ Params: { id: string }; Querystring: { category?: string; limit?: string; offset?: string } }>(
     '/:id/observations',

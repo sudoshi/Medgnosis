@@ -17,6 +17,7 @@ import { MedicationsTab } from '../components/patient/MedicationsTab.js';
 import { LabsVitalsTab } from '../components/patient/LabsVitalsTab.js';
 import { AllergiesTab } from '../components/patient/AllergiesTab.js';
 import { CareGapsTab } from '../components/patient/CareGapsTab.js';
+import { DocumentsReportsTab } from '../components/patient/DocumentsReportsTab.js';
 import { AbbyTab } from '../components/patient/AbbyTab.js';
 import { Sparkles } from 'lucide-react';
 
@@ -56,7 +57,7 @@ interface PatientDetail {
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'encounters' | 'conditions' | 'medications' | 'labs' | 'allergies' | 'care-gaps' | 'abby';
+type TabId = 'overview' | 'encounters' | 'conditions' | 'medications' | 'labs' | 'allergies' | 'documents' | 'care-gaps' | 'abby';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export function PatientDetailPage() {
     { id: 'medications', label: 'Medications' },
     { id: 'labs', label: 'Labs & Vitals' },
     { id: 'allergies', label: 'Allergies', count: summary.allergies_count },
+    { id: 'documents', label: 'Documents & Reports' },
     { id: 'care-gaps', label: 'Care Gaps', count: summary.open_care_gaps_count || undefined },
     { id: 'abby', label: 'Abby', icon: <Sparkles size={13} strokeWidth={1.5} className="text-violet" /> },
   ];
@@ -199,6 +201,9 @@ export function PatientDetailPage() {
         )}
         {activeTab === 'allergies' && (
           <AllergiesTab patientId={patientId!} />
+        )}
+        {activeTab === 'documents' && (
+          <DocumentsReportsTab patientId={patientId!} />
         )}
         {activeTab === 'care-gaps' && (
           <CareGapsTab patientId={patientId!} />

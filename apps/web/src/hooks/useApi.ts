@@ -144,6 +144,24 @@ export function usePatientAllergies(patientId: string | undefined) {
   });
 }
 
+export function usePatientDiagnosticReports(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'diagnostic-reports'],
+    queryFn: () => api.get(`/patients/${patientId}/diagnostic-reports`),
+    enabled: !!patientId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function usePatientDocuments(patientId: string | undefined) {
+  return useQuery({
+    queryKey: ['patient', patientId, 'documents'],
+    queryFn: () => api.get(`/patients/${patientId}/documents`),
+    enabled: !!patientId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function usePatientConditions(
   patientId: string | undefined,
   params: { limit?: number; offset?: number } = {},
