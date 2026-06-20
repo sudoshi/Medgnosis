@@ -12,7 +12,13 @@ import { extractPatientIdentifiers, normalizeDemographics } from './identity/ide
 import { reconcilePatient } from './identity/reconcilePatient.js';
 
 const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+// Upper bound on staged resources hydrated per call. The SMART-launch path stays
+// small (DEFAULT_LIMIT), but a Bulk Data $export import passes the full staged
+// count — a low cap silently truncated large imports (Patient-first ordering
+// filled the cap before reaching later resource types). 50k drains realistic
+// group exports in one pass; multi-100k populations need a batched drain loop
+// in the import worker (tracked follow-up).
+const MAX_LIMIT = 50000;
 const BULK_IDENTITY_SOURCE_SYSTEM = 'bulk_export';
 const SUPPORTED_RESOURCE_TYPES = [
   'Patient',
