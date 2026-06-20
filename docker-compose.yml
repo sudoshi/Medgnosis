@@ -238,7 +238,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          # SanteDB MDM holds a large in-memory matching working set; 2G was
+          # exhausted at ~56k patients (the container restarted mid-backfill).
+          # Bumped for the ~1M population; watch the trajectory as coverage grows.
+          memory: 8192M
           cpus: "2"
     networks:
       - medgnosis
