@@ -48,6 +48,7 @@ export interface MergeLogEntry {
 const REASON_LABEL: Record<string, string> = {
   demographic_only_match: 'Demographic match',
   identifier_conflict: 'Identifier conflict',
+  probabilistic_match: 'Probabilistic (MPI) match',
 };
 
 export function IdentityReviewTab() {

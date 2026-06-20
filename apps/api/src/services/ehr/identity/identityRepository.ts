@@ -145,7 +145,10 @@ export class PostgresIdentityRepository implements IdentityRepository {
         ${input.ehrTenantId}, ${input.sourceSystem}, ${input.demographicKey}
       )
     `;
-    if (input.reason === 'demographic_only_match') {
+    // Demographic-only and probabilistic matches both mint a provisional person
+    // pending steward confirmation; an identifier conflict resolves to an
+    // existing person, so it is not marked provisional.
+    if (input.reason === 'demographic_only_match' || input.reason === 'probabilistic_match') {
       await this.db`
         UPDATE phm_edw.person SET status = 'provisional', updated_at = NOW()
         WHERE person_id = ${input.personId} AND status = 'active'

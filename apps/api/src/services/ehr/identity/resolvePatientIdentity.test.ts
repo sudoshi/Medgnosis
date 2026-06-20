@@ -336,4 +336,21 @@ describe2('resolvePatientIdentity — probabilistic tier', () => {
     expect2(mpiRepo.persons).toHaveLength(1);
     expect2(mpiRepo.persons[0]?.identifiers.map((i) => i.value)).toEqual(['EPIC-ONLY']);
   });
+
+  it2('queues the feed off the request path when enqueueFeed is configured (no inline feed)', async () => {
+    const mpi = fakeMpi([]);
+    const enqueueFeed = vi2.fn().mockResolvedValue({ enqueued: true });
+    (mpi as { enqueueFeed?: typeof enqueueFeed }).enqueueFeed = enqueueFeed;
+    const result = await resolvePatientIdentity(
+      { patient: newPatient(), ehrTenantId: 9, sourceSystem: 'epic' }, mpiRepo, mpi,
+    );
+    expect2(result.matchGrade).toBe('none');
+    // tier-3 $match ran once; the feed/self-match did NOT run inline (it was queued).
+    expect2(mpi.client.feed).not.toHaveBeenCalled();
+    expect2(enqueueFeed).toHaveBeenCalledWith({
+      personId: mpiRepo.persons[0]?.personId,
+      demographics: { firstName: 'Nora', lastName: 'Nomatch', dateOfBirth: '1990-01-01', sex: 'female' },
+      ehrTenantId: 9,
+    });
+  });
 });

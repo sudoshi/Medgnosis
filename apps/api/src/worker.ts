@@ -15,6 +15,7 @@ import { startSurveillanceWorker } from './workers/surveillance.js';
 import { startDqWorker, startCohortFlagsWorker } from './workers/data-quality.js';
 import { startEhrBulkImportWorker } from './workers/ehr-bulk-import.js';
 import { startEhrPatientContextRefreshWorker } from './workers/ehr-patient-context-refresh.js';
+import { startMpiFeedWorker } from './workers/mpi-feed.js';
 
 console.info('[worker] Starting Medgnosis background workers...');
 
@@ -33,6 +34,7 @@ const workers = [
   startCohortFlagsWorker(),
   startEhrBulkImportWorker(),
   startEhrPatientContextRefreshWorker(),
+  startMpiFeedWorker(),
   startNightlyScheduler(),
 ];
 

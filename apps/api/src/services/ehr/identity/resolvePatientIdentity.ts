@@ -43,7 +43,7 @@ export interface ReviewQueueInput {
   personId: number;
   /** Existing persons a steward should consider merging with personId. */
   candidatePersonIds: number[];
-  reason: 'demographic_only_match' | 'identifier_conflict';
+  reason: 'demographic_only_match' | 'identifier_conflict' | 'probabilistic_match';
   ehrTenantId: number;
   sourceSystem: string;
   demographicKey: string;
@@ -99,6 +99,15 @@ export interface MpiResolution extends ProbabilisticThresholds {
   client: MpiClient;
   /** Assigning-authority system used to store the MPI master id on a person. */
   masterIdSystem: string;
+  /**
+   * Async feed: when present, new-person registration is queued (off the request
+   * path) instead of fed inline. Best-effort either way.
+   */
+  enqueueFeed?: (input: {
+    personId: number;
+    demographics: NormalizedDemographics;
+    ehrTenantId: number;
+  }) => Promise<unknown>;
 }
 
 export async function resolvePatientIdentity(
@@ -244,9 +253,7 @@ async function resolveProbabilistic(
   await repo.enqueueReview({
     personId,
     candidatePersonIds,
-    // Phase 1 reuses the demographic_only_match bucket for MPI-sourced reviews
-    // (no schema change); split out when the steward UI lands.
-    reason: 'demographic_only_match',
+    reason: 'probabilistic_match',
     ehrTenantId: ctx.ehrTenantId,
     sourceSystem: ctx.sourceSystem,
     demographicKey: ctx.key,
@@ -270,6 +277,17 @@ async function feedNewPersonToMpi(
   mpi: MpiResolution,
   repo: IdentityRepository,
 ): Promise<void> {
+  // Preferred: queue the feed off the request path.
+  if (mpi.enqueueFeed) {
+    try {
+      await mpi.enqueueFeed({ personId, demographics, ehrTenantId });
+    } catch {
+      // Non-blocking; the person can be (re)fed later (e.g. mpi:backfill).
+    }
+    return;
+  }
+
+  // Inline fallback (no queue configured / unit tests): feed + self-match now.
   try {
     await mpi.client.feed(demographics);
     const selfMatch = await mpi.client.match(demographics);
