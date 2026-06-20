@@ -960,3 +960,75 @@ describe('entered-in-error soft-delete', () => {
     expect(unsafe).not.toHaveBeenCalled();
   });
 });
+
+describe('standalone reference-dimension hydration', () => {
+  it('hydrates a top-level Practitioner into phm_edw.provider with a null-patient crosswalk', async () => {
+    const practitioner = {
+      resourceType: 'Practitioner',
+      id: 'prac-1',
+      identifier: [{ system: 'http://hl7.org/fhir/sid/us-npi', value: '1234567893' }],
+      name: [{ family: 'Wells', given: ['Sarah'] }],
+    } as unknown as FhirResource;
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Practitioner', 'prac-1', practitioner)]);
+      }
+      if (text.includes('SELECT provider_id FROM phm_edw.provider')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.provider')) return Promise.resolve([{ provider_id: 88 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['Practitioner']).toMatchObject({ hydrated: 1 });
+    // No patient resolution should happen for a reference dimension.
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('SELECT COALESCE(patient_id'))).toBe(false);
+    const xwalk = mockSql.mock.calls.find(([s]) =>
+      (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'),
+    );
+    expect(xwalk).toBeDefined();
+    const params = xwalk!.slice(1);
+    expect(params[4]).toBe('phm_edw.provider'); // local_table
+    expect(params[5]).toBe(88); // local_id
+    expect(params[6]).toBeNull(); // patient_id is null for dimensions
+  });
+
+  it('hydrates a top-level Organization into phm_edw.organization', async () => {
+    const org = { resourceType: 'Organization', id: 'org-1', name: 'Mercy Clinic' } as unknown as FhirResource;
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Organization', 'org-1', org)]);
+      }
+      if (text.includes('SELECT org_id FROM phm_edw.organization')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.organization')) return Promise.resolve([{ org_id: 9 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.byResourceType['Organization']).toMatchObject({ hydrated: 1 });
+    expect(mockSql.mock.calls.some(([s]) =>
+      (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'),
+    )).toBe(true);
+  });
+
+  it('hydrates a top-level Location into phm_edw.clinic_resource', async () => {
+    const loc = { resourceType: 'Location', id: 'loc-1', name: 'Room 4B' } as unknown as FhirResource;
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Location', 'loc-1', loc)]);
+      }
+      if (text.includes('SELECT resource_id FROM phm_edw.clinic_resource')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.clinic_resource')) return Promise.resolve([{ resource_id: 3 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.byResourceType['Location']).toMatchObject({ hydrated: 1 });
+  });
+});

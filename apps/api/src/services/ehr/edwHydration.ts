@@ -16,6 +16,9 @@ const MAX_LIMIT = 500;
 const BULK_IDENTITY_SOURCE_SYSTEM = 'bulk_export';
 const SUPPORTED_RESOURCE_TYPES = [
   'Patient',
+  'Practitioner',
+  'Organization',
+  'Location',
   'Encounter',
   'Condition',
   'Observation',
@@ -175,20 +178,23 @@ async function findHydratableStagedResources(
       AND (${orgFilter}::int IS NULL OR org_id IS NOT DISTINCT FROM ${orgFilter})
     ORDER BY CASE resource_type
                WHEN 'Patient' THEN 0
-               WHEN 'Encounter' THEN 1
-               WHEN 'Condition' THEN 2
-               WHEN 'Observation' THEN 3
-               WHEN 'MedicationRequest' THEN 4
-               WHEN 'Procedure' THEN 5
-               WHEN 'AllergyIntolerance' THEN 6
-               WHEN 'Immunization' THEN 7
-               WHEN 'ServiceRequest' THEN 8
-               WHEN 'DiagnosticReport' THEN 9
-               WHEN 'DocumentReference' THEN 10
-               WHEN 'CarePlan' THEN 11
-               WHEN 'Goal' THEN 12
-               WHEN 'CareTeam' THEN 13
-               WHEN 'Coverage' THEN 14
+               WHEN 'Practitioner' THEN 1
+               WHEN 'Organization' THEN 2
+               WHEN 'Location' THEN 3
+               WHEN 'Encounter' THEN 4
+               WHEN 'Condition' THEN 5
+               WHEN 'Observation' THEN 6
+               WHEN 'MedicationRequest' THEN 7
+               WHEN 'Procedure' THEN 8
+               WHEN 'AllergyIntolerance' THEN 9
+               WHEN 'Immunization' THEN 10
+               WHEN 'ServiceRequest' THEN 11
+               WHEN 'DiagnosticReport' THEN 12
+               WHEN 'DocumentReference' THEN 13
+               WHEN 'CarePlan' THEN 14
+               WHEN 'Goal' THEN 15
+               WHEN 'CareTeam' THEN 16
+               WHEN 'Coverage' THEN 17
                ELSE 90
              END,
              received_at ASC,
@@ -217,6 +223,32 @@ function hydrateStagedResource(row: StagedFhirResourceRow): Promise<HydratedReso
       const target = await hydratePatient(row);
       if (!target) return null;
       await upsertResourceCrosswalk(tx, row, target.localId, target);
+      return target;
+    }
+
+    // Reference dimensions are not patient-scoped: hydrate the provider/org/
+    // location row and point the crosswalk at it with a null patient_id. They
+    // sort before Encounter so encounters resolve these FKs in the same batch.
+    if (
+      row.resource_type === 'Practitioner'
+      || row.resource_type === 'Organization'
+      || row.resource_type === 'Location'
+    ) {
+      const localId =
+        row.resource_type === 'Practitioner'
+          ? await upsertProviderFromReference(tx, row.resource)
+          : row.resource_type === 'Organization'
+            ? await upsertOrganizationFromReference(tx, row.resource)
+            : await upsertLocationFromReference(tx, row.resource);
+      if (localId === null) return null;
+      const localTable =
+        row.resource_type === 'Practitioner'
+          ? 'phm_edw.provider'
+          : row.resource_type === 'Organization'
+            ? 'phm_edw.organization'
+            : 'phm_edw.clinic_resource';
+      const target: HydratedResourceTarget = { localTable, localId, operation: 'inserted' };
+      await upsertResourceCrosswalk(tx, row, null, target);
       return target;
     }
 
@@ -1584,7 +1616,7 @@ export async function upsertLocationFromReference(
 async function upsertResourceCrosswalk(
   tx: Tx,
   row: StagedFhirResourceRow,
-  patientId: number,
+  patientId: number | null,
   target: HydratedResourceTarget,
 ): Promise<void> {
   await tx.unsafe(
