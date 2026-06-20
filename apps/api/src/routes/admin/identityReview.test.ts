@@ -43,6 +43,22 @@ beforeEach(() => {
 });
 
 describe('admin identity review routes', () => {
+  it('GET /identity/metrics returns aggregate EMPI health', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const t = strings.join('');
+      if (t.includes('FROM phm_edw.person GROUP BY status')) return Promise.resolve([{ status: 'active', c: 1000 }]);
+      if (t.includes('FROM phm_edw.patient_link')) return Promise.resolve([{ c: 1000 }]);
+      if (t.includes('min(created_at)')) return Promise.resolve([{ oldest: null }]);
+      return Promise.resolve([]);
+    });
+    const { app } = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/identity/metrics' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.metrics.persons).toMatchObject({ total: 1000, active: 1000 });
+    expect(res.json().data.metrics.patientLinks).toBe(1000);
+    await app.close();
+  });
+
   it('GET /identity/reviews lists open reviews', async () => {
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
       const t = strings.join('');

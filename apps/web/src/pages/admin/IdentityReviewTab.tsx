@@ -45,6 +45,15 @@ export interface MergeLogEntry {
   reverted: boolean;
 }
 
+export interface EmpiMetrics {
+  persons: { total: number; active: number; provisional: number; merged: number };
+  patientLinks: number;
+  reviewQueue: { open: number; byReason: Record<string, number>; oldestOpenAt: string | null };
+  merges: { merged: number; unmerged: number };
+  mpiCoverage: { personsWithMaster: number };
+  potentialDuplicates: number;
+}
+
 const REASON_LABEL: Record<string, string> = {
   demographic_only_match: 'Demographic match',
   identifier_conflict: 'Identifier conflict',
@@ -61,6 +70,13 @@ export function IdentityReviewTab() {
     staleTime: 15_000,
   });
   const reviews = data?.data?.reviews ?? [];
+
+  const { data: metricsData } = useQuery({
+    queryKey: ['admin', 'identity', 'metrics'],
+    queryFn: () => api.get<{ metrics: EmpiMetrics }>('/admin/identity/metrics'),
+    staleTime: 30_000,
+  });
+  const metrics = metricsData?.data?.metrics;
 
   const merge = useMutation({
     mutationFn: (vars: { reviewId: number; survivorPersonId: number }) =>
@@ -114,6 +130,8 @@ export function IdentityReviewTab() {
         </div>
         <Badge variant="dim">{reviews.length} open</Badge>
       </div>
+
+      {metrics && <MetricsPanel metrics={metrics} />}
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
 
@@ -170,6 +188,36 @@ export function IdentityReviewTab() {
             </table>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string | number; tone?: 'warn' | 'default' }) {
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-2">
+      <div className={`text-lg font-semibold ${tone === 'warn' ? 'text-amber-400' : 'text-foreground'}`}>{value}</div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function MetricsPanel({ metrics }: { metrics: EmpiMetrics }) {
+  const reviewByReason = Object.entries(metrics.reviewQueue.byReason)
+    .map(([reason, n]) => `${REASON_LABEL[reason] ?? reason}: ${n}`)
+    .join(' · ');
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat label="Persons" value={metrics.persons.total.toLocaleString()} />
+        <Stat label="MPI coverage" value={metrics.mpiCoverage.personsWithMaster.toLocaleString()} />
+        <Stat label="Open reviews" value={metrics.reviewQueue.open} tone={metrics.reviewQueue.open > 0 ? 'warn' : 'default'} />
+        <Stat label="Provisional" value={metrics.persons.provisional} tone={metrics.persons.provisional > 0 ? 'warn' : 'default'} />
+        <Stat label="Merges / un-merges" value={`${metrics.merges.merged} / ${metrics.merges.unmerged}`} />
+        <Stat label="Potential dups" value={metrics.potentialDuplicates} tone={metrics.potentialDuplicates > 0 ? 'warn' : 'default'} />
+      </div>
+      {metrics.reviewQueue.open > 0 && (
+        <p className="text-xs text-muted-foreground">Queue: {reviewByReason}</p>
       )}
     </div>
   );

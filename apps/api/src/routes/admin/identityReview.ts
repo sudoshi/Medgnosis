@@ -12,6 +12,7 @@ import {
   mergeReview,
   unmergeMerge,
 } from '../../services/identity/identityReview.js';
+import { getEmpiMetrics } from '../../services/identity/empiMetrics.js';
 
 function stewardId(req: FastifyRequest): string {
   return req.user?.email ?? req.user?.sub ?? 'unknown';
@@ -22,6 +23,11 @@ function badRequest(reply: FastifyReply, message: string) {
 }
 
 export default async function identityReviewRoutes(app: FastifyInstance) {
+  app.get('/metrics', async () => {
+    const metrics = await getEmpiMetrics();
+    return { success: true, data: { metrics } };
+  });
+
   app.get('/reviews', async () => {
     const reviews = await listOpenReviews();
     return { success: true, data: { reviews } };
