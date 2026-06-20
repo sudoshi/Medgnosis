@@ -70,6 +70,62 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
             searchParam: [{ name: 'patient', type: 'reference' }],
           },
           {
+            type: 'DiagnosticReport',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'DocumentReference',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-documentreference',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'ServiceRequest',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-servicerequest',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'CarePlan',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-careplan',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'CareTeam',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'Goal',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-goal',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
+            type: 'Coverage',
+            interaction: [{ code: 'read' }, { code: 'search-type' }],
+            supportedProfile: [
+              'http://hl7.org/fhir/us/core/StructureDefinition/us-core-coverage',
+            ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
+          },
+          {
             type: 'ValueSet',
             interaction: [],
             operation: [

@@ -60,6 +60,23 @@ describe('buildCapabilityStatement', () => {
     }
   });
 
+  it('advertises the expanded ingestion resource coverage with patient search', () => {
+    for (const type of [
+      'DiagnosticReport',
+      'DocumentReference',
+      'ServiceRequest',
+      'CarePlan',
+      'CareTeam',
+      'Goal',
+      'Coverage',
+    ]) {
+      const entry = byType.get(type);
+      expect(entry, `${type} should be advertised`).toBeDefined();
+      expect(entry?.interaction?.map((i) => i.code)).toContain('search-type');
+      expect(entry?.searchParam?.some((p) => p.name === 'patient')).toBe(true);
+    }
+  });
+
   it('exposes ValueSet terminology operations', () => {
     const valueSet = server.resource.find((r) => r.type === 'ValueSet') as
       | (CapResource & { operation?: Array<{ name: string }> })

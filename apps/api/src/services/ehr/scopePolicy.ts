@@ -8,6 +8,13 @@ export const DEFAULT_PATIENT_LAUNCH_RESOURCES = [
   'MedicationRequest',
   'AllergyIntolerance',
   'Procedure',
+  'DiagnosticReport',
+  'DocumentReference',
+  'ServiceRequest',
+  'CarePlan',
+  'CareTeam',
+  'Goal',
+  'Coverage',
 ] as const;
 
 export const DEFAULT_BACKEND_SERVICE_RESOURCES = [
@@ -19,6 +26,13 @@ export const DEFAULT_BACKEND_SERVICE_RESOURCES = [
   'AllergyIntolerance',
   'Procedure',
   'Immunization',
+  'DiagnosticReport',
+  'DocumentReference',
+  'ServiceRequest',
+  'CarePlan',
+  'CareTeam',
+  'Goal',
+  'Coverage',
 ] as const;
 
 export function buildPatientLaunchScopes(options: Omit<ScopePolicyRequest, 'mode'> = {}): string[] {
