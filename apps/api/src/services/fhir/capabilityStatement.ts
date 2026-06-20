@@ -10,6 +10,7 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
     status: 'active',
     date: new Date().toISOString(),
     kind: 'instance',
+    software: { name: 'Medgnosis FHIR R4 API', version: '1.0.0' },
     implementation: { description: 'Medgnosis FHIR R4 API', url: fhirBaseUrl },
     fhirVersion: '4.0.1',
     format: ['json'],
@@ -19,6 +20,23 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
     rest: [
       {
         mode: 'server',
+        // Token-based (OAuth2 bearer) — this is an app-authenticated facade, not
+        // a SMART-launchable server, so SMART launch URIs are intentionally not declared.
+        security: {
+          cors: true,
+          service: [
+            {
+              coding: [
+                {
+                  system: 'http://terminology.hl7.org/CodeSystem/restful-security-service',
+                  code: 'OAuth',
+                  display: 'OAuth',
+                },
+              ],
+              text: 'OAuth2 bearer token',
+            },
+          ],
+        },
         resource: [
           {
             type: 'Patient',
@@ -33,6 +51,7 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns',
             ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
           },
           {
             type: 'Observation',
@@ -40,6 +59,7 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-clinical-result',
             ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
           },
           {
             type: 'MedicationRequest',
@@ -47,6 +67,7 @@ export function buildCapabilityStatement(fhirBaseUrl: string) {
             supportedProfile: [
               'http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest',
             ],
+            searchParam: [{ name: 'patient', type: 'reference' }],
           },
           {
             type: 'ValueSet',
