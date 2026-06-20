@@ -285,7 +285,7 @@ describe('buildBulkExportRequest', () => {
 });
 
 describe('kickoffBulkExport', () => {
-  it('posts a respond-async kickoff and stores only job metadata', async () => {
+  it('sends a respond-async GET kickoff and stores only job metadata', async () => {
     const fetchMock = vi.fn<FetchLike>().mockResolvedValue(
       jsonResponse(null, 202, {
         'content-location': 'https://ehr.example.test/bulk/status/abc',
@@ -316,9 +316,9 @@ describe('kickoffBulkExport', () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(new URL(url).pathname).toBe('/fhir/R4/Group/group-1/$export');
     expect(init).toMatchObject({
-      method: 'POST',
+      method: 'GET',
       headers: {
-        accept: 'application/fhir+json, application/json',
+        accept: 'application/fhir+json',
         authorization: 'Bearer raw-bulk-token',
         prefer: 'respond-async',
       },

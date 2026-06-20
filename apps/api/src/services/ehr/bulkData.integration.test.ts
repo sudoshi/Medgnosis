@@ -146,7 +146,7 @@ async function startMockBulkServer(): Promise<MockBulkServer> {
       authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : null,
     });
 
-    if (method === 'POST' && url.startsWith('/fhir/R4/Group/group-1/$export')) {
+    if (method === 'GET' && url.startsWith('/fhir/R4/Group/group-1/$export')) {
       writeText(res, 202, '', {
         'content-location': `${baseUrl}/bulk/status/abc`,
         'retry-after': '1',
@@ -403,7 +403,7 @@ describe('Bulk Data mock server integration', () => {
       }));
       expect(canceledJob.status).toBe('canceled');
       expect(server.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ method: 'POST', url: expect.stringContaining('/$export') }),
+        expect.objectContaining({ method: 'GET', url: expect.stringContaining('/$export') }),
         expect.objectContaining({ method: 'GET', url: '/bulk/status/abc' }),
         expect.objectContaining({ method: 'GET', url: '/bulk/observation.ndjson' }),
         expect.objectContaining({ method: 'DELETE', url: '/bulk/status/abc' }),

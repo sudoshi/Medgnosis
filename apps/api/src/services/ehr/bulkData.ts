@@ -396,10 +396,15 @@ export async function kickoffBulkExport(input: KickoffBulkExportInput): Promise<
     throw new BulkDataError('bulk_fetch_unavailable', 'Bulk Data kickoff requires a fetch implementation', 500);
   }
 
+  // FHIR Bulk Data kickoff with parameters in the query string uses GET (the
+  // POST form requires a Parameters resource body, which we do not send). Epic
+  // returns 405 for POST on Group/[id]/$export.
   const response = await fetchImpl(request.requestUrl, {
-    method: 'POST',
+    method: 'GET',
     headers: {
-      accept: 'application/fhir+json, application/json',
+      // Bulk Data kickoff SHALL send Accept: application/fhir+json (a single
+      // value); Epic rejects a multi-value Accept with HTTP 400.
+      accept: 'application/fhir+json',
       authorization: `${input.token.tokenType ?? 'Bearer'} ${input.token.accessToken}`,
       prefer: 'respond-async',
     },
