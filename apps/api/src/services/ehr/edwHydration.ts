@@ -153,6 +153,72 @@ export async function hydrateStagedRunToEdw(
   return result;
 }
 
+const DEFAULT_DRAIN_BATCH = 500;
+const MAX_DRAIN_BATCHES = 2000;
+
+export interface DrainStagedRunToEdwDeps {
+  hydrateStagedRunToEdw: typeof hydrateStagedRunToEdw;
+}
+
+/**
+ * Drains all hydratable staged resources for an ingest run into the EDW by
+ * looping hydrateStagedRunToEdw in bounded batches until staging is exhausted.
+ * Each batch only sees not-yet-EDW-hydrated rows (the crosswalk-exclusion in
+ * findHydratableStagedResources), so the loop advances, bounds memory per batch,
+ * and resumes cleanly if a prior run was interrupted. This is the bulk-import
+ * path; the SMART-launch path keeps calling hydrateStagedRunToEdw directly.
+ */
+export async function drainStagedRunToEdw(
+  input: HydrateStagedRunToEdwInput,
+  deps: Partial<DrainStagedRunToEdwDeps> = {},
+): Promise<HydrateStagedRunToEdwResult> {
+  const hydrate = deps.hydrateStagedRunToEdw ?? hydrateStagedRunToEdw;
+  const batchSize = Math.max(1, Math.min(input.limit ?? DEFAULT_DRAIN_BATCH, MAX_LIMIT));
+  const total = emptyHydrationResult();
+
+  for (let batch = 0; batch < MAX_DRAIN_BATCHES; batch += 1) {
+    const pass = await hydrate({ ...input, limit: batchSize });
+    mergeHydrationResults(total, pass);
+    if (pass.resourcesSeen === 0) break; // staging drained
+    if (pass.resourcesHydrated === 0) break; // only skip/fail rows remain — no further progress
+  }
+
+  return total;
+}
+
+function emptyHydrationResult(): HydrateStagedRunToEdwResult {
+  return {
+    resourcesSeen: 0,
+    resourcesHydrated: 0,
+    resourcesSkipped: 0,
+    resourcesFailed: 0,
+    rowsInserted: 0,
+    rowsUpdated: 0,
+    byResourceType: {},
+    errors: [],
+  };
+}
+
+function mergeHydrationResults(
+  total: HydrateStagedRunToEdwResult,
+  pass: HydrateStagedRunToEdwResult,
+): void {
+  total.resourcesSeen += pass.resourcesSeen;
+  total.resourcesHydrated += pass.resourcesHydrated;
+  total.resourcesSkipped += pass.resourcesSkipped;
+  total.resourcesFailed += pass.resourcesFailed;
+  total.rowsInserted += pass.rowsInserted;
+  total.rowsUpdated += pass.rowsUpdated;
+  total.errors.push(...pass.errors);
+  for (const [type, counts] of Object.entries(pass.byResourceType)) {
+    const acc = (total.byResourceType[type] ??= { seen: 0, hydrated: 0, skipped: 0, failed: 0 });
+    acc.seen += counts.seen;
+    acc.hydrated += counts.hydrated;
+    acc.skipped += counts.skipped;
+    acc.failed += counts.failed;
+  }
+}
+
 async function findHydratableStagedResources(
   input: HydrateStagedRunToEdwInput,
 ): Promise<StagedFhirResourceRow[]> {
@@ -176,12 +242,26 @@ async function findHydratableStagedResources(
            source_last_updated::text AS source_last_updated,
            content_hash,
            received_at::text AS received_at
-    FROM phm_edw.fhir_ingest_staging
+    FROM phm_edw.fhir_ingest_staging s
     WHERE ingest_run_id = ${input.ingestRunId}::uuid
       AND resource_type = ANY(${resourceTypes}::text[])
       AND status IN ('staged', 'normalized')
       AND (${tenantFilter}::bigint IS NULL OR ehr_tenant_id = ${tenantFilter})
       AND (${orgFilter}::int IS NULL OR org_id IS NOT DISTINCT FROM ${orgFilter})
+      -- Skip rows already hydrated into an EDW clinical table at the current
+      -- content hash. The crosswalk distinguishes a real EDW local_table from
+      -- phm_edw.qdm_event (the QDM bridge's mapping), so this advances a batched
+      -- drain loop and makes re-imports idempotent while still re-hydrating rows
+      -- whose source content changed (hash mismatch).
+      AND NOT EXISTS (
+        SELECT 1 FROM phm_edw.ehr_resource_crosswalk x
+        WHERE x.ehr_tenant_id = s.ehr_tenant_id
+          AND x.resource_type = s.resource_type
+          AND x.ehr_resource_id = s.resource_id
+          AND x.local_table IS NOT NULL
+          AND x.local_table <> 'phm_edw.qdm_event'
+          AND x.hash IS NOT DISTINCT FROM s.content_hash
+      )
     ORDER BY CASE resource_type
                WHEN 'Patient' THEN 0
                WHEN 'Practitioner' THEN 1

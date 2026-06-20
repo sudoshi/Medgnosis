@@ -926,7 +926,7 @@ describe('importBulkExportJob', () => {
     const stageFhirResource = vi.fn()
       .mockResolvedValueOnce({ id: 1001 })
       .mockResolvedValueOnce({ id: 1002 });
-    const hydrateStagedRunToEdw = vi.fn().mockResolvedValue(bulkEdwHydration);
+    const drainStagedRunToEdw = vi.fn().mockResolvedValue(bulkEdwHydration);
     const finishIngestRun = vi.fn().mockResolvedValue({
       run: { ...bulkIngestRun, status: 'succeeded' },
       qdmBridge: bulkQdmBridge,
@@ -982,7 +982,7 @@ describe('importBulkExportJob', () => {
       fetchImpl: fetchMock,
       startIngestRun,
       stageFhirResource,
-      hydrateStagedRunToEdw,
+      drainStagedRunToEdw,
       finishIngestRun,
     });
 
@@ -1004,11 +1004,10 @@ describe('importBulkExportJob', () => {
       }),
     );
     expect(stageFhirResource).toHaveBeenCalledTimes(2);
-    expect(hydrateStagedRunToEdw).toHaveBeenCalledWith({
+    expect(drainStagedRunToEdw).toHaveBeenCalledWith({
       orgId: 7,
       ehrTenantId: 42,
       ingestRunId: bulkIngestRun.id,
-      limit: 2,
     });
     expect(finishIngestRun).toHaveBeenCalledWith(expect.objectContaining({
       id: bulkIngestRun.id,
@@ -1053,7 +1052,7 @@ describe('importBulkExportJob', () => {
     }));
     const startIngestRun = vi.fn().mockResolvedValue(bulkIngestRun);
     const stageFhirResource = vi.fn().mockResolvedValue({ id: 1001 });
-    const hydrateStagedRunToEdw = vi.fn().mockResolvedValue(bulkEdwHydration);
+    const drainStagedRunToEdw = vi.fn().mockResolvedValue(bulkEdwHydration);
     const finishIngestRun = vi.fn().mockResolvedValue({
       run: { ...bulkIngestRun, status: 'succeeded' },
       qdmBridge: null,
@@ -1092,7 +1091,7 @@ describe('importBulkExportJob', () => {
       fetchImpl: fetchMock,
       startIngestRun,
       stageFhirResource,
-      hydrateStagedRunToEdw,
+      drainStagedRunToEdw,
       finishIngestRun,
     });
 
@@ -1139,7 +1138,7 @@ describe('importBulkExportJob', () => {
     }));
     const startIngestRun = vi.fn().mockResolvedValue(bulkIngestRun);
     const stageFhirResource = vi.fn().mockResolvedValue({ id: 1001 });
-    const hydrateStagedRunToEdw = vi.fn();
+    const drainStagedRunToEdw = vi.fn();
     const finishIngestRun = vi.fn();
     const failIngestRun = vi.fn().mockResolvedValue({ ...bulkIngestRun, status: 'failed' });
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
@@ -1173,7 +1172,7 @@ describe('importBulkExportJob', () => {
       fetchImpl: fetchMock,
       startIngestRun,
       stageFhirResource,
-      hydrateStagedRunToEdw,
+      drainStagedRunToEdw,
       finishIngestRun,
       failIngestRun,
     });
@@ -1187,7 +1186,7 @@ describe('importBulkExportJob', () => {
       checksumSha256: actualChecksum,
     });
     expect(result.files[0]?.errorMessage).toContain('checksum mismatch');
-    expect(hydrateStagedRunToEdw).not.toHaveBeenCalled();
+    expect(drainStagedRunToEdw).not.toHaveBeenCalled();
     expect(finishIngestRun).not.toHaveBeenCalled();
     expect(failIngestRun).toHaveBeenCalledWith(expect.objectContaining({
       resourcesReceived: 1,
@@ -1215,7 +1214,7 @@ describe('importBulkExportJob', () => {
     );
     const startIngestRun = vi.fn().mockResolvedValue(bulkIngestRun);
     const stageFhirResource = vi.fn();
-    const hydrateStagedRunToEdw = vi.fn().mockResolvedValue(null);
+    const drainStagedRunToEdw = vi.fn().mockResolvedValue(null);
     const finishIngestRun = vi.fn();
     const failIngestRun = vi.fn().mockResolvedValue({ ...bulkIngestRun, status: 'failed' });
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
@@ -1262,7 +1261,7 @@ describe('importBulkExportJob', () => {
       fetchImpl: fetchMock,
       startIngestRun,
       stageFhirResource,
-      hydrateStagedRunToEdw,
+      drainStagedRunToEdw,
       finishIngestRun,
       failIngestRun,
     });
@@ -1294,7 +1293,7 @@ describe('importBulkExportJob', () => {
       run: { ...bulkIngestRun, status: 'succeeded' },
       qdmBridge: null,
     });
-    const hydrateStagedRunToEdw = vi.fn();
+    const drainStagedRunToEdw = vi.fn();
     const stageFhirResource = vi.fn();
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
       const text = strings.join('');
@@ -1334,7 +1333,7 @@ describe('importBulkExportJob', () => {
       resumeFailedOnly: true,
       startIngestRun,
       stageFhirResource,
-      hydrateStagedRunToEdw,
+      drainStagedRunToEdw,
       finishIngestRun,
     });
 
@@ -1349,7 +1348,7 @@ describe('importBulkExportJob', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stageFhirResource).not.toHaveBeenCalled();
-    expect(hydrateStagedRunToEdw).not.toHaveBeenCalled();
+    expect(drainStagedRunToEdw).not.toHaveBeenCalled();
     expect(finishIngestRun).toHaveBeenCalledWith(expect.objectContaining({
       id: bulkIngestRun.id,
       resourcesReceived: 0,

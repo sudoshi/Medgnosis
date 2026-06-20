@@ -247,7 +247,7 @@ describe('Bulk Data mock server integration', () => {
     };
     const fetchImpl = globalThis.fetch.bind(globalThis) as FetchLike;
     const stageFhirResource = vi.fn().mockResolvedValue({ id: 'stage-1' });
-    const hydrateStagedRunToEdw = vi.fn().mockResolvedValue({
+    const drainStagedRunToEdw = vi.fn().mockResolvedValue({
       resourcesSeen: 1,
       resourcesHydrated: 1,
       resourcesSkipped: 0,
@@ -364,7 +364,7 @@ describe('Bulk Data mock server integration', () => {
             ...input,
             startIngestRun: vi.fn().mockResolvedValue(ingestRunRow('running')),
             stageFhirResource,
-            hydrateStagedRunToEdw,
+            drainStagedRunToEdw,
             finishIngestRun,
           }),
         },

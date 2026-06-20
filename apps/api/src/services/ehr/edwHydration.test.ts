@@ -29,6 +29,7 @@ import {
   upsertLocationFromReference,
   softDeleteLocalRow,
   softDeleteByCrosswalk,
+  drainStagedRunToEdw,
 } from './edwHydration.js';
 
 beforeEach(() => {
@@ -1059,5 +1060,48 @@ describe('standalone reference-dimension hydration', () => {
     const result = await hydrateStagedRunToEdw({ ingestRunId });
 
     expect(result.byResourceType['Location']).toMatchObject({ hydrated: 1 });
+  });
+});
+
+describe('drainStagedRunToEdw', () => {
+  function page(over: Partial<{
+    resourcesSeen: number; resourcesHydrated: number; resourcesSkipped: number; resourcesFailed: number;
+    rowsInserted: number; rowsUpdated: number; byResourceType: Record<string, { seen: number; hydrated: number; skipped: number; failed: number }>;
+  }>) {
+    return {
+      resourcesSeen: 0, resourcesHydrated: 0, resourcesSkipped: 0, resourcesFailed: 0,
+      rowsInserted: 0, rowsUpdated: 0, byResourceType: {}, errors: [], ...over,
+    };
+  }
+
+  it('loops hydration in bounded batches until staging drains, merging results', async () => {
+    const pages = [
+      page({ resourcesSeen: 500, resourcesHydrated: 500, rowsInserted: 500, byResourceType: { Observation: { seen: 500, hydrated: 500, skipped: 0, failed: 0 } } }),
+      page({ resourcesSeen: 300, resourcesHydrated: 300, rowsInserted: 280, rowsUpdated: 20, byResourceType: { DocumentReference: { seen: 300, hydrated: 300, skipped: 0, failed: 0 } } }),
+      page({ resourcesSeen: 0 }),
+    ];
+    const hydrate = vi.fn().mockImplementation(() => Promise.resolve(pages.shift()));
+
+    const total = await drainStagedRunToEdw({ ingestRunId, ehrTenantId: 42 }, { hydrateStagedRunToEdw: hydrate as never });
+
+    expect(hydrate).toHaveBeenCalledTimes(3);
+    expect(hydrate).toHaveBeenCalledWith(expect.objectContaining({ ingestRunId, ehrTenantId: 42, limit: 500 }));
+    expect(total.resourcesHydrated).toBe(800);
+    expect(total.rowsInserted).toBe(780);
+    expect(total.rowsUpdated).toBe(20);
+    expect(total.byResourceType['Observation']).toMatchObject({ hydrated: 500 });
+    expect(total.byResourceType['DocumentReference']).toMatchObject({ hydrated: 300 });
+  });
+
+  it('stops without looping forever when a batch makes no progress (only skip/fail remain)', async () => {
+    const hydrate = vi.fn().mockResolvedValue(
+      page({ resourcesSeen: 10, resourcesHydrated: 0, resourcesSkipped: 10, byResourceType: { Observation: { seen: 10, hydrated: 0, skipped: 10, failed: 0 } } }),
+    );
+
+    const total = await drainStagedRunToEdw({ ingestRunId, ehrTenantId: 42 }, { hydrateStagedRunToEdw: hydrate as never });
+
+    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(total.resourcesSkipped).toBe(10);
+    expect(total.resourcesHydrated).toBe(0);
   });
 });

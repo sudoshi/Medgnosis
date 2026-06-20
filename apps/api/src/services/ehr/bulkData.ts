@@ -19,7 +19,7 @@ import {
   type EhrIngestRun,
 } from './ingestRuns.js';
 import {
-  hydrateStagedRunToEdw as hydrateStagedRunToEdwDefault,
+  drainStagedRunToEdw as drainStagedRunToEdwDefault,
   softDeleteByCrosswalk as softDeleteByCrosswalkDefault,
   type HydrateStagedRunToEdwResult,
 } from './edwHydration.js';
@@ -117,7 +117,7 @@ export interface ImportBulkExportJobInput {
   startIngestRun?: typeof startIngestRunDefault;
   finishIngestRun?: typeof finishIngestRunWithQdmBridgeDefault;
   failIngestRun?: typeof failIngestRunDefault;
-  hydrateStagedRunToEdw?: typeof hydrateStagedRunToEdwDefault;
+  drainStagedRunToEdw?: typeof drainStagedRunToEdwDefault;
   softDeleteByCrosswalk?: typeof softDeleteByCrosswalkDefault;
 }
 
@@ -866,7 +866,7 @@ export async function importBulkExportJob(
   const startIngestRun = input.startIngestRun ?? startIngestRunDefault;
   const finishIngestRun = input.finishIngestRun ?? finishIngestRunWithQdmBridgeDefault;
   const failIngestRun = input.failIngestRun ?? failIngestRunDefault;
-  const hydrateStagedRunToEdw = input.hydrateStagedRunToEdw ?? hydrateStagedRunToEdwDefault;
+  const drainStagedRunToEdw = input.drainStagedRunToEdw ?? drainStagedRunToEdwDefault;
   const stageFhirResource = input.stageFhirResource ?? stageFhirResourceDefault;
   const softDeleteByCrosswalk = input.softDeleteByCrosswalk ?? softDeleteByCrosswalkDefault;
 
@@ -909,11 +909,10 @@ export async function importBulkExportJob(
   const resourcesFailed = files.reduce((sum, file) => sum + file.errorCount, 0);
 
   const edwHydration = resourcesStaged > 0 && resourcesFailed === 0
-    ? await hydrateStagedRunToEdw({
+    ? await drainStagedRunToEdw({
         orgId: input.tenant.orgId ?? input.job.orgId ?? null,
         ehrTenantId: input.tenant.id,
         ingestRunId: ingestRun.id,
-        limit: Math.max(resourcesStaged, 1),
       })
     : null;
   const deletions = (manifest.deleted?.length ?? 0) > 0
