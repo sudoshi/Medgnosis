@@ -3,7 +3,7 @@
 - **Date:** 2026-06-20
 - **Branch:** `feature/fhir-edw-ingestion-expansion` (10 commits, not yet merged)
 - **Plan:** `docs/superpowers/plans/2026-06-20-fhir-edw-ingestion-expansion.md`
-- **Status:** Phases A–G1 + E2 COMPLETE, verified (full suite 777 passed), merged + pushed to `origin/main`. Epic sandbox re-onboarded (tenant 2) and verified live end-to-end (token exchange + authenticated FHIR reads incl. new resource types). Only optional QI-Core builders remain.
+- **Status:** Phases A–G1 + E2 + QI-Core builders COMPLETE, verified (full suite 781 passed), merged + pushed to `origin/main`. Epic sandbox re-onboarded (tenant 2), verified live end-to-end, and exercised with a **real Bulk `$export`** (2897 resources) that found + fixed 3 spec/correctness defects (GET kickoff, single Accept, hydration cap) and surfaced 1 throughput follow-up. New EDW tables populated from real Epic data.
 
 ## Sequence-drift investigation (2026-06-20)
 
@@ -45,9 +45,21 @@ Live end-to-end proof (backend `private_key_jwt` token via our JWKS → authenti
 
 The full ingestion chain is therefore live: token → FHIR read/`$export` → stage → hydrate into `phm_edw` for all 15 resource types.
 
+## Real Bulk `$export` integrity test (2026-06-20)
+
+Ran a real group `$export` against the Epic sandbox group `e3iabhmS8rsueyz7vaimuiaSmfGvi.QwjVXJANlPOgR83` (types incl. the new ones). End-to-end: kickoff → async poll → manifest → download → stage → hydrate. **2897 resources staged, 0 failures** (DiagnosticReport=9, DocumentReference=399, Goal=14, Observation=2395, …); QDM normalized 2880. The test surfaced four defects the unit suite could not — three fixed, one documented:
+
+1. **Kickoff used `POST` → Epic 405** (commit `250e561`). The URL-parameter kickoff form must be `GET`; POST requires a `Parameters` resource body we don't send.
+2. **`Accept: application/fhir+json, application/json` → Epic 400** (commit `250e561`). The Bulk Data IG mandates the single value `application/fhir+json`.
+3. **`MAX_LIMIT=500` silently truncated EDW hydration** (commit `3031694`). The import passes the full staged count, but the cap stopped at 500 — Patient-first ordering filled it with Patient/Encounter/Condition/Observation, so DiagnosticReport/DocumentReference/Goal never hydrated. Raised to 50000. **Verified live:** re-hydrating the staged run populated `diagnostic_report`=9, `document_reference`=399, Goal `care_plan_item`=14 (all 0 before), `failed=0`.
+4. **Hydration throughput (FOLLOW-UP, not yet fixed).** `hydrateStagedRunToEdw` processes each resource in its own `sql.begin` transaction (plus a per-Observation vital-sign fold); 2897 resources did not finish within ~9.5 min. Realistic group exports need batched draining in the import worker (chunk staged rows, commit in batches, and/or exclude already-EDW-hydrated rows via the crosswalk so a true drain loop can advance — the crosswalk already distinguishes EDW `local_table` from `phm_edw.qdm_event`, so the exclusion is straightforward). Raising `MAX_LIMIT` removed the correctness cap; this addresses the performance ceiling.
+
+Crosswalk ownership verified clean (no EDW/QDM conflict): EDW-hydrated resources own their clinical `local_table`; the rest point at `phm_edw.qdm_event`.
+
 ## Follow-ups (remaining)
 
-1. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
+1. **Bulk hydration throughput / batched drain** (finding #4 above) — the highest-value next item for production-scale exports.
+2. **QI-Core builders for new QDM datatypes** — DONE (commit `1ed0a1e`): DiagnosticReport/ServiceRequest/DocumentReference→Communication/Goal projections + profile canonicals.
 
 ## Honest scope notes (carried from the plan)
 
