@@ -312,6 +312,18 @@ async function hydrateEncounter(
   const reason = truncateNullable(conceptLabel(firstConcept(resource['reasonCode'])), 255);
   const status = truncateNullable(cleanString(resource['status']), 50);
   const orgId = optionalPositiveNumber(row.org_id);
+  const participantRef = referenceId(
+    firstRecord(resource['participant'])?.['individual'] ?? resource['participant'],
+    'Practitioner',
+  );
+  const providerId =
+    (await resolveProviderId(tx, row, participantRef))
+    ?? (await upsertProviderFromReference(tx, containedResource(resource, 'Practitioner', participantRef)));
+  const serviceOrgRef = referenceId(resource['serviceProvider'], 'Organization');
+  const resolvedOrgId =
+    (await resolveOrgId(tx, row, serviceOrgRef))
+    ?? (await upsertOrganizationFromReference(tx, containedResource(resource, 'Organization', serviceOrgRef)))
+    ?? orgId;
 
   if (existing.localTable === 'phm_edw.encounter' && existing.localId !== null) {
     const rows = await tx.unsafe<{ encounter_id: number | string }[]>(
@@ -319,13 +331,14 @@ async function hydrateEncounter(
       UPDATE phm_edw.encounter
       SET patient_id = $2,
           org_id = $3,
-          encounter_number = $4,
-          encounter_type = $5,
-          encounter_reason = $6,
-          admission_datetime = $7::timestamp,
-          discharge_datetime = $8::timestamp,
-          encounter_datetime = $9::timestamp,
-          status = $10,
+          provider_id = $4,
+          encounter_number = $5,
+          encounter_type = $6,
+          encounter_reason = $7,
+          admission_datetime = $8::timestamp,
+          discharge_datetime = $9::timestamp,
+          encounter_datetime = $10::timestamp,
+          status = $11,
           updated_date = NOW()
       WHERE encounter_id = $1
       RETURNING encounter_id
@@ -333,7 +346,8 @@ async function hydrateEncounter(
       [
         existing.localId,
         patientId,
-        orgId,
+        resolvedOrgId,
+        providerId,
         truncate(row.resource_id, 50),
         encounterType,
         reason,
@@ -349,15 +363,16 @@ async function hydrateEncounter(
   const rows = await tx.unsafe<{ encounter_id: number | string }[]>(
     `
     INSERT INTO phm_edw.encounter
-      (patient_id, org_id, encounter_number, encounter_type, encounter_reason,
+      (patient_id, org_id, provider_id, encounter_number, encounter_type, encounter_reason,
        admission_datetime, discharge_datetime, encounter_datetime, status,
        active_ind, created_date, updated_date)
-    VALUES ($1, $2, $3, $4, $5, $6::timestamp, $7::timestamp, $8::timestamp, $9, 'Y', NOW(), NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7::timestamp, $8::timestamp, $9::timestamp, $10, 'Y', NOW(), NOW())
     RETURNING encounter_id
     `,
     [
       patientId,
-      orgId,
+      resolvedOrgId,
+      providerId,
       truncate(row.resource_id, 50),
       encounterType,
       reason,
@@ -835,6 +850,37 @@ async function resolveEncounterId(
   return optionalPositiveNumber(rows[0]?.local_id);
 }
 
+async function resolveProviderId(tx: Tx, row: StagedFhirResourceRow, ref: string | null): Promise<number | null> {
+  if (!ref) return null;
+  const rows = await tx.unsafe<Array<{ local_id: number | string | null }>>(
+    `SELECT local_id FROM phm_edw.ehr_resource_crosswalk
+     WHERE ehr_tenant_id = $1 AND resource_type = 'Practitioner' AND ehr_resource_id = $2
+       AND local_table = 'phm_edw.provider' AND local_id IS NOT NULL
+     ORDER BY last_seen_at DESC LIMIT 1`,
+    [Number(row.ehr_tenant_id), ref],
+  );
+  return optionalPositiveNumber(rows[0]?.local_id);
+}
+
+async function resolveOrgId(tx: Tx, row: StagedFhirResourceRow, ref: string | null): Promise<number | null> {
+  if (!ref) return null;
+  const rows = await tx.unsafe<Array<{ local_id: number | string | null }>>(
+    `SELECT local_id FROM phm_edw.ehr_resource_crosswalk
+     WHERE ehr_tenant_id = $1 AND resource_type = 'Organization' AND ehr_resource_id = $2
+       AND local_table = 'phm_edw.organization' AND local_id IS NOT NULL
+     ORDER BY last_seen_at DESC LIMIT 1`,
+    [Number(row.ehr_tenant_id), ref],
+  );
+  return optionalPositiveNumber(rows[0]?.local_id);
+}
+
+function containedResource(resource: FhirResource, type: string, ref: string | null): FhirResource | null {
+  const contained = recordArray(resource['contained']).find(
+    (r) => cleanString(r['resourceType']) === type && (!ref || cleanString(r['id']) === ref),
+  );
+  return contained ? (contained as FhirResource) : null;
+}
+
 async function upsertConditionMaster(tx: Tx, row: StagedFhirResourceRow, code: CodeConcept): Promise<number> {
   const conditionCode = truncate(code.code ?? `FHIR-${row.resource_id}`, 50);
   const conditionName = truncate(conceptLabel(code) ?? conditionCode, 255);
@@ -950,6 +996,107 @@ async function upsertAllergyMaster(tx: Tx, row: StagedFhirResourceRow, code: Cod
     [allergyCode, allergyName, codeSystem, category],
   );
   return Number(inserted[0]!.allergy_id);
+}
+
+export async function upsertProviderFromReference(
+  tx: Tx,
+  practitioner: FhirResource | null,
+): Promise<number | null> {
+  if (!practitioner) return null;
+  const name = firstRecord(practitioner['name']);
+  const family = truncateNullable(cleanString(name?.['family']), 100);
+  const given = Array.isArray(name?.['given']) ? cleanString(name?.['given']?.[0]) : null;
+  const npi = practitionerNpi(practitioner);
+  if (!family && !npi) return null;
+
+  if (npi) {
+    const found = await tx.unsafe<Array<{ provider_id: number | string }>>(
+      `SELECT provider_id FROM phm_edw.provider WHERE npi_number = $1 ORDER BY provider_id LIMIT 1`,
+      [npi],
+    );
+    if (found[0]) return Number(found[0].provider_id);
+  }
+
+  const inserted = await tx.unsafe<Array<{ provider_id: number | string }>>(
+    `
+    INSERT INTO phm_edw.provider
+      (first_name, last_name, display_name, npi_number, active_ind, created_date, updated_date)
+    VALUES ($1, $2, $3, $4, 'Y', NOW(), NOW())
+    RETURNING provider_id
+    `,
+    [
+      truncate(given ?? 'Unknown', 100),
+      truncate(family ?? 'Unknown', 100),
+      truncateNullable(cleanString(name?.['text']) ?? joinName(given, family), 200),
+      npi,
+    ],
+  );
+  return Number(inserted[0]!.provider_id);
+}
+
+function practitionerNpi(resource: FhirResource): string | null {
+  const identifiers = recordArray(resource['identifier']);
+  const npi = identifiers.find((id) => cleanString(id['system'])?.includes('us-npi'));
+  return truncateNullable(cleanString(npi?.['value']), 50);
+}
+
+function joinName(given: string | null, family: string | null): string | null {
+  const parts = [given, family].filter((p): p is string => Boolean(p));
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+export async function upsertOrganizationFromReference(
+  tx: Tx,
+  organization: FhirResource | null,
+): Promise<number | null> {
+  if (!organization) return null;
+  const name = truncateNullable(cleanString(organization['name']), 200);
+  if (!name) return null;
+  const orgType = truncateNullable(conceptLabel(firstConcept(organization['type'])), 50);
+
+  const found = await tx.unsafe<Array<{ org_id: number | string }>>(
+    `SELECT org_id FROM phm_edw.organization WHERE organization_name = $1 ORDER BY org_id LIMIT 1`,
+    [name],
+  );
+  if (found[0]) return Number(found[0].org_id);
+
+  const inserted = await tx.unsafe<Array<{ org_id: number | string }>>(
+    `
+    INSERT INTO phm_edw.organization
+      (organization_name, organization_type, active_ind, created_date, updated_date)
+    VALUES ($1, $2, 'Y', NOW(), NOW())
+    RETURNING org_id
+    `,
+    [name, orgType],
+  );
+  return Number(inserted[0]!.org_id);
+}
+
+export async function upsertLocationFromReference(
+  tx: Tx,
+  location: FhirResource | null,
+): Promise<number | null> {
+  if (!location) return null;
+  const name = truncateNullable(cleanString(location['name']), 100);
+  if (!name) return null;
+  const physType = truncateNullable(conceptLabel(firstConcept(location['physicalType'])), 50) ?? 'location';
+
+  const found = await tx.unsafe<Array<{ resource_id: number | string }>>(
+    `SELECT resource_id FROM phm_edw.clinic_resource WHERE resource_name = $1 ORDER BY resource_id LIMIT 1`,
+    [name],
+  );
+  if (found[0]) return Number(found[0].resource_id);
+
+  const inserted = await tx.unsafe<Array<{ resource_id: number | string }>>(
+    `
+    INSERT INTO phm_edw.clinic_resource
+      (resource_name, resource_type, capacity, active_ind, created_date, updated_date)
+    VALUES ($1, $2, 0, 'Y', NOW(), NOW())
+    RETURNING resource_id
+    `,
+    [name, truncate(physType, 50)],
+  );
+  return Number(inserted[0]!.resource_id);
 }
 
 async function upsertResourceCrosswalk(

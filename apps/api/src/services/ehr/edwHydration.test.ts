@@ -22,7 +22,12 @@ const { mockSql } = vi.hoisted(() => {
 
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 
-import { hydrateStagedRunToEdw } from './edwHydration.js';
+import {
+  hydrateStagedRunToEdw,
+  upsertProviderFromReference,
+  upsertOrganizationFromReference,
+  upsertLocationFromReference,
+} from './edwHydration.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -356,6 +361,136 @@ describe('hydrateStagedRunToEdw', () => {
     expect(crosswalk).toEqual([
       { resourceType: 'Patient', localTable: 'phm_edw.patient', localId: 555, patientId: 555 },
     ]);
+  });
+});
+
+function mockTx(handler: (query: string) => unknown) {
+  return { unsafe: vi.fn(async (query: string) => handler(query)) } as never;
+}
+
+describe('reference dimension get-or-create', () => {
+  it('creates a provider then can reuse it by NPI', async () => {
+    const providerRows: unknown[] = [];
+    const tx = mockTx((q) => {
+      if (q.includes('SELECT provider_id FROM phm_edw.provider')) return providerRows;
+      if (q.includes('INSERT INTO phm_edw.provider')) return [{ provider_id: 55 }];
+      return [];
+    });
+    const practitioner = {
+      resourceType: 'Practitioner', id: 'prac-1',
+      identifier: [{ system: 'http://hl7.org/fhir/sid/us-npi', value: '1234567893' }],
+      name: [{ family: 'Wells', given: ['Sarah'] }],
+    } as unknown as FhirResource;
+    expect(await upsertProviderFromReference(tx, practitioner)).toBe(55);
+  });
+
+  it('reuses an existing provider by NPI without inserting', async () => {
+    const tx = mockTx((q) => {
+      if (q.includes('SELECT provider_id FROM phm_edw.provider')) return [{ provider_id: 42 }];
+      if (q.includes('INSERT INTO phm_edw.provider')) throw new Error('should not insert');
+      return [];
+    });
+    const practitioner = {
+      resourceType: 'Practitioner', id: 'prac-2',
+      identifier: [{ system: 'http://hl7.org/fhir/sid/us-npi', value: '1234567893' }],
+      name: [{ family: 'Wells', given: ['Sarah'] }],
+    } as unknown as FhirResource;
+    expect(await upsertProviderFromReference(tx, practitioner)).toBe(42);
+  });
+
+  it('creates an organization from name', async () => {
+    const tx = mockTx((q) => {
+      if (q.includes('SELECT org_id FROM phm_edw.organization')) return [];
+      if (q.includes('INSERT INTO phm_edw.organization')) return [{ org_id: 9 }];
+      return [];
+    });
+    const org = { resourceType: 'Organization', id: 'org-1', name: 'Mercy Clinic' } as unknown as FhirResource;
+    expect(await upsertOrganizationFromReference(tx, org)).toBe(9);
+  });
+
+  it('returns null for an organization without a name', async () => {
+    const tx = mockTx(() => []);
+    const org = { resourceType: 'Organization', id: 'org-2' } as unknown as FhirResource;
+    expect(await upsertOrganizationFromReference(tx, org)).toBeNull();
+  });
+
+  it('creates a clinic_resource from a Location', async () => {
+    const tx = mockTx((q) => {
+      if (q.includes('SELECT resource_id FROM phm_edw.clinic_resource')) return [];
+      if (q.includes('INSERT INTO phm_edw.clinic_resource')) return [{ resource_id: 3 }];
+      return [];
+    });
+    const loc = { resourceType: 'Location', id: 'loc-1', name: 'Room 4B' } as unknown as FhirResource;
+    expect(await upsertLocationFromReference(tx, loc)).toBe(3);
+  });
+
+  it('returns null for a location without a name', async () => {
+    const tx = mockTx(() => []);
+    const loc = { resourceType: 'Location', id: 'loc-2' } as unknown as FhirResource;
+    expect(await upsertLocationFromReference(tx, loc)).toBeNull();
+  });
+
+  it('returns null when practitioner has neither name nor NPI', async () => {
+    const tx = mockTx(() => []);
+    expect(await upsertProviderFromReference(tx, { resourceType: 'Practitioner' } as unknown as FhirResource)).toBeNull();
+  });
+
+  it('returns null for a null reference', async () => {
+    const tx = mockTx(() => []);
+    expect(await upsertProviderFromReference(tx, null)).toBeNull();
+    expect(await upsertOrganizationFromReference(tx, null)).toBeNull();
+    expect(await upsertLocationFromReference(tx, null)).toBeNull();
+  });
+});
+
+describe('hydrateEncounter provider/org backfill', () => {
+  it('resolves provider and serviceProvider crosswalks into the encounter insert params', async () => {
+    const encounterWithRefs: FhirResource = {
+      resourceType: 'Encounter',
+      id: 'enc-9',
+      status: 'finished',
+      type: [{ text: 'Office visit' }],
+      subject: { reference: 'Patient/pat-1' },
+      participant: [{ individual: { reference: 'Practitioner/prac-1' } }],
+      serviceProvider: { reference: 'Organization/org-1' },
+      period: { start: '2026-06-01T10:00:00Z', end: '2026-06-01T10:30:00Z' },
+    };
+
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) {
+        return Promise.resolve([stagedRow(1, 'Encounter', 'enc-9', encounterWithRefs)]);
+      }
+      if (text.includes('SELECT COALESCE(patient_id')) {
+        return Promise.resolve([{ patient_id: 123 }]);
+      }
+      if (text.includes('SELECT local_table, local_id')) {
+        return Promise.resolve([]);
+      }
+      if (text.includes("resource_type = 'Practitioner'") && text.includes("local_table = 'phm_edw.provider'")) {
+        return Promise.resolve([{ local_id: 88 }]);
+      }
+      if (text.includes("resource_type = 'Organization'") && text.includes("local_table = 'phm_edw.organization'")) {
+        return Promise.resolve([{ local_id: 77 }]);
+      }
+      if (text.includes('INSERT INTO phm_edw.encounter')) {
+        return Promise.resolve([{ encounter_id: 456 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId, ehrTenantId: 42, orgId: 7, limit: 10 });
+    expect(result).toMatchObject({ resourcesHydrated: 1, resourcesFailed: 0, rowsInserted: 1 });
+
+    const encounterInsert = mockSql.mock.calls.find((call) =>
+      (call[0] as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.encounter'),
+    );
+    expect(encounterInsert).toBeDefined();
+    // call[0] is the query strings array; positional params follow:
+    // call[1]=$1 patientId, call[2]=$2 resolvedOrgId, call[3]=$3 providerId
+    expect(encounterInsert?.[1]).toBe(123); // patientId
+    expect(encounterInsert?.[2]).toBe(77); // resolvedOrgId
+    expect(encounterInsert?.[3]).toBe(88); // providerId
   });
 });
 
