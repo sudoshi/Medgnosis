@@ -1,9 +1,13 @@
 # FHIR→EDW Ingestion Expansion — Closeout
 
 - **Date:** 2026-06-20
-- **Branch:** `feature/fhir-edw-ingestion-expansion` (8 commits, not yet merged)
+- **Branch:** `feature/fhir-edw-ingestion-expansion` (10 commits, not yet merged)
 - **Plan:** `docs/superpowers/plans/2026-06-20-fhir-edw-ingestion-expansion.md`
-- **Status:** Phases A, B, C, D, E1, F, and G's clean parts (scopes + CapabilityStatement) COMPLETE and verified. E2, G1, and the Epic re-onboard are precisely-specified follow-ups (below).
+- **Status:** Phases A, B, C, D, E1, F, G's clean parts (scopes + CapabilityStatement), and G1 (standalone dimension dispatch) COMPLETE and verified (full suite 772 passed). E2 and the Epic re-onboard remain as precisely-specified follow-ups (below).
+
+## Sequence-drift investigation (2026-06-20)
+
+While validating G1 against the live schema, a single `phm_edw.provider` insert collided (sequence 1 behind max). Thorough check accounting for `is_called`: `organization`/`clinic_resource`/`medication` are safe (`is_called=true`, next = max+1); `provider` was a transient 1-behind drift that the probe advanced past. **No remaining collision risk** for the hydrators' inserts. The rolled-back real-schema validation probes did non-transactionally advance a few sequence counters forward (e.g., `care_plan` 40→42) — harmless (forward-only; no data changed).
 
 ## What shipped (all gates green)
 
@@ -28,10 +32,9 @@ Each code phase was verified at three levels: (1) mockSql unit tests asserting e
 
 ## Follow-ups (deferred — specified, not started)
 
-1. **G1 — standalone reference-dimension dispatch** (`edwHydration.ts`). Today provider/org FKs on encounters only resolve when the Practitioner/Organization is a *contained* resource. Epic `$export` delivers them as *top-level* resources, so to populate `encounter.provider_id`/`org_id` from real bulk data we must: add `Practitioner`/`Organization`/`Location` to `SUPPORTED_RESOURCE_TYPES`; give them ORDER-BY ordinals **before** Encounter (renumber the ladder: Patient=0, Practitioner=1, Organization=2, Location=3, Encounter=4, …); add a non-patient dispatch branch in `hydrateStagedResource`; and widen `upsertResourceCrosswalk(patientId)` to `number | null` (bind null for dimensions). Intricate (signature change + ordinal renumber) — do as its own reviewed task. Plan task G1 has the exact code.
-2. **E2 — Bulk `deleted` manifest** (`bulkData.ts`, ~2000 lines). Parse the `$export` output's `deleted` entries (deletion Bundles), resolve each `ResourceType/id` against `ehr_resource_crosswalk`, and call the exported `softDeleteLocalRow` + crosswalk stamp. Add `softDeleteByCrosswalk` and wire it into the import-completion path (~`bulkData.ts:904`). Plan task E2 has the code.
-3. **Epic re-onboard + portal scopes** (operational, prod). Re-run `ehr:onboard` for tenant id=2 (command in `2026-06-20-epic-app-registration-prep.md`) to push the expanded backend/SMART scopes into the registry. Epic only grants scopes that are ALSO checked in the app portal — the human must select the new `system/*.rs` scopes for App A on `fhir.epic.com`. Gate this behind the token-exchange propagation already pending in the Epic registration work.
-4. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
+1. **E2 — Bulk `deleted` manifest** (`bulkData.ts`, ~2000 lines). Parse the `$export` output's `deleted` entries (deletion Bundles), resolve each `ResourceType/id` against `ehr_resource_crosswalk`, and call the exported `softDeleteLocalRow` + crosswalk stamp. Add `softDeleteByCrosswalk` and wire it into the import-completion path (~`bulkData.ts:904`). Plan task E2 has the code.
+2. **Epic re-onboard + portal scopes** (operational, prod). Re-run `ehr:onboard` for tenant id=2 (command in `2026-06-20-epic-app-registration-prep.md`) to push the expanded backend/SMART scopes into the registry. Epic only grants scopes that are ALSO checked in the app portal — the human must select the new `system/*.rs` scopes for App A on `fhir.epic.com`. Gate this behind the token-exchange propagation already pending in the Epic registration work.
+3. **QI-Core builders for new QDM datatypes** (`qdmToQiCore.ts`). The four new datatypes currently map to `null` (default) on the CQL/QI-Core path; the authoritative SQL measure path uses `qdm_event` directly and is fully covered. Add builders only if/when the CQL engine path needs them.
 
 ## Honest scope notes (carried from the plan)
 
