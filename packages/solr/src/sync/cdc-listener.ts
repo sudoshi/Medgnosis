@@ -67,6 +67,13 @@ const BATCH_MAX_DOCS = 500;
 const SOFT_COMMIT_INTERVAL_MS = 5_000;
 const HARD_COMMIT_INTERVAL_MS = 60_000;
 const DELTA_LOOKBACK_MINUTES = 15;
+// Hard ceiling on each per-table delta id-scan. phm_edw.observation is ~1B rows
+// (191GB) and has no index on updated_at, so its delta query is a full parallel
+// seq scan. Without this bound, every CDC (re)start would saturate the shared
+// NVMe — the same I/O that has tanked neighbouring prod. Tables that can't answer
+// the window query within this budget are skipped (the real-time NOTIFY path,
+// which fetches a single row by PK, still keeps them in sync going forward).
+const DELTA_STATEMENT_TIMEOUT_MS = 4000;
 
 // ---------------------------------------------------------------------------
 // State
@@ -428,12 +435,23 @@ async function deltaReindex(): Promise<void> {
     const pk = TABLE_PK_MAP[table];
     if (!core || !pk) continue;
 
-    // Query for recently updated rows
-    const rows = await sql.unsafe(
-      `SELECT ${pk} AS id FROM phm_edw.${table}
-       WHERE updated_at > NOW() - INTERVAL '${DELTA_LOOKBACK_MINUTES} minutes'
-       ORDER BY ${pk} ASC`,
-    );
+    // Query for recently updated rows, bounded by a statement timeout so a
+    // huge unindexed table (e.g. observation) aborts fast instead of scanning
+    // 191GB on the shared NVMe. A timed-out/failed table is skipped, not fatal.
+    let rows: Array<{ id: number }>;
+    try {
+      rows = (await sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL statement_timeout = '${DELTA_STATEMENT_TIMEOUT_MS}'`);
+        return tx.unsafe(
+          `SELECT ${pk} AS id FROM phm_edw.${table}
+           WHERE updated_at > NOW() - INTERVAL '${DELTA_LOOKBACK_MINUTES} minutes'
+           ORDER BY ${pk} ASC`,
+        );
+      })) as Array<{ id: number }>;
+    } catch (err) {
+      console.warn(`[cdc]   ${table}: delta scan skipped (${(err as Error).message})`);
+      continue;
+    }
 
     if (rows.length === 0) continue;
 

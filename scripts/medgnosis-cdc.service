@@ -1,0 +1,23 @@
+[Unit]
+Description=Medgnosis Solr CDC Listener (Production)
+After=network.target postgresql.service redis-server.service medgnosis-api.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=smudoshi
+Group=smudoshi
+WorkingDirectory=/home/smudoshi/Github/Medgnosis
+EnvironmentFile=/home/smudoshi/Github/Medgnosis/.env.production
+ExecStart=/usr/bin/node packages/solr/dist/sync/cdc-listener.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=medgnosis-cdc
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/smudoshi/Github/Medgnosis
+
+[Install]
+WantedBy=multi-user.target
