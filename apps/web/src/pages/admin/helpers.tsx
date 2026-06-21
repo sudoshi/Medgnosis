@@ -17,8 +17,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  ArrowUpRight,
 } from 'lucide-react';
 import type { ElementType } from 'react';
+import { Link } from 'react-router-dom';
 
 // ─── Tab config ──────────────────────────────────────────────────────────────
 
@@ -54,11 +56,13 @@ export function fmtDateTime(s: string | null) {
 
 // ─── MetricCard ──────────────────────────────────────────────────────────────
 
-export function MetricCard({ label, value, sub, color = 'teal' }: {
+export function MetricCard({ label, value, sub, color = 'teal', to }: {
   label: string;
   value: string | number | null;
   sub?: string;
   color?: 'teal' | 'amber' | 'crimson' | 'emerald';
+  /** When set, the whole card becomes a link into the corresponding detail view. */
+  to?: string;
 }) {
   const colorMap: Record<string, string> = {
     teal:    'text-[var(--primary)]',
@@ -66,15 +70,34 @@ export function MetricCard({ label, value, sub, color = 'teal' }: {
     crimson: 'text-crimson',
     emerald: 'text-emerald',
   };
-  return (
-    <div className="surface p-5">
+  const body = (
+    <>
       <p className="text-xs text-ghost uppercase tracking-wider mb-2">{label}</p>
       <p className={`font-data text-data-2xl tabular-nums ${colorMap[color]}`}>
         {value === null ? '...' : typeof value === 'number' ? value.toLocaleString() : value}
       </p>
       {sub && <p className="text-xs text-ghost mt-1">{sub}</p>}
-    </div>
+    </>
   );
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="surface p-5 group relative block hover:border-teal/40 transition-colors duration-100"
+      >
+        {body}
+        <ArrowUpRight
+          size={14}
+          strokeWidth={2}
+          className="absolute top-3 right-3 text-ghost opacity-0 group-hover:opacity-100 group-hover:text-teal transition-all duration-100"
+          aria-hidden="true"
+        />
+      </Link>
+    );
+  }
+
+  return <div className="surface p-5">{body}</div>;
 }
 
 // ─── RoleBadge ───────────────────────────────────────────────────────────────

@@ -27,8 +27,8 @@ export function DashboardTab() {
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6 gap-4">
         <MetricCard label="Total Providers"  value={stats?.total_providers   ?? null} color="teal"    />
-        <MetricCard label="Active Patients"  value={stats?.active_patients   ?? null} color="emerald" />
-        <MetricCard label="Open Care Gaps"   value={stats?.open_care_gaps    ?? null} color="amber"   />
+        <MetricCard label="Active Patients"  value={stats?.active_patients   ?? null} color="emerald" to="/patients" />
+        <MetricCard label="Open Care Gaps"   value={stats?.open_care_gaps    ?? null} color="amber"   to="/measures" />
         <MetricCard
           label="ETL Status"
           value={stats?.last_etl_status ? stats.last_etl_status.toUpperCase() : null}
