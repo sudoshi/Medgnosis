@@ -1,0 +1,11 @@
+[Unit]
+Description=SanteDB MPI audit ship-queue watchdog (backstop against the 2026-06-20 runaway)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/smudoshi/Github/Medgnosis/scripts/santempi-audit-watchdog.sh
+# Be a good neighbor on the shared NVMe — idle I/O class, lowest CPU priority.
+IOSchedulingClass=idle
+Nice=19

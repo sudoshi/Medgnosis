@@ -199,6 +199,10 @@ services:
   # is not published); SanteDB creates and maintains the santedb + audit schemas.
   santedb-db:
     container_name: medgnosis-santedb-db
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: santedb
@@ -212,14 +216,44 @@ services:
     networks:
       - medgnosis
 
+  # IHE ATNA Audit Record Repository (ARR) for the MPI.
+  # SanteDB ships audits here over syslog (UDP, fire-and-forget); this sidecar
+  # persists them to dated files on a volume. Required so the santempi audit
+  # ship queue actually drains — without a dispatcher it grew to 2.5M files and
+  # pegged a core (2026-06-20). See docker/santempi/syslog-ng.conf.
+  santedb-arr:
+    container_name: medgnosis-santedb-arr
+    image: balabit/syslog-ng:latest
+    command: ["--foreground", "--no-caps"]
+    volumes:
+      - ./docker/santempi/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
+      - santedb_arr_logs:/var/log/atna
+    restart: unless-stopped
+    profiles:
+      - mpi
+    networks:
+      medgnosis:
+        # SanteDB's AUDIT_SHIP feature hardcodes the default audit target
+        # sdb-audit:11514. Expose the sidecar under that name so the default
+        # resolves (the SDB_AUDIT_SHIP_* env overrides are not honored because
+        # the feature id contains an underscore, breaking the SDB_<ID>_<KEY> split).
+        aliases:
+          - sdb-audit
+
   santempi:
     container_name: medgnosis-santempi
     image: santesuite/santedb-mpi:latest
     depends_on:
       - santedb-db
+      - santedb-arr
     environment:
       # Feature set for a FHIR-exposed MPI with the weighted matching engine + MDM.
-      SDB_FEATURE: "LOG;DATA_POLICY;AUDIT_REPO;ADO;PUBSUB_ADO;RAMCACHE;SEC;SWAGGER;OPENID;FHIR;HDSI;AMI;BIS;MDM;MATCHING;IHE_PIXM;IHE_PDQM;IHE_PMIR"
+      # AUDIT_SHIP is SanteDB's IHE ATNA audit dispatcher (feature id confirmed
+      # from the runtime's known-feature list). It ships audits to its default
+      # target sdb-audit:11514, which resolves to the santedb-arr sidecar via the
+      # network alias above. The dispatcher makes the ship queue actually drain,
+      # so the 2.5M-file spin (2026-06-20) cannot recur.
+      SDB_FEATURE: "LOG;DATA_POLICY;AUDIT_REPO;AUDIT_SHIP;ADO;PUBSUB_ADO;RAMCACHE;SEC;SWAGGER;OPENID;FHIR;HDSI;AMI;BIS;MDM;MATCHING;IHE_PIXM;IHE_PDQM;IHE_PMIR"
       SDB_MATCHING_MODE: "WEIGHTED"
       SDB_MDM_RESOURCE: "Patient"
       SDB_DATA_POLICY_ACTION: "HIDE"
@@ -230,6 +264,10 @@ services:
       SDB_DB_AUDIT: "server=santedb-db;port=5432;database=auditdb;user id=santedb;password=SanteDB123;pooling=true;MinPoolSize=5;MaxPoolSize=15;Timeout=60;"
     volumes:
       - santempi_data:/santedb
+      # ship="false" override: no ATNA central dispatcher is registered (ATNA is
+      # not in SDB_FEATURE), so shipping audits floods queue/sys.audit forever and
+      # pegs a core. Local audit persistence (auditdb) is unaffected. See file header.
+      - ./docker/santempi/santedb.audit_accountability.config.xml:/santedb/config/santedb.audit_accountability.config.xml:ro
     ports:
       - "8099:8080" # FHIR base at http://localhost:8099/fhir (host); santempi:8080 in-network
     restart: unless-stopped
@@ -251,6 +289,7 @@ volumes:
   solr_data:
   santempi_data:
   santedb_db_data:
+  santedb_arr_logs:
 
 networks:
   medgnosis:

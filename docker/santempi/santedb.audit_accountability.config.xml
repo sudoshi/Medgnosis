@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Medgnosis MPI audit accountability config (version-controlled override of the
+  SanteDB image default).
+
+  History: santempi originally ran with ship="true" but WITHOUT an audit
+  dispatcher (no AUDIT_SHIP feature), so every audit was enqueued into
+  /santedb/queue/sys.audit for a central dispatch that could never succeed. The
+  queue grew to ~2.5M files / 17GB and the FileSystemListener thread spun a core
+  at 100% (2026-06-20).
+
+  Resolution: the AUDIT_SHIP (IHE ATNA) feature is now enabled and dispatches to
+  the santedb-arr sidecar (sdb-audit:11514, UDP/DICOM). With a working dispatcher
+  the ship queue drains immediately, so ship="true" is safe again here. Audits
+  are BOTH persisted locally (insert="true" + AUDIT_REPO -> auditdb.aud_tbl) AND
+  shipped to the ARR.
+
+  IMPORTANT: never set ship="true" without a working dispatcher. If AUDIT_SHIP is
+  ever removed from SDB_FEATURE, set ship="false" here too, or the spin recurs.
+  (The santempi-audit-watchdog systemd timer is the backstop against that.)
+-->
+<SanteDBConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://santedb.org/configuration">
+  <sections>
+    <add type="SanteDB.Core.Configuration.AuditAccountabilityConfigurationSection, SanteDB.Core.Api"/>
+  </sections>
+  <section xsi:type="AuditAccountabilityConfigurationSection" completeAuditTrail="false">
+    <filters>
+      <add outcome="fail.minor fail.major fail.epic" insert="true" ship="true" />
+      <add action="c r u d" insert="true" ship="true" />
+      <add action="x" event="query" insert="true" ship="true"/>
+      <add action="x" event="network security restrictedFn" outcome="ok" insert="false" ship="false" />
+    </filters>
+  </section>
+</SanteDBConfiguration>
