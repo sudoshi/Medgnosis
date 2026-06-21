@@ -139,10 +139,11 @@ const config: Config = {
 
       // ─── TYPOGRAPHY ────────────────────────────────────────────────────────
       fontFamily: {
-        display: ['"Crimson Pro"', 'Georgia', 'serif'],
-        heading: ['"Source Serif 4"', 'Georgia', 'serif'],
-        ui:      ['"Source Sans 3"', '"Helvetica Neue"', 'sans-serif'],
-        data:    ['"IBM Plex Mono"', 'Consolas', 'monospace'],
+        // Inter (UI/headings) + Fira Code (data/mono) — original clinical intent.
+        display: ['Inter', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        heading: ['Inter', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        ui:      ['Inter', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        data:    ['"Fira Code"', '"IBM Plex Mono"', 'Consolas', 'monospace'],
       },
       fontSize: {
         // Data scale — for numbers, IDs, timestamps, metrics.

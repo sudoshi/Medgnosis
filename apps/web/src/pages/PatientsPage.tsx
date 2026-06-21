@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Users,
   Search,
@@ -14,6 +14,14 @@ import {
   X,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { api } from '../services/api.js';
 import { formatDate, calcAge } from '../utils/time.js';
 import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
@@ -67,6 +75,7 @@ function formatCohortFilter(cohort: CohortFilter): string {
 // ─── PatientsPage ─────────────────────────────────────────────────────────────
 
 export function PatientsPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [page, setPage]     = useState(1);
@@ -232,122 +241,112 @@ export function PatientsPage() {
       </div>
 
       {/* ── Patient table ────────────────────────────────────────────────── */}
+      {/* Real <table>: columns size to their content (no crushed/wrapping
+          cells), every column stays visible, and on a narrow viewport the
+          table scrolls horizontally rather than dropping columns. */}
       <div className="surface p-0 overflow-hidden animate-fade-up stagger-3">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-edge/35">
+              <TableHead>
+                <span className="inline-flex items-center gap-1.5">
+                  Patient
+                  <ArrowUpDown size={10} strokeWidth={2} className="text-ghost/50" aria-hidden="true" />
+                </span>
+              </TableHead>
+              <TableHead>MRN</TableHead>
+              <TableHead>
+                <span className="inline-flex items-center gap-1.5">
+                  DOB
+                  <ArrowUpDown size={10} strokeWidth={2} className="text-ghost/50" aria-hidden="true" />
+                </span>
+              </TableHead>
+              <TableHead className="text-right">Age</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead className="w-8" aria-label="Open" />
+            </TableRow>
+          </TableHeader>
 
-        {/* ── Sticky column headers ─────────────────────────────────── */}
-        <div className="flex items-center px-4 py-2.5 border-b border-edge/35 sticky top-0 bg-s0 z-10 select-none">
-          <div className="flex-[2.5] flex items-center gap-1.5 data-label">
-            Patient
-            <ArrowUpDown size={10} strokeWidth={2} className="text-ghost/50" aria-hidden="true" />
-          </div>
-          <div className="w-[130px] flex-shrink-0 data-label hidden sm:block">MRN</div>
-          <div className="w-[140px] flex-shrink-0 data-label hidden md:flex items-center gap-1.5">
-            DOB / Age
-            <ArrowUpDown size={10} strokeWidth={2} className="text-ghost/50" aria-hidden="true" />
-          </div>
-          <div className="w-[90px] flex-shrink-0 data-label hidden lg:block">Gender</div>
-          <div className="w-8 flex-shrink-0" />
-        </div>
+          <TableBody>
+            {/* ── Skeleton rows ───────────────────────────────────────── */}
+            {isLoading &&
+              Array.from({ length: 12 }).map((_, i) => (
+                <TableRow key={`sk-${i}`} className="hover:bg-transparent">
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <div className="skeleton w-7 h-7 rounded-full flex-shrink-0" />
+                      <div className="skeleton h-3 w-40 rounded" />
+                    </div>
+                  </TableCell>
+                  <TableCell><div className="skeleton h-3 w-20 rounded" /></TableCell>
+                  <TableCell><div className="skeleton h-3 w-24 rounded" /></TableCell>
+                  <TableCell><div className="skeleton h-3 w-8 rounded ml-auto" /></TableCell>
+                  <TableCell><div className="skeleton h-3 w-12 rounded" /></TableCell>
+                  <TableCell />
+                </TableRow>
+              ))}
 
-        {/* ── Skeleton rows ─────────────────────────────────────────── */}
-        {isLoading && (
-          <div aria-label="Loading patients" aria-busy="true">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center px-4 py-2 border-b border-edge/15"
-              >
-                <div className="flex-[2.5] flex items-center gap-3">
-                  <div className="skeleton w-9 h-9 rounded-full flex-shrink-0" />
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="skeleton h-3 w-40 rounded" />
-                    <div className="skeleton h-2.5 w-24 rounded" />
-                  </div>
-                </div>
-                <div className="w-[130px] flex-shrink-0 hidden sm:block">
-                  <div className="skeleton h-3 w-20 rounded" />
-                </div>
-                <div className="w-[140px] flex-shrink-0 hidden md:block space-y-1.5">
-                  <div className="skeleton h-3 w-28 rounded" />
-                  <div className="skeleton h-2.5 w-12 rounded" />
-                </div>
-                <div className="w-[90px] flex-shrink-0 hidden lg:block">
-                  <div className="skeleton h-3 w-12 rounded" />
-                </div>
-                <div className="w-8 flex-shrink-0" />
-              </div>
-            ))}
-          </div>
-        )}
+            {/* ── Data rows ───────────────────────────────────────────── */}
+            {!isLoading &&
+              patients.map((p) => {
+                const age    = calcAge(p.date_of_birth);
+                const dob    = formatDate(p.date_of_birth);
+                const gender = formatGender(p.gender);
 
-        {/* ── Data rows ─────────────────────────────────────────────── */}
-        {!isLoading && patients.length > 0 && (
-          <div>
-            {patients.map((p) => {
-              const age    = calcAge(p.date_of_birth);
-              const dob    = formatDate(p.date_of_birth);
-              const gender = formatGender(p.gender);
+                return (
+                  <TableRow
+                    key={p.id}
+                    onClick={() => navigate(`/patients/${p.id}`)}
+                    className="cursor-pointer border-l-2 border-l-transparent hover:border-l-teal group"
+                  >
+                    {/* Patient — avatar + name */}
+                    <TableCell>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <PatientAvatar
+                          initials={getInitialsFromParts(p.first_name, p.last_name)}
+                          seed={p.id}
+                          size="xs"
+                        />
+                        <span className="font-medium text-bright whitespace-nowrap group-hover:text-teal transition-colors duration-100">
+                          {p.last_name}, {p.first_name}
+                        </span>
+                      </div>
+                    </TableCell>
 
-              return (
-                <Link
-                  key={p.id}
-                  to={`/patients/${p.id}`}
-                  className={[
-                    'flex items-center px-4 py-2 border-b border-edge/15',
-                    'border-l-2 border-l-transparent',
-                    'hover:border-l-teal hover:bg-s1',
-                    'transition-colors duration-100 group',
-                  ].join(' ')}
-                >
-                  {/* Patient cell — avatar + name */}
-                  <div className="flex-[2.5] flex items-center gap-3 min-w-0">
-                    <PatientAvatar
-                      initials={getInitialsFromParts(p.first_name, p.last_name)}
-                      seed={p.id}
-                    />
-                    <p className="text-sm font-medium text-bright truncate group-hover:text-teal transition-colors duration-100">
-                      {p.last_name}, {p.first_name}
-                    </p>
-                  </div>
-
-                  {/* MRN */}
-                  <div className="w-[130px] flex-shrink-0 hidden sm:block">
-                    <span className="font-data text-xs text-dim tabular-nums">
+                    {/* MRN */}
+                    <TableCell className="font-data text-xs text-dim tabular-nums whitespace-nowrap">
                       {p.mrn || '—'}
-                    </span>
-                  </div>
+                    </TableCell>
 
-                  {/* DOB + age */}
-                  <div className="w-[140px] flex-shrink-0 hidden md:block">
-                    <p className="font-data text-xs text-bright tabular-nums leading-snug">
+                    {/* DOB */}
+                    <TableCell className="font-data text-xs text-bright tabular-nums whitespace-nowrap">
                       {dob}
-                    </p>
-                    {age !== null && (
-                      <p className="font-data text-[11px] text-ghost tabular-nums leading-snug mt-0.5">
-                        {age} yrs
-                      </p>
-                    )}
-                  </div>
+                    </TableCell>
 
-                  {/* Gender */}
-                  <div className="w-[90px] flex-shrink-0 hidden lg:block">
-                    <span className="text-xs text-dim">{gender}</span>
-                  </div>
+                    {/* Age */}
+                    <TableCell className="font-data text-xs text-dim tabular-nums text-right whitespace-nowrap">
+                      {age !== null ? `${age}` : '—'}
+                    </TableCell>
 
-                  {/* Chevron */}
-                  <div className="w-8 flex-shrink-0 flex justify-end">
-                    <ChevronRight
-                      size={15}
-                      strokeWidth={1.5}
-                      className="text-ghost group-hover:text-teal transition-colors duration-100"
-                      aria-hidden="true"
-                    />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
+                    {/* Gender */}
+                    <TableCell className="text-xs text-dim whitespace-nowrap">
+                      {gender}
+                    </TableCell>
+
+                    {/* Chevron */}
+                    <TableCell className="w-8">
+                      <ChevronRight
+                        size={15}
+                        strokeWidth={1.5}
+                        className="text-ghost group-hover:text-teal transition-colors duration-100"
+                        aria-hidden="true"
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+          </TableBody>
+        </Table>
 
         {/* ── Empty state ───────────────────────────────────────────── */}
         {!isLoading && patients.length === 0 && (

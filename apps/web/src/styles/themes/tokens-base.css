@@ -5,21 +5,24 @@
 
 :root {
   /* ── Typography ─────────────────────────────────────────────────────────── */
-  --font-display: 'Crimson Pro', Georgia, serif;
-  --font-heading: 'Source Serif 4', Georgia, serif;
-  --font-body:    'Source Sans 3', 'Helvetica Neue', sans-serif;
-  --font-mono:    'IBM Plex Mono', Consolas, monospace;
+  /* Inter (UI/headings) + Fira Code (data/mono) — original clinical intent.
+     Single sans family across display/heading/body keeps the workstation
+     reading neutral and dense, not editorial. */
+  --font-display: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:    'Fira Code', 'IBM Plex Mono', Consolas, monospace;
 
-  /* Type scale (rem-based — inherits fluid 17px root from globals.css) */
-  --text-xs:   0.647rem;   /* ~11px @ 17px root */
-  --text-sm:   0.765rem;   /* ~13px */
-  --text-base: 0.875rem;   /* ~15px */
-  --text-md:   0.941rem;   /* ~16px */
-  --text-lg:   1rem;       /* ~17px */
-  --text-xl:   1.125rem;   /* ~19px */
-  --text-2xl:  1.375rem;   /* ~23px */
-  --text-3xl:  1.75rem;    /* ~30px */
-  --text-4xl:  2.25rem;    /* ~38px */
+  /* Type scale (rem-based — inherits flat 16px root from globals.css) */
+  --text-xs:   0.647rem;   /* ~10px @ 16px root */
+  --text-sm:   0.765rem;   /* ~12px */
+  --text-base: 0.875rem;   /* ~14px */
+  --text-md:   0.941rem;   /* ~15px */
+  --text-lg:   1rem;       /* ~16px */
+  --text-xl:   1.125rem;   /* ~18px */
+  --text-2xl:  1.375rem;   /* ~22px */
+  --text-3xl:  1.75rem;    /* ~28px */
+  --text-4xl:  2.25rem;    /* ~36px */
 
   /* ── Spacing (4px base unit, rem for fluid scaling) ─────────────────────── */
   --space-1:  0.25rem;

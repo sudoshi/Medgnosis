@@ -69,7 +69,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts, isSampleSchedule
             <p className="text-sm text-ghost">No encounters scheduled for today</p>
           </div>
         ) : (
-          <div className="max-h-[min(480px,52vh)] overflow-y-auto scrollbar-thin">
+          <div>
             {schedule.map((enc) => {
               const age = calcAge(enc.date_of_birth);
               const isPast = new Date(enc.date) < new Date();
@@ -158,7 +158,7 @@ export function WorkspaceSection({ isLoading, schedule, alerts, isSampleSchedule
             <p className="text-xs text-ghost mt-1">No unacknowledged urgent alerts</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[min(380px,44vh)] overflow-y-auto scrollbar-thin">
+          <div className="space-y-2">
             {alerts.map((alert) => (
               <div
                 key={alert.id}

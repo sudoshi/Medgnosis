@@ -38,15 +38,15 @@ function MeasureRow({
         <span className="text-xs text-dim">{measure.measure_name}</span>
       </div>
 
-      {/* LOINC / CPT codes */}
-      <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+      {/* LOINC / CPT codes — kept visible (clinically useful, not decorative) */}
+      <div className="flex items-center gap-2 flex-shrink-0">
         {order?.loinc_code && (
-          <span className="font-data text-[10px] text-ghost tabular-nums bg-s1 px-1.5 py-0.5 rounded">
+          <span className="font-data text-[10px] text-ghost tabular-nums bg-s1 px-1.5 py-0.5 rounded whitespace-nowrap">
             LOINC {order.loinc_code}
           </span>
         )}
         {order?.cpt_code && (
-          <span className="font-data text-[10px] text-ghost tabular-nums bg-s1 px-1.5 py-0.5 rounded">
+          <span className="font-data text-[10px] text-ghost tabular-nums bg-s1 px-1.5 py-0.5 rounded whitespace-nowrap">
             CPT {order.cpt_code}
           </span>
         )}
@@ -54,7 +54,7 @@ function MeasureRow({
 
       {/* Order type badge */}
       {order && (
-        <div className="hidden md:block flex-shrink-0">
+        <div className="flex-shrink-0">
           <ItemTypeBadge type={order.item_type} />
         </div>
       )}

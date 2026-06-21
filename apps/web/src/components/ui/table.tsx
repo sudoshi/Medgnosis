@@ -3,7 +3,10 @@ import { cn } from '@/lib/utils';
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    // overflow-x-auto only: the table scrolls horizontally when columns exceed
+    // the viewport (so cells never wrap or get crushed too narrow), but never
+    // adds a vertical scrollbar of its own — the page owns vertical scroll.
+    <div className="relative w-full overflow-x-auto scrollbar-thin">
       <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   ),
@@ -50,7 +53,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
       ref={ref}
       className={cn(
-        'h-10 px-4 text-left align-middle text-xs font-medium uppercase tracking-wider text-dim [&:has([role=checkbox])]:pr-0',
+        'h-8 px-3 text-left align-middle text-xs font-medium uppercase tracking-wider text-dim whitespace-nowrap [&:has([role=checkbox])]:pr-0',
         className,
       )}
       {...props}
@@ -61,7 +64,7 @@ TableHead.displayName = 'TableHead';
 
 const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn('p-4 align-middle text-bright [&:has([role=checkbox])]:pr-0', className)} {...props} />
+    <td ref={ref} className={cn('px-3 py-1.5 align-middle text-bright [&:has([role=checkbox])]:pr-0', className)} {...props} />
   ),
 );
 TableCell.displayName = 'TableCell';

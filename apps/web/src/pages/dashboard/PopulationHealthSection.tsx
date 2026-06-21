@@ -167,17 +167,23 @@ export function PopulationHealthSection({
             />
             <div className="flex-1 space-y-3.5">
               {[
-                { label: 'High Priority',   value: gaps.by_priority.high,   dot: 'bg-crimson', text: 'text-crimson' },
-                { label: 'Medium Priority', value: gaps.by_priority.medium, dot: 'bg-amber',   text: 'text-amber'   },
-                { label: 'Low Priority',    value: gaps.by_priority.low,    dot: 'bg-emerald', text: 'text-emerald' },
-              ].map(({ label, value, dot, text }) => (
-                <div key={label} className="flex items-center gap-3">
+                { label: 'High Priority',   value: gaps.by_priority.high,   dot: 'bg-crimson', text: 'text-crimson', priority: 'high'   },
+                { label: 'Medium Priority', value: gaps.by_priority.medium, dot: 'bg-amber',   text: 'text-amber',   priority: 'medium' },
+                { label: 'Low Priority',    value: gaps.by_priority.low,    dot: 'bg-emerald', text: 'text-emerald', priority: 'low'    },
+              ].map(({ label, value, dot, text, priority }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => navigate(`/care-lists?status=open&priority=${priority}`)}
+                  className="w-full flex items-center gap-3 group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 rounded-card"
+                  title={`View ${label.toLowerCase()} care gaps`}
+                >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot}`} aria-hidden="true" />
-                  <span className="text-sm text-dim flex-1 leading-none">{label}</span>
+                  <span className="text-sm text-dim flex-1 leading-none group-hover:text-bright transition-colors">{label}</span>
                   <span className={`font-data text-sm tabular-nums font-semibold ${text}`}>
                     {value.toLocaleString()}
                   </span>
-                </div>
+                </button>
               ))}
               <div className="pt-3 border-t border-edge/20">
                 <div className="flex items-center gap-3">

@@ -54,12 +54,12 @@
   }
 
   html {
-    /* Fluid root font size: 17px at ≤1440px, scales to 21px at ≥1800px.
-       Every rem-based Tailwind utility (text-xs, text-sm, etc.) scales
-       automatically — no component changes needed.
-       Formula: preferred = 1.1vw + 1.2px
-         ~17px at 1440px (laptop) → ~21px at 1800px+ (desktop/large monitor) */
-    font-size: clamp(17px, 1.1vw + 1.2px, 21px);
+    /* Flat 16px root — matches the original clinical intent (browser default).
+       The previous fluid clamp() GREW the entire UI on large monitors, which
+       consumed screen real estate instead of fitting more data. Density now
+       comes from compact tables/components, not from a small base size that
+       balloons on big displays. Every rem-based utility scales off this. */
+    font-size: 16px;
   }
 
   /* Lucide icons: inherit size from font context so they scale with the fluid
