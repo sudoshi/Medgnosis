@@ -507,6 +507,7 @@ export interface EhrBulkSchedule {
 }
 
 export type EhrSyncIssueSeverity = 'info' | 'warning' | 'critical';
+export type EhrSyncIssueSource = 'crosswalk' | 'ingest' | 'bulk_schedule' | 'bulk_worker' | 'patient_sync' | 'bulk_import';
 
 export interface EhrSyncResourceStatus {
   resourceType: string;
@@ -577,6 +578,25 @@ export interface EhrPatientResourceStatus {
   latestResourceType: string | null;
 }
 
+export interface EhrCrosswalkConflictTarget {
+  resourceType: string;
+  localTable: string;
+  localId: number;
+  sourceCount: number;
+  sourceResourceIds: string[];
+  patientCount: number;
+  lastSeenAt: string | null;
+}
+
+export interface EhrStalePatientResourceStatus {
+  localPatientId: number;
+  patientResourceId: string | null;
+  resourceType: string;
+  staleResources: number;
+  oldestSeenAt: string | null;
+  latestSeenAt: string | null;
+}
+
 export interface EhrPatientSyncSummary {
   totalPatients: number;
   displayedPatients: number;
@@ -587,8 +607,11 @@ export interface EhrPatientSyncSummary {
 
 export interface EhrSyncIssue {
   severity: EhrSyncIssueSeverity;
+  source: EhrSyncIssueSource;
   code: string;
   message: string;
+  recommendedAction: string;
+  drilldownAvailable: boolean;
   resourceType: string | null;
   count: number | null;
   lastSeenAt: string | null;
@@ -608,6 +631,8 @@ export interface EhrTenantSyncStatus {
   lastSeenAt: string | null;
   issues: EhrSyncIssue[];
   patientResources: EhrPatientResourceStatus[];
+  conflictTargets: EhrCrosswalkConflictTarget[];
+  stalePatientResources: EhrStalePatientResourceStatus[];
 }
 
 export type EhrReadinessIssueSeverity = 'info' | 'warning' | 'critical';

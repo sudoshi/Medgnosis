@@ -8,8 +8,10 @@ import { sql } from '@medgnosis/db';
 
 const STALE_RESOURCE_DAYS = 30;
 const PATIENT_RESOURCE_ROLLUP_LIMIT = 25;
+const SYNC_DRILLDOWN_LIMIT = 10;
 
 export type EhrSyncIssueSeverity = 'info' | 'warning' | 'critical';
+export type EhrSyncIssueSource = 'crosswalk' | 'ingest' | 'bulk_schedule' | 'bulk_worker' | 'patient_sync' | 'bulk_import';
 
 export interface EhrSyncResourceStatus {
   resourceType: string;
@@ -45,6 +47,25 @@ export interface EhrPatientResourceStatus {
   staleResources: number;
   lastSeenAt: string | null;
   latestResourceType: string | null;
+}
+
+export interface EhrCrosswalkConflictTarget {
+  resourceType: string;
+  localTable: string;
+  localId: number;
+  sourceCount: number;
+  sourceResourceIds: string[];
+  patientCount: number;
+  lastSeenAt: string | null;
+}
+
+export interface EhrStalePatientResourceStatus {
+  localPatientId: number;
+  patientResourceId: string | null;
+  resourceType: string;
+  staleResources: number;
+  oldestSeenAt: string | null;
+  latestSeenAt: string | null;
 }
 
 export interface EhrPatientSyncSummary {
@@ -90,8 +111,11 @@ export interface EhrBulkWorkerSyncSummary {
 
 export interface EhrSyncIssue {
   severity: EhrSyncIssueSeverity;
+  source: EhrSyncIssueSource;
   code: string;
   message: string;
+  recommendedAction: string;
+  drilldownAvailable: boolean;
   resourceType: string | null;
   count: number | null;
   lastSeenAt: string | null;
@@ -111,6 +135,8 @@ export interface EhrTenantSyncStatus {
   lastSeenAt: string | null;
   issues: EhrSyncIssue[];
   patientResources: EhrPatientResourceStatus[];
+  conflictTargets: EhrCrosswalkConflictTarget[];
+  stalePatientResources: EhrStalePatientResourceStatus[];
 }
 
 interface CrosswalkResourceRow {
@@ -178,14 +204,44 @@ interface PatientResourceRow {
   last_patient_seen_at: string | null;
 }
 
+interface CrosswalkConflictRow {
+  resource_type: string;
+  local_table: string;
+  local_id: number | string;
+  source_count: number | string;
+  source_resource_ids: string[] | string | null;
+  patient_count: number | string;
+  last_seen_at: string | null;
+}
+
+interface StalePatientResourceRow {
+  local_patient_id: number | string;
+  patient_resource_id: string | null;
+  resource_type: string;
+  stale_resources: number | string;
+  oldest_seen_at: string | null;
+  latest_seen_at: string | null;
+}
+
 export async function getTenantSyncStatus(ehrTenantId: number): Promise<EhrTenantSyncStatus> {
-  const [crosswalkRows, ingestRows, bulkRows, scheduleRows, workerRows, patientRows] = await Promise.all([
+  const [
+    crosswalkRows,
+    ingestRows,
+    bulkRows,
+    scheduleRows,
+    workerRows,
+    patientRows,
+    conflictRows,
+    stalePatientRows,
+  ] = await Promise.all([
     listCrosswalkResourceRows(ehrTenantId),
     listLatestSuccessfulIngestRows(ehrTenantId),
     listBulkResourceRows(ehrTenantId),
     getBulkScheduleSummaryRow(ehrTenantId),
     getBulkWorkerSummaryRow(ehrTenantId),
     listPatientResourceRows(ehrTenantId),
+    listCrosswalkConflictRows(ehrTenantId),
+    listStalePatientResourceRows(ehrTenantId),
   ]);
 
   const resources = mergeResourceStatuses(crosswalkRows, ingestRows, bulkRows);
@@ -193,6 +249,8 @@ export async function getTenantSyncStatus(ehrTenantId: number): Promise<EhrTenan
   const bulkSchedule = mapBulkScheduleSummary(scheduleRows[0]);
   const bulkWorker = mapBulkWorkerSummary(workerRows[0]);
   const { patientSync, patientResources } = mapPatientResourceRows(patientRows);
+  const conflictTargets = mapCrosswalkConflictRows(conflictRows);
+  const stalePatientResources = mapStalePatientResourceRows(stalePatientRows);
   const issues = buildSyncIssues(resources, crosswalk, bulkSchedule, bulkWorker, patientSync);
 
   return {
@@ -209,6 +267,8 @@ export async function getTenantSyncStatus(ehrTenantId: number): Promise<EhrTenan
     lastSeenAt: crosswalk.lastSeenAt,
     issues,
     patientResources,
+    conflictTargets,
+    stalePatientResources,
   };
 }
 
@@ -259,6 +319,40 @@ function listCrosswalkResourceRows(ehrTenantId: number): Promise<CrosswalkResour
     FROM crosswalk_by_resource c
     LEFT JOIN collision_by_resource r ON r.resource_type = c.resource_type
     ORDER BY c.resource_type
+  `;
+}
+
+function listCrosswalkConflictRows(ehrTenantId: number): Promise<CrosswalkConflictRow[]> {
+  return sql<CrosswalkConflictRow[]>`
+    WITH crosswalk_conflict_drilldown AS (
+      SELECT resource_type,
+             local_table,
+             local_id,
+             COUNT(*)::integer AS source_count,
+             COUNT(DISTINCT patient_id)::integer AS patient_count,
+             ARRAY_AGG(ehr_resource_id ORDER BY last_seen_at DESC NULLS LAST, ehr_resource_id ASC) AS source_resource_ids,
+             MAX(last_seen_at)::text AS last_seen_at
+      FROM phm_edw.ehr_resource_crosswalk
+      WHERE ehr_tenant_id = ${ehrTenantId}
+        AND local_table IS NOT NULL
+        AND local_id IS NOT NULL
+      GROUP BY resource_type, local_table, local_id
+      HAVING COUNT(*) > 1
+    )
+    SELECT resource_type,
+           local_table,
+           local_id,
+           source_count,
+           source_resource_ids[1:5] AS source_resource_ids,
+           patient_count,
+           last_seen_at
+    FROM crosswalk_conflict_drilldown
+    ORDER BY source_count DESC,
+             last_seen_at DESC NULLS LAST,
+             resource_type ASC,
+             local_table ASC,
+             local_id ASC
+    LIMIT ${SYNC_DRILLDOWN_LIMIT}
   `;
 }
 
@@ -482,6 +576,61 @@ function listPatientResourceRows(ehrTenantId: number): Promise<PatientResourceRo
   `;
 }
 
+function listStalePatientResourceRows(ehrTenantId: number): Promise<StalePatientResourceRow[]> {
+  return sql<StalePatientResourceRow[]>`
+    WITH normalized_crosswalk AS (
+      SELECT cw.resource_type,
+             cw.ehr_resource_id,
+             cw.local_table,
+             cw.local_id,
+             cw.last_seen_at,
+             COALESCE(
+               cw.patient_id,
+               CASE
+                 WHEN cw.resource_type = 'Patient'
+                  AND cw.local_table = 'phm_edw.patient'
+                  AND cw.local_id IS NOT NULL
+                 THEN cw.local_id::integer
+               END
+             ) AS local_patient_id
+      FROM phm_edw.ehr_resource_crosswalk cw
+      WHERE cw.ehr_tenant_id = ${ehrTenantId}
+    ),
+    patient_crosswalk AS (
+      SELECT local_patient_id,
+             MAX(ehr_resource_id) FILTER (WHERE resource_type = 'Patient') AS patient_resource_id
+      FROM normalized_crosswalk
+      WHERE local_patient_id IS NOT NULL
+      GROUP BY local_patient_id
+    ),
+    stale_patient_resource_drilldown AS (
+      SELECT n.local_patient_id::integer AS local_patient_id,
+             p.patient_resource_id,
+             n.resource_type,
+             COUNT(*)::integer AS stale_resources,
+             MIN(n.last_seen_at)::text AS oldest_seen_at,
+             MAX(n.last_seen_at)::text AS latest_seen_at
+      FROM normalized_crosswalk n
+      LEFT JOIN patient_crosswalk p ON p.local_patient_id = n.local_patient_id
+      WHERE n.local_patient_id IS NOT NULL
+        AND n.last_seen_at < NOW() - (${STALE_RESOURCE_DAYS}::integer * interval '1 day')
+      GROUP BY n.local_patient_id, p.patient_resource_id, n.resource_type
+    )
+    SELECT local_patient_id,
+           patient_resource_id,
+           resource_type,
+           stale_resources,
+           oldest_seen_at,
+           latest_seen_at
+    FROM stale_patient_resource_drilldown
+    ORDER BY stale_resources DESC,
+             oldest_seen_at ASC NULLS FIRST,
+             local_patient_id ASC,
+             resource_type ASC
+    LIMIT ${SYNC_DRILLDOWN_LIMIT}
+  `;
+}
+
 function mergeResourceStatuses(
   crosswalkRows: CrosswalkResourceRow[],
   ingestRows: IngestResourceRow[],
@@ -602,6 +751,18 @@ function mapBulkWorkerSummary(row: BulkWorkerSummaryRow | undefined): EhrBulkWor
   };
 }
 
+function mapCrosswalkConflictRows(rows: CrosswalkConflictRow[]): EhrCrosswalkConflictTarget[] {
+  return rows.map((row) => ({
+    resourceType: row.resource_type,
+    localTable: row.local_table,
+    localId: toNumber(row.local_id),
+    sourceCount: toNumber(row.source_count),
+    sourceResourceIds: toStringArray(row.source_resource_ids),
+    patientCount: toNumber(row.patient_count),
+    lastSeenAt: row.last_seen_at,
+  }));
+}
+
 function mapPatientResourceRows(rows: PatientResourceRow[]): {
   patientSync: EhrPatientSyncSummary;
   patientResources: EhrPatientResourceStatus[];
@@ -630,6 +791,17 @@ function mapPatientResourceRows(rows: PatientResourceRow[]): {
   };
 }
 
+function mapStalePatientResourceRows(rows: StalePatientResourceRow[]): EhrStalePatientResourceStatus[] {
+  return rows.map((row) => ({
+    localPatientId: toNumber(row.local_patient_id),
+    patientResourceId: row.patient_resource_id ?? null,
+    resourceType: row.resource_type,
+    staleResources: toNumber(row.stale_resources),
+    oldestSeenAt: row.oldest_seen_at,
+    latestSeenAt: row.latest_seen_at,
+  }));
+}
+
 function buildSyncIssues(
   resources: EhrSyncResourceStatus[],
   crosswalk: EhrCrosswalkSummary,
@@ -642,8 +814,11 @@ function buildSyncIssues(
   if (crosswalk.totalResources === 0) {
     issues.push({
       severity: 'info',
+      source: 'crosswalk',
       code: 'no_crosswalk_resources',
       message: 'No tenant resources have been recorded in the EHR crosswalk yet.',
+      recommendedAction: 'Run a SMART launch or Bulk Patient import, then refresh sync status.',
+      drilldownAvailable: false,
       resourceType: null,
       count: 0,
       lastSeenAt: null,
@@ -653,8 +828,11 @@ function buildSyncIssues(
   if (!maxTimestamp(resources.map((resource) => resource.lastIngestSucceededAt))) {
     issues.push({
       severity: 'warning',
+      source: 'ingest',
       code: 'no_successful_ingest',
       message: 'No successful ingest run has been recorded for this tenant.',
+      recommendedAction: 'Open recent ingest runs and retry or enqueue a patient-context refresh.',
+      drilldownAvailable: false,
       resourceType: null,
       count: null,
       lastSeenAt: null,
@@ -667,8 +845,11 @@ function buildSyncIssues(
   )) {
     issues.push({
       severity: 'warning',
+      source: 'bulk_schedule',
       code: 'latest_bulk_schedule_failed',
       message: 'The latest recorded Bulk Data schedule outcome is a failure.',
+      recommendedAction: 'Inspect the tenant Bulk schedule and last Bulk job before the next run.',
+      drilldownAvailable: false,
       resourceType: null,
       count: null,
       lastSeenAt: bulkSchedule.lastBulkScheduleFailureAt,
@@ -678,8 +859,11 @@ function buildSyncIssues(
   if (bulkWorker.failures24h > 0) {
     issues.push({
       severity: 'warning',
+      source: 'bulk_worker',
       code: 'bulk_worker_failures_24h',
       message: `${bulkWorker.failures24h} automated Bulk Data worker failure event(s) were recorded in the last 24 hours.`,
+      recommendedAction: 'Check worker logs and Bulk job/file status for the affected tenant.',
+      drilldownAvailable: false,
       resourceType: null,
       count: bulkWorker.failures24h,
       lastSeenAt: bulkWorker.lastFailureAt,
@@ -689,8 +873,11 @@ function buildSyncIssues(
   if (bulkWorker.activeOverdueJobs > 0) {
     issues.push({
       severity: 'warning',
+      source: 'bulk_worker',
       code: 'bulk_worker_poll_overdue',
       message: `${bulkWorker.activeOverdueJobs} active Bulk Data job(s) are past their next poll time.`,
+      recommendedAction: 'Verify the Bulk worker is running and replay overdue job polling if needed.',
+      drilldownAvailable: false,
       resourceType: null,
       count: bulkWorker.activeOverdueJobs,
       lastSeenAt: bulkWorker.oldestOverdueJobAt,
@@ -700,8 +887,11 @@ function buildSyncIssues(
   if (patientSync.stalePatients > 0) {
     issues.push({
       severity: 'warning',
+      source: 'patient_sync',
       code: 'patient_resource_stale',
       message: `${patientSync.stalePatients} patient(s) have source resources that have not been seen in ${STALE_RESOURCE_DAYS} days.`,
+      recommendedAction: 'Review stale resource drilldowns and refresh the affected patient resources.',
+      drilldownAvailable: true,
       resourceType: 'Patient',
       count: patientSync.stalePatients,
       lastSeenAt: patientSync.lastPatientSeenAt,
@@ -712,8 +902,11 @@ function buildSyncIssues(
     if (resource.collisionTargets > 0) {
       issues.push({
         severity: 'critical',
+        source: 'crosswalk',
         code: 'crosswalk_local_target_collision',
         message: `${resource.collisionTargets} local ${resource.resourceType} target(s) are referenced by multiple source resources.`,
+        recommendedAction: 'Review conflict drilldowns before accepting more resources for this local target.',
+        drilldownAvailable: true,
         resourceType: resource.resourceType,
         count: resource.collisionTargets,
         lastSeenAt: resource.lastSeenAt,
@@ -722,8 +915,11 @@ function buildSyncIssues(
     if (resource.unmappedLocalResources > 0) {
       issues.push({
         severity: 'warning',
+        source: 'crosswalk',
         code: 'crosswalk_unmapped_local_target',
         message: `${resource.unmappedLocalResources} ${resource.resourceType} source resource(s) are not linked to a normalized local row.`,
+        recommendedAction: 'Review resource hydration and matching rules for this resource type.',
+        drilldownAvailable: false,
         resourceType: resource.resourceType,
         count: resource.unmappedLocalResources,
         lastSeenAt: resource.lastSeenAt,
@@ -732,8 +928,11 @@ function buildSyncIssues(
     if (resource.missingPatientResources > 0) {
       issues.push({
         severity: 'warning',
+        source: 'crosswalk',
         code: 'crosswalk_missing_patient',
         message: `${resource.missingPatientResources} ${resource.resourceType} resource(s) are not linked to a local patient.`,
+        recommendedAction: 'Confirm Patient crosswalk coverage before replaying child-resource hydration.',
+        drilldownAvailable: false,
         resourceType: resource.resourceType,
         count: resource.missingPatientResources,
         lastSeenAt: resource.lastSeenAt,
@@ -742,8 +941,11 @@ function buildSyncIssues(
     if (resource.staleResources > 0) {
       issues.push({
         severity: 'warning',
+        source: 'crosswalk',
         code: 'crosswalk_stale_resource',
         message: `${resource.staleResources} ${resource.resourceType} resource(s) have not been seen in ${STALE_RESOURCE_DAYS} days.`,
+        recommendedAction: 'Use stale resource drilldowns and schedule a tenant or patient refresh.',
+        drilldownAvailable: true,
         resourceType: resource.resourceType,
         count: resource.staleResources,
         lastSeenAt: resource.lastSeenAt,
@@ -752,8 +954,11 @@ function buildSyncIssues(
     if (resource.bulkFailedFileCount > 0 || resource.bulkErrorCount > 0) {
       issues.push({
         severity: 'warning',
+        source: 'bulk_import',
         code: 'bulk_import_file_errors',
         message: `${resource.resourceType} Bulk Data import files have ${resource.bulkErrorCount} row error(s) and ${resource.bulkFailedFileCount} failed file(s).`,
+        recommendedAction: 'Open Bulk job/file status and replay failed files after correcting importer errors.',
+        drilldownAvailable: false,
         resourceType: resource.resourceType,
         count: resource.bulkFailedFileCount + resource.bulkErrorCount,
         lastSeenAt: resource.lastBulkImportSucceededAt,
@@ -791,6 +996,12 @@ function toNumber(value: number | string | null | undefined): number {
   if (value == null) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toStringArray(value: string[] | string | null | undefined): string[] {
+  if (Array.isArray(value)) return value.map(String).filter((item) => item.length > 0);
+  if (typeof value === 'string' && value.length > 0) return [value];
+  return [];
 }
 
 function maxTimestamp(values: Array<string | null>): string | null {

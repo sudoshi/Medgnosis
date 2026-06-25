@@ -1045,6 +1045,8 @@ function SyncStatusPanel({
   const patientSync = status?.patientSync;
   const resources = status?.resources ?? [];
   const patientResources = status?.patientResources ?? [];
+  const conflictTargets = status?.conflictTargets ?? [];
+  const stalePatientResources = status?.stalePatientResources ?? [];
   const visibleIssues = status?.issues.slice(0, 5) ?? [];
   const issueTone = highestIssueSeverity(status?.issues ?? []);
 
@@ -1246,6 +1248,104 @@ function SyncStatusPanel({
             </Table>
           </div>
 
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h3 className="text-sm font-semibold text-bright">Conflict drilldowns</h3>
+                <span className="font-data text-[11px] text-ghost">{formatCount(conflictTargets.length)} targets</span>
+              </div>
+              <Table className="min-w-[620px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Local target</TableHead>
+                    <TableHead>Source resources</TableHead>
+                    <TableHead>Patients</TableHead>
+                    <TableHead className="text-right">Seen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {conflictTargets.map((target) => (
+                    <TableRow key={`${target.resourceType}:${target.localTable}:${target.localId}`}>
+                      <TableCell>
+                        <div>
+                          <p className="text-xs font-medium text-bright">{target.resourceType}</p>
+                          <p className="font-data text-[11px] text-ghost break-all">
+                            {target.localTable}:{target.localId}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-data text-xs text-dim tabular-nums">{formatCount(target.sourceCount)} sources</p>
+                          <p className="font-data text-[11px] text-ghost break-all">
+                            {target.sourceResourceIds.length > 0 ? target.sourceResourceIds.join(', ') : '-'}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-data text-xs text-dim tabular-nums">{formatCount(target.patientCount)}</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-data text-[11px] text-ghost">{target.lastSeenAt ? fmtDateTime(target.lastSeenAt) : '-'}</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {conflictTargets.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-ghost">No crosswalk conflicts found</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </section>
+
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h3 className="text-sm font-semibold text-bright">Stale resource drilldowns</h3>
+                <span className="font-data text-[11px] text-ghost">{formatCount(stalePatientResources.length)} groups</span>
+              </div>
+              <Table className="min-w-[620px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Stale</TableHead>
+                    <TableHead className="text-right">Window</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stalePatientResources.map((resource) => (
+                    <TableRow key={`${resource.localPatientId}:${resource.resourceType}:${resource.oldestSeenAt ?? 'none'}`}>
+                      <TableCell>
+                        <div>
+                          <p className="font-data text-xs text-bright tabular-nums">{resource.localPatientId}</p>
+                          <p className="font-data text-[11px] text-ghost break-all">{resource.patientResourceId ?? '-'}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-dim">{resource.resourceType}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="amber">{formatCount(resource.staleResources)} stale</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div>
+                          <p className="font-data text-[11px] text-ghost">{resource.oldestSeenAt ? fmtDateTime(resource.oldestSeenAt) : '-'}</p>
+                          <p className="font-data text-[11px] text-ghost">{resource.latestSeenAt ? fmtDateTime(resource.latestSeenAt) : '-'}</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {stalePatientResources.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-ghost">No stale patient resources found</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </section>
+          </div>
+
           {visibleIssues.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
               {visibleIssues.map((issue) => (
@@ -1254,8 +1354,10 @@ function SyncStatusPanel({
                     <Badge variant={issueVariant(issue.severity)} className="shrink-0">{titleCase(issue.severity)}</Badge>
                     <div className="min-w-0">
                       <p className="text-xs text-bright">{issue.message}</p>
+                      <p className="text-[11px] text-dim mt-0.5">{issue.recommendedAction}</p>
                       <p className="font-data text-[11px] text-ghost mt-0.5">
-                        {issue.resourceType ?? 'tenant'} / {issue.code}
+                        {issue.source} / {issue.resourceType ?? 'tenant'} / {issue.code}
+                        {issue.drilldownAvailable ? ' / drilldown' : ''}
                       </p>
                     </div>
                   </div>

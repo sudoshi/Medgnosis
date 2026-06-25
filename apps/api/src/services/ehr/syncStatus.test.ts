@@ -102,6 +102,19 @@ describe('getTenantSyncStatus', () => {
           },
         ]);
       }
+      if (text.includes('crosswalk_conflict_drilldown')) {
+        return Promise.resolve([
+          {
+            resource_type: 'Observation',
+            local_table: 'phm_edw.observation',
+            local_id: '456',
+            source_count: '2',
+            source_resource_ids: ['obs-1', 'obs-2'],
+            patient_count: '1',
+            last_seen_at: '2026-06-18 09:00:00+00',
+          },
+        ]);
+      }
       if (text.includes('patient_resource_rollup')) {
         return Promise.resolve([
           {
@@ -129,6 +142,18 @@ describe('getTenantSyncStatus', () => {
             total_patients: '2',
             stale_patients: '1',
             last_patient_seen_at: '2026-06-19 10:00:00+00',
+          },
+        ]);
+      }
+      if (text.includes('stale_patient_resource_drilldown')) {
+        return Promise.resolve([
+          {
+            local_patient_id: '123',
+            patient_resource_id: 'pat-1',
+            resource_type: 'Observation',
+            stale_resources: '2',
+            oldest_seen_at: '2026-05-01 08:00:00+00',
+            latest_seen_at: '2026-05-02 08:00:00+00',
           },
         ]);
       }
@@ -197,6 +222,27 @@ describe('getTenantSyncStatus', () => {
         latestResourceType: 'Patient',
       },
     ]);
+    expect(status.conflictTargets).toEqual([
+      {
+        resourceType: 'Observation',
+        localTable: 'phm_edw.observation',
+        localId: 456,
+        sourceCount: 2,
+        sourceResourceIds: ['obs-1', 'obs-2'],
+        patientCount: 1,
+        lastSeenAt: '2026-06-18 09:00:00+00',
+      },
+    ]);
+    expect(status.stalePatientResources).toEqual([
+      {
+        localPatientId: 123,
+        patientResourceId: 'pat-1',
+        resourceType: 'Observation',
+        staleResources: 2,
+        oldestSeenAt: '2026-05-01 08:00:00+00',
+        latestSeenAt: '2026-05-02 08:00:00+00',
+      },
+    ]);
     expect(status.resources).toEqual([
       expect.objectContaining({
         resourceType: 'Patient',
@@ -227,8 +273,21 @@ describe('getTenantSyncStatus', () => {
     );
     expect(status.issues[0]).toMatchObject({
       severity: 'critical',
+      source: 'crosswalk',
       code: 'crosswalk_local_target_collision',
+      drilldownAvailable: true,
+      recommendedAction: expect.stringContaining('Review conflict drilldowns'),
       resourceType: 'Observation',
     });
+    expect(status.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'patient_sync',
+          code: 'patient_resource_stale',
+          drilldownAvailable: true,
+          recommendedAction: expect.stringContaining('Review stale resource drilldowns'),
+        }),
+      ]),
+    );
   });
 });
