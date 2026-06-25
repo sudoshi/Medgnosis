@@ -7,6 +7,7 @@
 import { sql } from '@medgnosis/db';
 
 const STALE_RESOURCE_DAYS = 30;
+const PATIENT_RESOURCE_ROLLUP_LIMIT = 25;
 
 export type EhrSyncIssueSeverity = 'info' | 'warning' | 'critical';
 
@@ -33,6 +34,25 @@ export interface EhrSyncResourceStatus {
   bulkErrorCount: number;
   bulkFailedFileCount: number;
   bulkActiveFileCount: number;
+}
+
+export interface EhrPatientResourceStatus {
+  localPatientId: number;
+  patientResourceId: string | null;
+  totalResources: number;
+  localTargetResources: number;
+  resourceTypes: number;
+  staleResources: number;
+  lastSeenAt: string | null;
+  latestResourceType: string | null;
+}
+
+export interface EhrPatientSyncSummary {
+  totalPatients: number;
+  displayedPatients: number;
+  stalePatients: number;
+  lastPatientSeenAt: string | null;
+  staleAfterDays: number;
 }
 
 export interface EhrCrosswalkSummary {
@@ -84,11 +104,13 @@ export interface EhrTenantSyncStatus {
   resources: EhrSyncResourceStatus[];
   bulkSchedule: EhrBulkScheduleSyncSummary;
   bulkWorker: EhrBulkWorkerSyncSummary;
+  patientSync: EhrPatientSyncSummary;
   lastSuccessfulIngestAt: string | null;
   lastSuccessfulBulkExportAt: string | null;
   lastSuccessfulBulkImportAt: string | null;
   lastSeenAt: string | null;
   issues: EhrSyncIssue[];
+  patientResources: EhrPatientResourceStatus[];
 }
 
 interface CrosswalkResourceRow {
@@ -142,20 +164,36 @@ interface BulkWorkerSummaryRow {
   oldest_overdue_job_at: string | null;
 }
 
+interface PatientResourceRow {
+  local_patient_id: number | string;
+  patient_resource_id: string | null;
+  total_resources: number | string;
+  local_target_resources: number | string;
+  resource_types: number | string;
+  stale_resources: number | string;
+  last_seen_at: string | null;
+  latest_resource_type: string | null;
+  total_patients: number | string | null;
+  stale_patients: number | string | null;
+  last_patient_seen_at: string | null;
+}
+
 export async function getTenantSyncStatus(ehrTenantId: number): Promise<EhrTenantSyncStatus> {
-  const [crosswalkRows, ingestRows, bulkRows, scheduleRows, workerRows] = await Promise.all([
+  const [crosswalkRows, ingestRows, bulkRows, scheduleRows, workerRows, patientRows] = await Promise.all([
     listCrosswalkResourceRows(ehrTenantId),
     listLatestSuccessfulIngestRows(ehrTenantId),
     listBulkResourceRows(ehrTenantId),
     getBulkScheduleSummaryRow(ehrTenantId),
     getBulkWorkerSummaryRow(ehrTenantId),
+    listPatientResourceRows(ehrTenantId),
   ]);
 
   const resources = mergeResourceStatuses(crosswalkRows, ingestRows, bulkRows);
   const crosswalk = summarizeCrosswalk(resources);
   const bulkSchedule = mapBulkScheduleSummary(scheduleRows[0]);
   const bulkWorker = mapBulkWorkerSummary(workerRows[0]);
-  const issues = buildSyncIssues(resources, crosswalk, bulkSchedule, bulkWorker);
+  const { patientSync, patientResources } = mapPatientResourceRows(patientRows);
+  const issues = buildSyncIssues(resources, crosswalk, bulkSchedule, bulkWorker, patientSync);
 
   return {
     ehrTenantId,
@@ -164,11 +202,13 @@ export async function getTenantSyncStatus(ehrTenantId: number): Promise<EhrTenan
     resources,
     bulkSchedule,
     bulkWorker,
+    patientSync,
     lastSuccessfulIngestAt: maxTimestamp(resources.map((resource) => resource.lastIngestSucceededAt)),
     lastSuccessfulBulkExportAt: maxTimestamp(resources.map((resource) => resource.lastBulkExportSucceededAt)),
     lastSuccessfulBulkImportAt: maxTimestamp(resources.map((resource) => resource.lastBulkImportSucceededAt)),
     lastSeenAt: crosswalk.lastSeenAt,
     issues,
+    patientResources,
   };
 }
 
@@ -360,6 +400,88 @@ function getBulkWorkerSummaryRow(ehrTenantId: number): Promise<BulkWorkerSummary
   `;
 }
 
+function listPatientResourceRows(ehrTenantId: number): Promise<PatientResourceRow[]> {
+  return sql<PatientResourceRow[]>`
+    WITH normalized_crosswalk AS (
+      SELECT cw.resource_type,
+             cw.ehr_resource_id,
+             cw.local_table,
+             cw.local_id,
+             cw.last_seen_at,
+             COALESCE(
+               cw.patient_id,
+               CASE
+                 WHEN cw.resource_type = 'Patient'
+                  AND cw.local_table = 'phm_edw.patient'
+                  AND cw.local_id IS NOT NULL
+                 THEN cw.local_id::integer
+               END
+             ) AS local_patient_id
+      FROM phm_edw.ehr_resource_crosswalk cw
+      WHERE cw.ehr_tenant_id = ${ehrTenantId}
+    ),
+    patient_crosswalk AS (
+      SELECT local_patient_id,
+             MAX(ehr_resource_id) FILTER (WHERE resource_type = 'Patient') AS patient_resource_id
+      FROM normalized_crosswalk
+      WHERE local_patient_id IS NOT NULL
+      GROUP BY local_patient_id
+    ),
+    patient_resource_rollup AS (
+      SELECT n.local_patient_id::integer AS local_patient_id,
+             p.patient_resource_id,
+             COUNT(*)::integer AS total_resources,
+             COUNT(*) FILTER (WHERE n.local_table IS NOT NULL AND n.local_id IS NOT NULL)::integer AS local_target_resources,
+             COUNT(DISTINCT n.resource_type)::integer AS resource_types,
+             COUNT(*) FILTER (
+               WHERE n.last_seen_at < NOW() - (${STALE_RESOURCE_DAYS}::integer * interval '1 day')
+             )::integer AS stale_resources,
+             MAX(n.last_seen_at)::text AS last_seen_at
+      FROM normalized_crosswalk n
+      LEFT JOIN patient_crosswalk p ON p.local_patient_id = n.local_patient_id
+      WHERE n.local_patient_id IS NOT NULL
+      GROUP BY n.local_patient_id, p.patient_resource_id
+    ),
+    latest_resource AS (
+      SELECT DISTINCT ON (local_patient_id)
+             local_patient_id::integer AS local_patient_id,
+             resource_type AS latest_resource_type
+      FROM normalized_crosswalk
+      WHERE local_patient_id IS NOT NULL
+      ORDER BY local_patient_id, last_seen_at DESC NULLS LAST, resource_type ASC
+    ),
+    ranked AS (
+      SELECT r.local_patient_id,
+             r.patient_resource_id,
+             r.total_resources,
+             r.local_target_resources,
+             r.resource_types,
+             r.stale_resources,
+             r.last_seen_at,
+             l.latest_resource_type,
+             COUNT(*) OVER ()::integer AS total_patients,
+             COUNT(*) FILTER (WHERE r.stale_resources > 0) OVER ()::integer AS stale_patients,
+             MAX(r.last_seen_at) OVER ()::text AS last_patient_seen_at
+      FROM patient_resource_rollup r
+      LEFT JOIN latest_resource l ON l.local_patient_id = r.local_patient_id
+    )
+    SELECT local_patient_id,
+           patient_resource_id,
+           total_resources,
+           local_target_resources,
+           resource_types,
+           stale_resources,
+           last_seen_at,
+           latest_resource_type,
+           total_patients,
+           stale_patients,
+           last_patient_seen_at
+    FROM ranked
+    ORDER BY stale_resources DESC, last_seen_at ASC NULLS FIRST, local_patient_id ASC
+    LIMIT ${PATIENT_RESOURCE_ROLLUP_LIMIT}
+  `;
+}
+
 function mergeResourceStatuses(
   crosswalkRows: CrosswalkResourceRow[],
   ingestRows: IngestResourceRow[],
@@ -480,11 +602,40 @@ function mapBulkWorkerSummary(row: BulkWorkerSummaryRow | undefined): EhrBulkWor
   };
 }
 
+function mapPatientResourceRows(rows: PatientResourceRow[]): {
+  patientSync: EhrPatientSyncSummary;
+  patientResources: EhrPatientResourceStatus[];
+} {
+  const first = rows[0];
+  const patientResources = rows.map((row) => ({
+    localPatientId: toNumber(row.local_patient_id),
+    patientResourceId: row.patient_resource_id ?? null,
+    totalResources: toNumber(row.total_resources),
+    localTargetResources: toNumber(row.local_target_resources),
+    resourceTypes: toNumber(row.resource_types),
+    staleResources: toNumber(row.stale_resources),
+    lastSeenAt: row.last_seen_at,
+    latestResourceType: row.latest_resource_type,
+  }));
+
+  return {
+    patientSync: {
+      totalPatients: toNumber(first?.total_patients),
+      displayedPatients: patientResources.length,
+      stalePatients: toNumber(first?.stale_patients),
+      lastPatientSeenAt: first?.last_patient_seen_at ?? null,
+      staleAfterDays: STALE_RESOURCE_DAYS,
+    },
+    patientResources,
+  };
+}
+
 function buildSyncIssues(
   resources: EhrSyncResourceStatus[],
   crosswalk: EhrCrosswalkSummary,
   bulkSchedule: EhrBulkScheduleSyncSummary,
   bulkWorker: EhrBulkWorkerSyncSummary,
+  patientSync: EhrPatientSyncSummary,
 ): EhrSyncIssue[] {
   const issues: EhrSyncIssue[] = [];
 
@@ -543,6 +694,17 @@ function buildSyncIssues(
       resourceType: null,
       count: bulkWorker.activeOverdueJobs,
       lastSeenAt: bulkWorker.oldestOverdueJobAt,
+    });
+  }
+
+  if (patientSync.stalePatients > 0) {
+    issues.push({
+      severity: 'warning',
+      code: 'patient_resource_stale',
+      message: `${patientSync.stalePatients} patient(s) have source resources that have not been seen in ${STALE_RESOURCE_DAYS} days.`,
+      resourceType: 'Patient',
+      count: patientSync.stalePatients,
+      lastSeenAt: patientSync.lastPatientSeenAt,
     });
   }
 

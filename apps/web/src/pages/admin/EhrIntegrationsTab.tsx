@@ -1042,7 +1042,9 @@ function SyncStatusPanel({
 }) {
   const crosswalk = status?.crosswalk;
   const bulkWorker = status?.bulkWorker;
+  const patientSync = status?.patientSync;
   const resources = status?.resources ?? [];
+  const patientResources = status?.patientResources ?? [];
   const visibleIssues = status?.issues.slice(0, 5) ?? [];
   const issueTone = highestIssueSeverity(status?.issues ?? []);
 
@@ -1071,9 +1073,15 @@ function SyncStatusPanel({
         <p className="text-sm text-ghost py-8 text-center">Select a tenant to load sync status.</p>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-12 gap-3">
             <SnapshotItem label="Resources" value={formatCount(crosswalk?.totalResources ?? 0)} />
             <SnapshotItem label="Patients" value={formatCount(crosswalk?.patientCrosswalks ?? 0)} />
+            <SnapshotItem label="Tracked patients" value={formatCount(patientSync?.totalPatients ?? 0)} />
+            <SnapshotItem
+              label="Stale patients"
+              value={formatCount(patientSync?.stalePatients ?? 0)}
+              tone={(patientSync?.stalePatients ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
             <SnapshotItem
               label="Mapped"
               value={formatCount(crosswalk?.localTargetResources ?? 0)}
@@ -1098,6 +1106,11 @@ function SyncStatusPanel({
               label="Last seen"
               value={status.lastSeenAt ? fmtDateTime(status.lastSeenAt) : 'None'}
               tone={status.lastSeenAt ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Patient latest"
+              value={patientSync?.lastPatientSeenAt ? fmtDateTime(patientSync.lastPatientSeenAt) : 'None'}
+              tone={patientSync?.lastPatientSeenAt ? 'emerald' : 'amber'}
             />
             <SnapshotItem
               label="Worker failures"
@@ -1172,6 +1185,66 @@ function SyncStatusPanel({
               )}
             </TableBody>
           </Table>
+
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h3 className="text-sm font-semibold text-bright">Patient resource rollups</h3>
+              <span className="font-data text-[11px] text-ghost">
+                {formatCount(patientResources.length)} of {formatCount(patientSync?.totalPatients ?? 0)}
+              </span>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Patient</TableHead>
+                  <TableHead>FHIR Patient</TableHead>
+                  <TableHead>Resources</TableHead>
+                  <TableHead>Crosswalk</TableHead>
+                  <TableHead>Latest</TableHead>
+                  <TableHead className="text-right">Seen</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {patientResources.map((patient) => (
+                  <TableRow key={patient.localPatientId}>
+                    <TableCell>
+                      <span className="font-data text-xs text-bright tabular-nums">{patient.localPatientId}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-data text-[11px] text-ghost break-all">{patient.patientResourceId ?? '-'}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-data text-xs text-dim tabular-nums">{formatCount(patient.totalResources)} rows</p>
+                        <p className="text-[11px] text-ghost">{formatCount(patient.resourceTypes)} types</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-data text-xs text-dim tabular-nums">
+                          {formatCount(patient.localTargetResources)}/{formatCount(patient.totalResources)} mapped
+                        </p>
+                        {patient.staleResources > 0 && (
+                          <Badge variant="amber">{formatCount(patient.staleResources)} stale</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-dim">{patient.latestResourceType ?? '-'}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="font-data text-[11px] text-ghost">{patient.lastSeenAt ? fmtDateTime(patient.lastSeenAt) : '-'}</span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {patientResources.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-ghost">No patient resource rollups found</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
           {visibleIssues.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">

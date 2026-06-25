@@ -566,6 +566,25 @@ export interface EhrBulkWorkerSyncSummary {
   oldestOverdueJobAt: string | null;
 }
 
+export interface EhrPatientResourceStatus {
+  localPatientId: number;
+  patientResourceId: string | null;
+  totalResources: number;
+  localTargetResources: number;
+  resourceTypes: number;
+  staleResources: number;
+  lastSeenAt: string | null;
+  latestResourceType: string | null;
+}
+
+export interface EhrPatientSyncSummary {
+  totalPatients: number;
+  displayedPatients: number;
+  stalePatients: number;
+  lastPatientSeenAt: string | null;
+  staleAfterDays: number;
+}
+
 export interface EhrSyncIssue {
   severity: EhrSyncIssueSeverity;
   code: string;
@@ -582,11 +601,13 @@ export interface EhrTenantSyncStatus {
   resources: EhrSyncResourceStatus[];
   bulkSchedule: EhrBulkScheduleSyncSummary;
   bulkWorker: EhrBulkWorkerSyncSummary;
+  patientSync: EhrPatientSyncSummary;
   lastSuccessfulIngestAt: string | null;
   lastSuccessfulBulkExportAt: string | null;
   lastSuccessfulBulkImportAt: string | null;
   lastSeenAt: string | null;
   issues: EhrSyncIssue[];
+  patientResources: EhrPatientResourceStatus[];
 }
 
 export type EhrReadinessIssueSeverity = 'info' | 'warning' | 'critical';

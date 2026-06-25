@@ -102,6 +102,36 @@ describe('getTenantSyncStatus', () => {
           },
         ]);
       }
+      if (text.includes('patient_resource_rollup')) {
+        return Promise.resolve([
+          {
+            local_patient_id: '123',
+            patient_resource_id: 'pat-1',
+            total_resources: '9',
+            local_target_resources: '8',
+            resource_types: '3',
+            stale_resources: '2',
+            last_seen_at: '2026-05-01 08:00:00+00',
+            latest_resource_type: 'Observation',
+            total_patients: '2',
+            stale_patients: '1',
+            last_patient_seen_at: '2026-06-19 10:00:00+00',
+          },
+          {
+            local_patient_id: '124',
+            patient_resource_id: 'pat-2',
+            total_resources: '2',
+            local_target_resources: '2',
+            resource_types: '1',
+            stale_resources: '0',
+            last_seen_at: '2026-06-19 10:00:00+00',
+            latest_resource_type: 'Patient',
+            total_patients: '2',
+            stale_patients: '1',
+            last_patient_seen_at: '2026-06-19 10:00:00+00',
+          },
+        ]);
+      }
       return Promise.resolve([]);
     });
 
@@ -135,9 +165,38 @@ describe('getTenantSyncStatus', () => {
         activeOverdueJobs: 1,
         oldestOverdueJobAt: '2026-06-19 11:30:00+00',
       },
+      patientSync: {
+        totalPatients: 2,
+        displayedPatients: 2,
+        stalePatients: 1,
+        lastPatientSeenAt: '2026-06-19 10:00:00+00',
+        staleAfterDays: 30,
+      },
       lastSuccessfulIngestAt: '2026-06-18 09:30:00+00',
       lastSuccessfulBulkImportAt: '2026-06-17 12:10:00+00',
     });
+    expect(status.patientResources).toEqual([
+      {
+        localPatientId: 123,
+        patientResourceId: 'pat-1',
+        totalResources: 9,
+        localTargetResources: 8,
+        resourceTypes: 3,
+        staleResources: 2,
+        lastSeenAt: '2026-05-01 08:00:00+00',
+        latestResourceType: 'Observation',
+      },
+      {
+        localPatientId: 124,
+        patientResourceId: 'pat-2',
+        totalResources: 2,
+        localTargetResources: 2,
+        resourceTypes: 1,
+        staleResources: 0,
+        lastSeenAt: '2026-06-19 10:00:00+00',
+        latestResourceType: 'Patient',
+      },
+    ]);
     expect(status.resources).toEqual([
       expect.objectContaining({
         resourceType: 'Patient',
@@ -163,6 +222,7 @@ describe('getTenantSyncStatus', () => {
         'bulk_import_file_errors',
         'bulk_worker_failures_24h',
         'bulk_worker_poll_overdue',
+        'patient_resource_stale',
       ]),
     );
     expect(status.issues[0]).toMatchObject({

@@ -52,20 +52,22 @@ devlogs do not override the current codebase state.
   are current through `091_ehr_medication_events.sql`, post-deploy migration
   dry-run reported 90 applied migrations and no pending migrations, and both
   local and public health endpoints returned healthy.
+  The EHR sync-status surface now includes bounded patient/resource rollups with
+  stale-patient counts in addition to tenant/resource rollups.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
   for tenant-specific patient-detail needs, deeper Bulk replay/dead-letter runbooks,
-  vendor sandbox evidence, broader patient/resource last-success rollups,
-  FHIR-read/QDM-promotion audit coverage, and alerting.
+  vendor sandbox evidence, deeper patient/resource drilldowns, FHIR-read/QDM-promotion
+  audit coverage, and alerting.
 
 ## First Implementation Priorities
 
 1. Keep README, env docs, and validation runbooks truthful.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
-4. Add broader patient/resource last-success rollups and capture vendor sandbox evidence.
+4. Add deeper patient/resource sync drilldowns and capture vendor sandbox evidence.
 5. Add deeper Bulk replay/dead-letter runbooks on top of the manual/admin kickoff, resume, recurring schedule, and EMPI-seeded Patient crosswalk path.
 6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and alert readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.
