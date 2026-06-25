@@ -76,11 +76,16 @@ devlogs do not override the current codebase state.
   read-only production tenant-2 Bulk summary probe, `./scripts/deploy-production.sh`,
   public health, service status, and production migration dry-run passed;
   production still reports 90 applied migrations and no pending migrations.
-- Current implementation checkpoint adds PHI-light ingest-run operational
-  summaries and a selectable EHR Integrations run-detail panel outside the Bulk
-  table, including context counts, EDW/QDM counts, QDM replay state, linked Bulk
-  job ids, recommended actions, and an ingest-run QDM replay control. It remains
-  pending final release/deploy evidence in the next checkpoint.
+- Follow-up production checkpoint on 2026-06-25 deployed the ingest-run
+  drilldown release `95af0de`; recent EHR ingest runs now return PHI-light
+  operational summaries, selectable keyboard-accessible run details outside the
+  Bulk table, context/EDW/QDM counts, QDM replay state, linked Bulk job ids,
+  recommended actions, and an ingest-run QDM replay control. Focused API tests,
+  full `npm run test`, API/web typechecks, API/web lint, API/web builds,
+  `git diff --check`, a read-only production tenant-2 ingest-run summary probe,
+  `./scripts/deploy-production.sh`, public health, service status, and
+  production migration dry-run passed; production still reports 90 applied
+  migrations and no pending migrations.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
