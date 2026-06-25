@@ -117,6 +117,11 @@ export const config = {
 
   // Observability
   sentryDsn: process.env['SENTRY_DSN'] ?? '',
+  ehrSyncAlertingEnabled: optionalBool('EHR_SYNC_ALERTING_ENABLED', false),
+  ehrSyncAlertWebhookUrl: process.env['EHR_SYNC_ALERT_WEBHOOK_URL'] ?? '',
+  ehrSyncAlertWebhookSecret: process.env['EHR_SYNC_ALERT_WEBHOOK_SECRET'] ?? '',
+  ehrSyncAlertNightlyEnabled: optionalBool('EHR_SYNC_ALERT_NIGHTLY_ENABLED', false),
+  ehrSyncAlertTimeoutMs: Number(optional('EHR_SYNC_ALERT_TIMEOUT_MS', '5000')),
 
   // External integrations / API documentation
   cdsHooksSecret: process.env['CDS_HOOKS_SECRET'] ?? '',

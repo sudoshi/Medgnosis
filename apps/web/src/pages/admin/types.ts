@@ -76,7 +76,36 @@ export interface SystemHealth {
     issues: string[];
     error?: string;
   };
+  ehr_sync_alerts: {
+    status: string;
+    enabled: boolean;
+    configured: boolean;
+    nightly_enabled: boolean;
+    endpoint_host: string | null;
+    last_dispatch_at: string | null;
+    last_dispatch_status: string | null;
+    last_dispatch_reason: string | null;
+    last_issue_count: number | null;
+    last_critical_issue_count: number | null;
+    last_warning_issue_count: number | null;
+    error?: string;
+  };
   duration_ms: number;
+}
+
+export interface EhrSyncAlertDispatchResult {
+  status: string;
+  reason: string;
+  enabled: boolean;
+  configured: boolean;
+  endpointHost: string | null;
+  generatedAt: string;
+  tenantCount: number;
+  issueCount: number;
+  criticalIssueCount: number;
+  warningIssueCount: number;
+  statusCode?: number;
+  error?: string;
 }
 
 export interface QueueCounts {

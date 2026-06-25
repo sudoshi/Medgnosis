@@ -23,6 +23,8 @@ const {
   mockCreatePendingPasswordHash,
   mockCreateUserInvite,
   mockSendInviteEmail,
+  mockDispatchEhrSyncAlertSnapshot,
+  mockEhrSyncAlertAuditDetails,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
     readonly code: string;
@@ -55,6 +57,8 @@ const {
     mockCreatePendingPasswordHash: vi.fn(),
     mockCreateUserInvite: vi.fn(),
     mockSendInviteEmail: vi.fn(),
+    mockDispatchEhrSyncAlertSnapshot: vi.fn(),
+    mockEhrSyncAlertAuditDetails: vi.fn(),
   };
 });
 
@@ -111,6 +115,10 @@ vi.mock('../../services/auth/oidc/providerConfig.js', () => ({
 vi.mock('../../services/systemHealth.js', () => ({
   getSystemHealth: mockGetSystemHealth,
 }));
+vi.mock('../../services/ehr/syncAlerts.js', () => ({
+  dispatchEhrSyncAlertSnapshot: mockDispatchEhrSyncAlertSnapshot,
+  ehrSyncAlertAuditDetails: mockEhrSyncAlertAuditDetails,
+}));
 vi.mock('../../services/auth/invites.js', () => ({
   createPendingPasswordHash: mockCreatePendingPasswordHash,
   createUserInvite: mockCreateUserInvite,
@@ -150,6 +158,32 @@ beforeEach(() => {
     activationUrl: 'http://localhost:5173/accept-invite?token=raw-token-not-persisted',
   });
   mockSendInviteEmail.mockResolvedValue(false);
+  mockDispatchEhrSyncAlertSnapshot.mockResolvedValue({
+    status: 'sent',
+    reason: 'sent',
+    enabled: true,
+    configured: true,
+    endpointHost: 'ops.example',
+    generatedAt: '2026-06-25T22:30:00Z',
+    tenantCount: 1,
+    issueCount: 3,
+    criticalIssueCount: 1,
+    warningIssueCount: 2,
+    statusCode: 202,
+  });
+  mockEhrSyncAlertAuditDetails.mockReturnValue({
+    status: 'sent',
+    reason: 'sent',
+    enabled: true,
+    configured: true,
+    endpointHost: 'ops.example',
+    tenantCount: 1,
+    issueCount: 3,
+    criticalIssueCount: 1,
+    warningIssueCount: 2,
+    statusCode: 202,
+    triggeredBy: 'manual',
+  });
 });
 
 function systemHealthPayload() {
@@ -199,6 +233,19 @@ function systemHealthPayload() {
       },
       issues: [],
     },
+    ehr_sync_alerts: {
+      status: 'ok',
+      enabled: true,
+      configured: true,
+      nightly_enabled: true,
+      endpoint_host: 'ops.example',
+      last_dispatch_at: '2026-06-25T22:00:00Z',
+      last_dispatch_status: 'sent',
+      last_dispatch_reason: 'sent',
+      last_issue_count: 3,
+      last_critical_issue_count: 1,
+      last_warning_issue_count: 2,
+    },
     duration_ms: 12,
   };
 }
@@ -229,6 +276,47 @@ describe('admin system health route', () => {
       },
     });
     expect(mockGetSystemHealth).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it('dispatches an audited PHI-safe EHR sync alert snapshot', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/system-health/ehr-sync-alerts/dispatch',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        ehrSyncAlertDispatch: {
+          status: 'sent',
+          reason: 'sent',
+          endpointHost: 'ops.example',
+          issueCount: 3,
+          criticalIssueCount: 1,
+          warningIssueCount: 2,
+        },
+      },
+    });
+    expect(mockDispatchEhrSyncAlertSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockEhrSyncAlertAuditDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'sent', issueCount: 3 }),
+      'manual',
+    );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_sync_alert_dispatch',
+      'ehr_sync_alert',
+      'manual',
+      expect.objectContaining({
+        endpointHost: 'ops.example',
+        issueCount: 3,
+        triggeredBy: 'manual',
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('https://ops.example/hooks');
     await app.close();
   });
 });

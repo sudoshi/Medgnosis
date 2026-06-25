@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
-import { Activity, Database, KeyRound, RefreshCw, Search, Server, Wifi } from 'lucide-react';
-import { api } from '../../services/api.js';
-import type { SystemHealth } from './types.js';
+import { Activity, Database, KeyRound, RefreshCw, Search, Server, Send, Wifi } from 'lucide-react';
+import { api, apiErrorMessage } from '../../services/api.js';
+import type { EhrSyncAlertDispatchResult, SystemHealth } from './types.js';
 import { fmtDateTime } from './helpers.js';
 import { Button } from '@/components/ui/button';
 
@@ -58,8 +58,17 @@ export function SystemHealthTab() {
     queryFn: () => api.get<SystemHealth>('/admin/system-health'),
     refetchInterval: 60_000,
   });
+  const dispatchAlerts = useMutation({
+    mutationFn: () => api.post<{ ehrSyncAlertDispatch: EhrSyncAlertDispatchResult }>(
+      '/admin/system-health/ehr-sync-alerts/dispatch',
+    ),
+    onSuccess: () => {
+      void refetch();
+    },
+  });
 
   const health = data?.data;
+  const latestDispatch = dispatchAlerts.data?.data?.ehrSyncAlertDispatch;
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -124,59 +133,136 @@ export function SystemHealthTab() {
             </div>
           </div>
 
-          <div className="surface p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-bright">EHR Bulk Readiness</h3>
-                <p className="mt-0.5 text-xs text-ghost">
-                  {health.ehr_bulk.tenants.ready_for_bulk}/{health.ehr_bulk.tenants.active} active tenants ready
-                </p>
-              </div>
-              <StatusPill status={health.ehr_bulk.status} />
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-card border border-edge/25 bg-s0 p-3">
-                <p className="text-ghost">Schedules</p>
-                <p className="mt-1 font-data text-bright">
-                  {health.ehr_bulk.schedules.enabled} enabled / {health.ehr_bulk.schedules.due} due
-                </p>
-              </div>
-              <div className="rounded-card border border-edge/25 bg-s0 p-3">
-                <p className="text-ghost">Bulk jobs</p>
-                <p className="mt-1 font-data text-bright">
-                  {health.ehr_bulk.bulk_jobs.active} active / {health.ehr_bulk.bulk_jobs.failed_24h} failed
-                </p>
-              </div>
-              <div className="rounded-card border border-edge/25 bg-s0 p-3">
-                <p className="text-ghost">Backend clients</p>
-                <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_backend_services}</p>
-              </div>
-              <div className="rounded-card border border-edge/25 bg-s0 p-3">
-                <p className="text-ghost">Capabilities</p>
-                <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_capability_snapshots}</p>
-              </div>
-            </div>
-            <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
-              <p className="text-ghost">Next schedule</p>
-              <p className="mt-1 font-data text-bright">
-                {health.ehr_bulk.schedules.next_run_at ? fmtDateTime(health.ehr_bulk.schedules.next_run_at) : 'None'}
-              </p>
-              <p className="mt-2 text-ghost">Latest completed job</p>
-              <p className="mt-1 font-data text-bright">
-                {health.ehr_bulk.bulk_jobs.latest_completed_at
-                  ? fmtDateTime(health.ehr_bulk.bulk_jobs.latest_completed_at)
-                  : 'None'}
-              </p>
-            </div>
-            {health.ehr_bulk.issues.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {health.ehr_bulk.issues.slice(0, 4).map((issue) => (
-                  <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
-                    {issue}
+          <div className="space-y-5">
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-bright">EHR Bulk Readiness</h3>
+                  <p className="mt-0.5 text-xs text-ghost">
+                    {health.ehr_bulk.tenants.ready_for_bulk}/{health.ehr_bulk.tenants.active} active tenants ready
                   </p>
-                ))}
+                </div>
+                <StatusPill status={health.ehr_bulk.status} />
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Schedules</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_bulk.schedules.enabled} enabled / {health.ehr_bulk.schedules.due} due
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Bulk jobs</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_bulk.bulk_jobs.active} active / {health.ehr_bulk.bulk_jobs.failed_24h} failed
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Backend clients</p>
+                  <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_backend_services}</p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Capabilities</p>
+                  <p className="mt-1 font-data text-bright">{health.ehr_bulk.tenants.with_capability_snapshots}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Next schedule</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_bulk.schedules.next_run_at ? fmtDateTime(health.ehr_bulk.schedules.next_run_at) : 'None'}
+                </p>
+                <p className="mt-2 text-ghost">Latest completed job</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_bulk.bulk_jobs.latest_completed_at
+                    ? fmtDateTime(health.ehr_bulk.bulk_jobs.latest_completed_at)
+                    : 'None'}
+                </p>
+              </div>
+              {health.ehr_bulk.issues.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {health.ehr_bulk.issues.slice(0, 4).map((issue) => (
+                    <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-bright">EHR Sync Alerts</h3>
+                  <p className="mt-0.5 truncate text-xs text-ghost">
+                    {health.ehr_sync_alerts.endpoint_host ?? 'No endpoint'}
+                  </p>
+                </div>
+                <StatusPill status={health.ehr_sync_alerts.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">External</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_sync_alerts.configured ? 'Configured' : 'Disabled'}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Nightly</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_sync_alerts.nightly_enabled ? 'Enabled' : 'Off'}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Last issues</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_sync_alerts.last_issue_count ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Critical</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_sync_alerts.last_critical_issue_count ?? 0}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Last dispatch</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_sync_alerts.last_dispatch_at
+                    ? fmtDateTime(health.ehr_sync_alerts.last_dispatch_at)
+                    : 'None'}
+                </p>
+                <p className="mt-2 text-ghost">Status</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.ehr_sync_alerts.last_dispatch_status ?? 'None'}
+                  {health.ehr_sync_alerts.last_dispatch_reason ? ` / ${health.ehr_sync_alerts.last_dispatch_reason}` : ''}
+                </p>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="min-w-0 text-xs text-ghost">
+                  {latestDispatch
+                    ? `${latestDispatch.status} / ${latestDispatch.reason} / ${latestDispatch.issueCount} issues`
+                    : health.ehr_sync_alerts.error ?? 'Ready'}
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => dispatchAlerts.mutate()}
+                  disabled={dispatchAlerts.isPending}
+                >
+                  {dispatchAlerts.isPending ? <RefreshCw /> : <Send />}
+                  Dispatch
+                </Button>
+              </div>
+              {dispatchAlerts.isError && (
+                <p className="mt-2 rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                  {apiErrorMessage(dispatchAlerts.error, 'Dispatch failed')}
+                </p>
+              )}
+              <div className="sr-only" aria-live="polite">
+                {latestDispatch ? `EHR sync alert dispatch ${latestDispatch.status}` : ''}
+              </div>
+            </div>
           </div>
         </div>
       )}

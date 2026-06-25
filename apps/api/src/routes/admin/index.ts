@@ -24,6 +24,10 @@ import { fetchOidcDiscovery } from '../../services/auth/oidc/discovery.js';
 import { getOidcProviderConfig } from '../../services/auth/oidc/providerConfig.js';
 import { getSystemHealth } from '../../services/systemHealth.js';
 import {
+  dispatchEhrSyncAlertSnapshot,
+  ehrSyncAlertAuditDetails,
+} from '../../services/ehr/syncAlerts.js';
+import {
   listMeasurePromotionConfigs,
   updateMeasurePromotionConfig,
   promoteMeasureToCqlAuthoritative,
@@ -369,6 +373,20 @@ export default async function adminRoutes(app: FastifyInstance) {
     return {
       success: true,
       data: await getSystemHealth(),
+    };
+  });
+
+  app.post('/system-health/ehr-sync-alerts/dispatch', { preHandler: app.requirePermission('admin:system-health') }, async (req) => {
+    const result = await dispatchEhrSyncAlertSnapshot();
+    await req.auditLog(
+      'ehr_sync_alert_dispatch',
+      'ehr_sync_alert',
+      'manual',
+      ehrSyncAlertAuditDetails(result, 'manual'),
+    );
+    return {
+      success: true,
+      data: { ehrSyncAlertDispatch: result },
     };
   });
 

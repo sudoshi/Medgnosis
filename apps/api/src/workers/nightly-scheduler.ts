@@ -17,6 +17,12 @@ import { ampQueue, mtmQueue, autoOrdersQueue, type AnticipatoryJobData } from '.
 import { recomputeClinicalExclusions } from '../services/exclusionEngine.js';
 import { dqQueue, cohortFlagsQueue, type DqJobData } from './data-quality.js';
 import { enqueueDueEhrBulkExports } from './ehr-bulk-import.js';
+import {
+  dispatchEhrSyncAlertSnapshot,
+  ehrSyncAlertAuditDetails,
+  isEhrSyncAlertNightlyEnabled,
+} from '../services/ehr/syncAlerts.js';
+import { writeSystemAuditLog } from '../services/auditLog.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
 
@@ -116,6 +122,25 @@ async function processNightlyJob(): Promise<void> {
       `examined=${bulkSchedules.examined} enqueued=${bulkSchedules.enqueued} ` +
       `skipped=${bulkSchedules.skipped} failed=${bulkSchedules.failed}`,
   );
+
+  // 10. EHR sync alert snapshot to an external operational channel.
+  if (isEhrSyncAlertNightlyEnabled()) {
+    try {
+      const alertDispatch = await dispatchEhrSyncAlertSnapshot();
+      await writeSystemAuditLog(
+        'ehr_sync_alert_dispatch',
+        'ehr_sync_alert',
+        'nightly',
+        ehrSyncAlertAuditDetails(alertDispatch, 'nightly'),
+      );
+      console.info(
+        '[nightly] EHR sync alerts: ' +
+          `status=${alertDispatch.status} reason=${alertDispatch.reason} issues=${alertDispatch.issueCount}`,
+      );
+    } catch (err) {
+      console.error('[nightly] EHR sync alert dispatch failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
 
   console.info('[nightly] Nightly batch complete.');
 }

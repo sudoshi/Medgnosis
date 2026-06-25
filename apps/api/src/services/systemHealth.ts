@@ -9,6 +9,7 @@ import { sql } from '@medgnosis/db';
 import { config } from '../config.js';
 import { getSolrClient, isSolrAvailable } from '../plugins/solr.js';
 import { getOidcProviderConfig } from './auth/oidc/providerConfig.js';
+import { getEhrSyncAlertingStatus, type EhrSyncAlertingStatus } from './ehr/syncAlerts.js';
 
 export type HealthStatus = 'ok' | 'degraded' | 'error' | 'disabled';
 
@@ -20,6 +21,7 @@ export interface SystemHealth {
   auth: { local_enabled: boolean; oidc_enabled: boolean; error?: string };
   workers: WorkerQueueHealth;
   ehr_bulk: EhrBulkReadiness;
+  ehr_sync_alerts: EhrSyncAlertingStatus;
   duration_ms: number;
 }
 
@@ -129,13 +131,14 @@ const HEALTH_QUEUE_DEFINITIONS: QueueDefinition[] = [
 
 export async function getSystemHealth(): Promise<SystemHealth> {
   const startedAt = Date.now();
-  const [database, redis, solr, auth, workers, ehrBulk] = await Promise.all([
+  const [database, redis, solr, auth, workers, ehrBulk, ehrSyncAlerts] = await Promise.all([
     getDatabaseHealth(),
     getRedisHealth(),
     getSolrHealth(),
     getAuthHealth(),
     getWorkerQueueHealth(),
     getEhrBulkReadiness(),
+    getEhrSyncAlertingStatus(),
   ]);
 
   return {
@@ -146,6 +149,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     auth,
     workers,
     ehr_bulk: ehrBulk,
+    ehr_sync_alerts: ehrSyncAlerts,
     duration_ms: Date.now() - startedAt,
   };
 }

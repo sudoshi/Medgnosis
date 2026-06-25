@@ -15,6 +15,7 @@ devlogs do not override the current codebase state.
 - [FHIR/QDM bridge completion devlog](devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md) - completed QDM/CQL shadow-governance milestone and CMS122 promotion hold evidence.
 - [QDM bridge operations runbook](runbooks/qdm-bridge-operations.md) - how to run and monitor QDM/CQL shadow refreshes safely.
 - [EHR Bulk replay and dead-letter runbook](runbooks/ehr-bulk-replay-dead-letter.md) - PHI-light Bulk import resume, QDM replay, and worker dead-letter triage.
+- [EHR sync alerts and stale-data incident runbook](runbooks/ehr-sync-alerts-stale-data.md) - PHI-safe external alert routing, stale-data triage, and Bulk incident rehearsal checklist.
 - [Validation gates runbook](runbooks/validation-gates.md) - current command matrix for local/release validation.
 
 ## Active Implementation Plans

@@ -1,16 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SystemHealthTab } from './SystemHealthTab.js';
 import type { SystemHealth } from './types.js';
 
-const { mockApiGet } = vi.hoisted(() => ({
+const { mockApiGet, mockApiPost } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
+  mockApiPost: vi.fn(),
 }));
 
 vi.mock('../../services/api.js', () => ({
   api: {
     get: mockApiGet,
+    post: mockApiPost,
   },
 }));
 
@@ -86,12 +89,43 @@ const health: SystemHealth = {
     },
     issues: [],
   },
+  ehr_sync_alerts: {
+    status: 'ok',
+    enabled: true,
+    configured: true,
+    nightly_enabled: true,
+    endpoint_host: 'ops.example',
+    last_dispatch_at: '2026-06-25T22:00:00Z',
+    last_dispatch_status: 'sent',
+    last_dispatch_reason: 'sent',
+    last_issue_count: 3,
+    last_critical_issue_count: 1,
+    last_warning_issue_count: 2,
+  },
   duration_ms: 12,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockApiGet.mockResolvedValue({ success: true, data: health });
+  mockApiPost.mockResolvedValue({
+    success: true,
+    data: {
+      ehrSyncAlertDispatch: {
+        status: 'sent',
+        reason: 'sent',
+        enabled: true,
+        configured: true,
+        endpointHost: 'ops.example',
+        generatedAt: '2026-06-25T22:30:00Z',
+        tenantCount: 1,
+        issueCount: 3,
+        criticalIssueCount: 1,
+        warningIssueCount: 2,
+        statusCode: 202,
+      },
+    },
+  });
 });
 
 describe('SystemHealthTab', () => {
@@ -106,6 +140,20 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('1/1 active tenants ready')).toBeInTheDocument();
     expect(screen.getByText('2 enabled / 0 due')).toBeInTheDocument();
     expect(screen.getByText('3 active / 0 failed')).toBeInTheDocument();
+    expect(screen.getByText('EHR Sync Alerts')).toBeInTheDocument();
+    expect(screen.getByText('ops.example')).toBeInTheDocument();
+    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /bulk export/i })).not.toBeInTheDocument();
+  });
+
+  it('dispatches the EHR sync alert snapshot from System Health', async () => {
+    const user = userEvent.setup();
+    renderHealthTab();
+
+    await user.click(await screen.findByRole('button', { name: /dispatch/i }));
+
+    expect(mockApiPost).toHaveBeenCalledWith('/admin/system-health/ehr-sync-alerts/dispatch');
+    expect(await screen.findByText('sent / sent / 3 issues')).toBeInTheDocument();
   });
 });
