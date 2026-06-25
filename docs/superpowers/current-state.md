@@ -54,6 +54,10 @@ devlogs do not override the current codebase state.
   local and public health endpoints returned healthy.
   The EHR sync-status surface now includes bounded patient/resource rollups with
   stale-patient counts in addition to tenant/resource rollups.
+- Follow-up production checkpoint on 2026-06-25 deployed the patient/resource
+  sync-rollup application release `25b6f7d`; `medgnosis-api`,
+  `medgnosis-worker`, and `medgnosis-auto-deploy` were active, public health was
+  healthy, and production migration dry-run still reported no pending migrations.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

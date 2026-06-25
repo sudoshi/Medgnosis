@@ -11,7 +11,7 @@
 
 Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, recent ingest, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, a QDM/CQL shadow-governance path for staged FHIR evidence, and first-pass EDW hydration across 17 FHIR resource families including `DiagnosticReport`, `DocumentReference`, `MedicationDispense`, and `MedicationAdministration`.
 
-Production checkpoint on 2026-06-25: the medication-event application code release `e467846` was pushed and deployed, production migrations are current through `091_ehr_medication_events.sql`, the follow-up `.env.production` dry-run reported 90 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and both `http://127.0.0.1:3081/health` and `https://medgnosis.acumenus.net/health` returned healthy with the database up. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation.
+Production checkpoint on 2026-06-25: the medication-event application code release `e467846` was pushed and deployed, production migrations are current through `091_ehr_medication_events.sql`, the follow-up `.env.production` dry-run reported 90 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and both `http://127.0.0.1:3081/health` and `https://medgnosis.acumenus.net/health` returned healthy with the database up. Follow-up application release `25b6f7d` added bounded patient/resource sync rollups and was also pushed, deployed, and public-health verified on 2026-06-25; `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, and production migration dry-run still reported no pending migrations. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation.
 
 Current continuation is focused on non-EMPI EHR ingestion breadth and operator visibility. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. Tenant sync status now also includes bounded patient/resource rollups with stale-patient counts and a PHI-light admin table. EMPI/identity continuation remains explicitly separate from this slice.
 
@@ -30,7 +30,8 @@ Assessment baseline for this refresh:
 
 - Current branch: `main`.
 - Medication-event application release commit: `e467846 feat(ehr): hydrate medication event resources`.
-- Production was deployed successfully after `091` was applied; the documentation checkpoint may be a later commit on top of the same application release.
+- Patient/resource sync-rollup application release commit: `25b6f7d feat(ehr): surface patient resource sync rollups`.
+- Production was deployed successfully after `091` was applied and again after `25b6f7d`; the documentation checkpoint may be a later commit on top of the same application releases.
 - Production migrations are current through `091_ehr_medication_events.sql`.
 - The deployed non-EMPI work slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, bounded patient/resource rollups in `apps/api/src/services/ehr/syncStatus.ts` and `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, and this documentation refresh.
 
@@ -45,6 +46,7 @@ Relevant commits now in history:
 - `c8d662f fix(api): compile injectable identity repository`
 - `3dabd58 docs(auth): devlog for Authentik 'Medgnosis Admins' group (fleet SSO)`
 - `e467846 feat(ehr): hydrate medication event resources`
+- `25b6f7d feat(ehr): surface patient resource sync rollups`
 
 ## Implemented Capabilities
 
@@ -686,7 +688,13 @@ Focused patient/resource sync-status rollup validation on 2026-06-25:
 - `npm run test --workspace=apps/api -- syncStatus.test.ts admin.test.ts` passed 2 files and 40 tests.
 - `npm run typecheck --workspace=apps/api` passed.
 - `npm run typecheck --workspace=apps/web` passed.
+- `npm run lint --workspace=apps/api` passed with one existing warning in `apps/api/src/routes/admin/identityReview.test.ts`.
+- `npm run lint --workspace=apps/web` passed.
+- `npm run build --workspace=apps/api` passed.
+- `npm run build --workspace=apps/web` passed.
+- `git diff --check` passed.
 - A read-only production service probe against EHR tenant 2 returned 12 resource rows, 7 tracked patients, 7 displayed patient rollups, and no sync issues.
+- Commit `25b6f7d` was pushed to `origin/main`; `./scripts/deploy-production.sh` passed; `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active; production migration dry-run reported 90 applied migrations and no pending migrations; and `https://medgnosis.acumenus.net/health` returned healthy.
 
 Focused EHR tests covered during the EHR foundation tranche:
 
@@ -722,6 +730,7 @@ Latest live SMART Health IT onboarding smoke:
 Production assessment rechecks for the medication-event release on 2026-06-25:
 
 - Medication-event application release commit `e467846` was pushed to `origin/main` before deployment.
+- Patient/resource sync-rollup application release commit `25b6f7d` was pushed to `origin/main` before deployment.
 - `set -a; . ./.env.production; set +a; npm run db:migrate:dry-run` reported 90 applied migrations and no pending migrations.
 - `https://medgnosis.acumenus.net/health` returned healthy with database up.
 - `http://127.0.0.1:3081/health` returned healthy with database up during deploy verification.
