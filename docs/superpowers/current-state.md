@@ -67,11 +67,15 @@ devlogs do not override the current codebase state.
   tenant-2 service probe, `./scripts/deploy-production.sh`, public health,
   service status, and production migration dry-run passed; production still
   reports 90 applied migrations and no pending migrations.
-- Current implementation checkpoint adds Bulk job import/QDM replay summaries,
-  poll-count and normalized-row visibility, a QDM replay action for linked Bulk
-  ingest runs, durable manual QDM replay metadata, and the EHR Bulk replay and
-  dead-letter runbook. It remains pending final release/deploy evidence in the
-  next checkpoint.
+- Follow-up production checkpoint on 2026-06-25 deployed the Bulk replay
+  drilldown release `9ba7246`; Bulk job status now returns import/QDM replay
+  summaries, poll-count and normalized-row visibility, a QDM replay action for
+  linked Bulk ingest runs, durable manual QDM replay metadata, and the EHR Bulk
+  replay and dead-letter runbook. Focused API tests, full `npm run test`,
+  API/web typechecks, API/web lint, API/web builds, `git diff --check`, a
+  read-only production tenant-2 Bulk summary probe, `./scripts/deploy-production.sh`,
+  public health, service status, and production migration dry-run passed;
+  production still reports 90 applied migrations and no pending migrations.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
