@@ -86,6 +86,16 @@ devlogs do not override the current codebase state.
   `./scripts/deploy-production.sh`, public health, service status, and
   production migration dry-run passed; production still reports 90 applied
   migrations and no pending migrations.
+- Follow-up production checkpoint on 2026-06-25 deployed the readiness token
+  diagnostics release `1c560e0`; tenant readiness evidence now includes
+  previous-snapshot CapabilityStatement drift, required Bulk resource capability
+  coverage, backend-services credential/token age evidence, aggregate Bulk
+  diagnostics, and an explicit audited backend token-check admin action. Focused
+  API tests, full `npm run test`, API/web typechecks, API/web lint, API/web
+  builds, `git diff --check`, a read-only production tenant-2 readiness probe,
+  `./scripts/deploy-production.sh`, public health, service status, and
+  production migration dry-run passed; production still reports 90 applied
+  migrations and no pending migrations.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
