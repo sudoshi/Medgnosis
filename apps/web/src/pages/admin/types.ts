@@ -716,6 +716,38 @@ export interface EhrDiscoveryEvidence {
   drift: EhrDiscoveryDriftIssue[];
 }
 
+export interface EhrCapabilityReadinessEvidence {
+  previousSnapshotId: number | null;
+  previousCapturedAt: string | null;
+  addedResourceTypes: string[];
+  removedResourceTypes: string[];
+  changedResourceTypes: string[];
+  changedResourceCount: number;
+  requiredBulkResourceTypes: string[];
+  supportedRequiredBulkResourceTypes: string[];
+  missingRequiredBulkResourceTypes: string[];
+  bulkResourceCoverageRatio: number | null;
+}
+
+export type EhrBackendCredentialStatus = 'not_configured' | 'ready' | 'incomplete';
+
+export interface EhrBackendServicesEvidence {
+  enabledClientCount: number;
+  authMethods: string[];
+  credentialStatus: EhrBackendCredentialStatus;
+  hasClientSecretRef: boolean;
+  hasPrivateKeyRef: boolean;
+  hasJwksUrl: boolean;
+  scopesRequestedCount: number;
+  scopesGrantedCount: number;
+  tokenEndpointPresent: boolean;
+  readyForTokenExchange: boolean;
+  latestTokenIssuedAt: string | null;
+  latestTokenExpiresAt: string | null;
+  latestTokenExpired: boolean | null;
+  tokenRequests24h: number;
+}
+
 export interface EhrLaunchEvidence {
   latestLaunchStartedAt: string | null;
   latestLaunchDeniedAt: string | null;
@@ -734,6 +766,18 @@ export interface EhrLaunchEvidence {
   handoffsCompleted24h: number;
 }
 
+export interface EhrBulkDiagnosticEvidence {
+  readyForManualKickoff: boolean;
+  activeJobs: number;
+  failedJobs24h: number;
+  completedJobs24h: number;
+  latestJobRequestedAt: string | null;
+  latestCompletedAt: string | null;
+  enabledScheduleCount: number;
+  overdueScheduleCount: number;
+  nextScheduledAt: string | null;
+}
+
 export interface EhrReadinessIssue {
   severity: EhrReadinessIssueSeverity;
   code: string;
@@ -744,7 +788,10 @@ export interface EhrTenantReadinessEvidence {
   ehrTenantId: number;
   generatedAt: string;
   discovery: EhrDiscoveryEvidence;
+  capability: EhrCapabilityReadinessEvidence;
+  backendServices: EhrBackendServicesEvidence;
   launch: EhrLaunchEvidence;
+  bulkDiagnostics: EhrBulkDiagnosticEvidence;
   issues: EhrReadinessIssue[];
 }
 

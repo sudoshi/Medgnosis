@@ -11,6 +11,9 @@ const {
   mockSql,
   normalizeStagedRunToQdm,
   loadQdmEventsToCqlEngine,
+  loadBackendServicesConfig,
+  requestBackendServiceToken,
+  BackendServicesError,
   cancelBulkExportJobWithBackendServices,
   listBulkSchedules,
   upsertBulkSchedule,
@@ -24,6 +27,19 @@ const {
   (fn as unknown as { json: (value: unknown) => unknown }).json = (value: unknown) => value;
   const normalizeStagedRunToQdm = vi.fn();
   const loadQdmEventsToCqlEngine = vi.fn();
+  const loadBackendServicesConfig = vi.fn();
+  const requestBackendServiceToken = vi.fn();
+  class BackendServicesError extends Error {
+    readonly code: string;
+    readonly status: number;
+
+    constructor(code: string, message: string, status = 400) {
+      super(message);
+      this.name = 'BackendServicesError';
+      this.code = code;
+      this.status = status;
+    }
+  }
   const cancelBulkExportJobWithBackendServices = vi.fn();
   const listBulkSchedules = vi.fn();
   const upsertBulkSchedule = vi.fn();
@@ -41,6 +57,9 @@ const {
     mockSql: fn,
     normalizeStagedRunToQdm,
     loadQdmEventsToCqlEngine,
+    loadBackendServicesConfig,
+    requestBackendServiceToken,
+    BackendServicesError,
     cancelBulkExportJobWithBackendServices,
     listBulkSchedules,
     upsertBulkSchedule,
@@ -55,6 +74,11 @@ const {
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 vi.mock('../../services/ehr/qdmBridge.js', () => ({ normalizeStagedRunToQdm }));
 vi.mock('../../services/qdm/index.js', () => ({ loadQdmEventsToCqlEngine }));
+vi.mock('../../services/ehr/backendServices.js', () => ({
+  BackendServicesError,
+  loadBackendServicesConfig,
+  requestBackendServiceToken,
+}));
 vi.mock('../../services/ehr/bulkData.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/ehr/bulkData.js')>();
   return { ...actual, cancelBulkExportJobWithBackendServices };
@@ -130,7 +154,10 @@ const snapshotRow = {
   ehr_tenant_id: 42,
   smart_configuration: {
     ok: true,
-    summary: { authorizationEndpoint: 'https://issuer.example.test/oauth2/authorize' },
+    summary: {
+      authorizationEndpoint: 'https://issuer.example.test/oauth2/authorize',
+      tokenEndpoint: 'https://issuer.example.test/oauth2/token',
+    },
   },
   capability_statement: {
     ok: true,
@@ -252,6 +279,8 @@ beforeEach(() => {
   mockSql.mockReset();
   normalizeStagedRunToQdm.mockReset();
   loadQdmEventsToCqlEngine.mockReset();
+  loadBackendServicesConfig.mockReset();
+  requestBackendServiceToken.mockReset();
   cancelBulkExportJobWithBackendServices.mockReset();
   listBulkSchedules.mockReset();
   upsertBulkSchedule.mockReset();
@@ -512,6 +541,18 @@ describe('EHR admin routes', () => {
       if (text.includes('FROM phm_edw.ehr_tenant') && text.includes('WHERE id =')) {
         return Promise.resolve([tenantRow]);
       }
+      if (text.includes('FROM phm_edw.ehr_capability_snapshot') && text.includes('OFFSET 1')) {
+        return Promise.resolve([
+          {
+            id: 11,
+            resource_support: {
+              Patient: { interactions: ['read'], searchParams: [] },
+              Encounter: { interactions: ['read'], searchParams: [] },
+            },
+            captured_at: '2026-06-17 12:05:00+00',
+          },
+        ]);
+      }
       if (text.includes('FROM phm_edw.ehr_capability_snapshot')) {
         return Promise.resolve([snapshotRow]);
       }
@@ -523,6 +564,48 @@ describe('EHR admin routes', () => {
             latest_session_handoff_consumed_at: '2026-06-18 12:03:00+00',
             active_pending_launches: 0,
             expired_pending_launches: 1,
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_client_registration')) {
+        return Promise.resolve([
+          {
+            auth_method: 'private_key_jwt',
+            has_client_secret_ref: false,
+            has_private_key_ref: true,
+            has_jwks_url: true,
+            scopes_requested: 'system/Patient.rs system/Observation.rs',
+            scopes_granted: 'system/Patient.rs system/Observation.rs',
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.smart_token_metadata')) {
+        return Promise.resolve([
+          {
+            latest_token_issued_at: '2026-06-18 12:10:00+00',
+            latest_token_expires_at: '2026-06-18 13:10:00+00',
+            latest_token_expired: false,
+            token_requests_24h: 1,
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_bulk_job')) {
+        return Promise.resolve([
+          {
+            active_jobs: 0,
+            failed_jobs_24h: 0,
+            completed_jobs_24h: 1,
+            latest_job_requested_at: '2026-06-18 12:20:00+00',
+            latest_completed_at: '2026-06-18 12:25:00+00',
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_bulk_schedule')) {
+        return Promise.resolve([
+          {
+            enabled_schedule_count: 1,
+            overdue_schedule_count: 0,
+            next_scheduled_at: '2026-06-18 13:00:00+00',
           },
         ]);
       }
@@ -565,6 +648,33 @@ describe('EHR admin routes', () => {
             discoveredIssuer: null,
             resourceCount: 1,
           },
+          capability: {
+            previousSnapshotId: 11,
+            previousCapturedAt: '2026-06-17 12:05:00+00',
+            addedResourceTypes: [],
+            removedResourceTypes: ['Encounter'],
+            changedResourceTypes: [],
+            changedResourceCount: 0,
+            requiredBulkResourceTypes: ['Patient', 'Observation', 'Condition', 'Encounter'],
+            supportedRequiredBulkResourceTypes: ['Patient'],
+            missingRequiredBulkResourceTypes: ['Observation', 'Condition', 'Encounter'],
+            bulkResourceCoverageRatio: 0.25,
+          },
+          backendServices: {
+            enabledClientCount: 1,
+            authMethods: ['private_key_jwt'],
+            credentialStatus: 'ready',
+            hasPrivateKeyRef: true,
+            hasJwksUrl: true,
+            scopesRequestedCount: 2,
+            scopesGrantedCount: 2,
+            tokenEndpointPresent: true,
+            readyForTokenExchange: true,
+            latestTokenIssuedAt: '2026-06-18 12:10:00+00',
+            latestTokenExpiresAt: '2026-06-18 13:10:00+00',
+            latestTokenExpired: false,
+            tokenRequests24h: 1,
+          },
           launch: {
             latestLaunchStartedAt: '2026-06-18 12:00:00+00',
             latestCallbackSucceededAt: '2026-06-18 12:02:00+00',
@@ -573,7 +683,24 @@ describe('EHR admin routes', () => {
             launchesStarted24h: 1,
             callbacksSucceeded24h: 1,
           },
+          bulkDiagnostics: {
+            readyForManualKickoff: false,
+            activeJobs: 0,
+            failedJobs24h: 0,
+            completedJobs24h: 1,
+            latestJobRequestedAt: '2026-06-18 12:20:00+00',
+            latestCompletedAt: '2026-06-18 12:25:00+00',
+            enabledScheduleCount: 1,
+            overdueScheduleCount: 0,
+            nextScheduledAt: '2026-06-18 13:00:00+00',
+          },
           issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'bulk_resource_capability_gap',
+            }),
+            expect.objectContaining({
+              code: 'capability_resource_removed',
+            }),
             expect.objectContaining({
               code: 'expired_pending_launches',
             }),
@@ -581,6 +708,166 @@ describe('EHR admin routes', () => {
         },
       },
     });
+    await app.close();
+  });
+
+  it('runs an audited Backend Services token check without returning raw tokens or secret refs', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    loadBackendServicesConfig.mockResolvedValueOnce({
+      tenant: {
+        id: 42,
+        orgId: 7,
+        vendor: 'epic',
+        fhirBaseUrl: 'https://ehr.example.test/fhir',
+      },
+      clientRegistrationId: 100,
+      clientId: 'backend-client',
+      authMethod: 'private_key_jwt',
+      clientSecretRef: null,
+      privateKeyRef: 'env:EHR_BACKEND_PRIVATE_KEY_PEM',
+      jwksUrl: 'https://api.medgnosis.test/.well-known/jwks.json',
+      scopesRequested: 'system/Patient.rs system/Observation.rs',
+      scopesGranted: 'system/Patient.rs system/Observation.rs',
+      tokenEndpoint: 'https://issuer.example.test/oauth2/token',
+    });
+    requestBackendServiceToken.mockResolvedValueOnce({
+      accessToken: {
+        accessToken: 'raw-token-value',
+        tokenType: 'Bearer',
+        scope: 'system/Patient.rs system/Observation.rs',
+        expiresAt: '2026-06-18T13:10:00.000Z',
+      },
+      tokenResponse: {
+        access_token: 'raw-token-value',
+        token_type: 'Bearer',
+        expires_in: 300,
+        scope: 'system/Patient.rs system/Observation.rs',
+      },
+      tokenMetadata: {
+        id: '00000000-0000-4000-8000-000000000088',
+      },
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/backend-token-check',
+      payload: { scope: 'system/Patient.rs system/Observation.rs' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        tenant: { id: 42, orgId: 7 },
+        backendTokenCheck: {
+          status: 'succeeded',
+          authMethod: 'private_key_jwt',
+          tokenType: 'Bearer',
+          scope: 'system/Patient.rs system/Observation.rs',
+          scopeCount: 2,
+          expiresAt: '2026-06-18T13:10:00.000Z',
+          tokenMetadataId: '00000000-0000-4000-8000-000000000088',
+        },
+      },
+    });
+    expect(loadBackendServicesConfig).toHaveBeenCalledWith(42);
+    expect(requestBackendServiceToken).toHaveBeenCalledWith({
+      config: expect.objectContaining({ clientId: 'backend-client' }),
+      scope: 'system/Patient.rs system/Observation.rs',
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_backend_token_check',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        authMethod: 'private_key_jwt',
+        scopeCount: 2,
+        tokenType: 'Bearer',
+        expiresAt: '2026-06-18T13:10:00.000Z',
+        tokenMetadataId: '00000000-0000-4000-8000-000000000088',
+      }),
+    );
+    const serialized = JSON.stringify(res.json());
+    expect(serialized).not.toContain('raw-token-value');
+    expect(serialized).not.toContain('EHR_BACKEND_PRIVATE_KEY_PEM');
+    expect(serialized).not.toContain('access_token');
+    await app.close();
+  });
+
+  it('rejects invalid Backend Services token check inputs before tenant lookup', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/backend-token-check',
+      payload: { scope: '' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'scope must be a non-empty string' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(loadBackendServicesConfig).not.toHaveBeenCalled();
+    expect(requestBackendServiceToken).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('audits Backend Services token check failures with sanitized error details', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    loadBackendServicesConfig.mockResolvedValueOnce({
+      tenant: {
+        id: 42,
+        orgId: 7,
+        vendor: 'epic',
+        fhirBaseUrl: 'https://ehr.example.test/fhir',
+      },
+      clientRegistrationId: 100,
+      clientId: 'backend-client',
+      authMethod: 'client_secret_basic',
+      clientSecretRef: 'env:EHR_BACKEND_CLIENT_SECRET',
+      privateKeyRef: null,
+      jwksUrl: null,
+      scopesRequested: 'system/Patient.rs',
+      scopesGranted: 'system/Patient.rs',
+      tokenEndpoint: 'https://issuer.example.test/oauth2/token',
+    });
+    requestBackendServiceToken.mockRejectedValueOnce(
+      new BackendServicesError('backend_token_request_failed', 'Token endpoint rejected the request', 502),
+    );
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/backend-token-check',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: {
+        code: 'BACKEND_TOKEN_REQUEST_FAILED',
+        message: 'Token endpoint rejected the request',
+      },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_backend_token_check_failed',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        authMethod: 'client_secret_basic',
+        errorCode: 'backend_token_request_failed',
+      }),
+    );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('EHR_BACKEND_CLIENT_SECRET');
     await app.close();
   });
 

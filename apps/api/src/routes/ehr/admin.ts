@@ -35,6 +35,11 @@ import {
   type ListEhrTenantsFilter,
   type SanitizedEhrClientRegistration,
 } from '../../services/ehr/tenantRegistry.js';
+import {
+  BackendServicesError,
+  loadBackendServicesConfig,
+  requestBackendServiceToken,
+} from '../../services/ehr/backendServices.js';
 import { discoverSmartConfiguration } from '../../services/ehr/smartDiscovery.js';
 import { buildEhrOnboardingProfile } from '../../services/ehr/onboardingProfile.js';
 import {
@@ -206,6 +211,10 @@ interface BulkExportBody {
   max_resources_per_file?: unknown;
 }
 
+interface BackendTokenCheckBody {
+  scope?: unknown;
+}
+
 interface BulkScheduleBody extends BulkExportBody {
   id?: unknown;
   enabled?: unknown;
@@ -362,6 +371,11 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
     sendTenantDiagnostics(request, reply),
   );
 
+  app.post<{ Params: TenantIdParams; Body: BackendTokenCheckBody }>(
+    '/tenants/:id/backend-token-check',
+    async (request, reply) => sendTenantBackendTokenCheck(request, reply),
+  );
+
   app.get<{ Params: TenantIdParams; Querystring: IngestRunListQuery }>(
     '/tenants/:id/ingest-runs',
     async (request, reply) => sendTenantIngestRuns(request, reply),
@@ -416,6 +430,96 @@ export default async function ehrAdminRoutes(app: FastifyInstance): Promise<void
     '/tenants/:id/bulk-jobs/:bulkJobId/cancel',
     async (request, reply) => sendTenantBulkJobCancel(request, reply),
   );
+}
+
+async function sendTenantBackendTokenCheck(
+  request: FastifyRequest<{ Params: TenantIdParams; Body: BackendTokenCheckBody }>,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const tenantId = parseTenantId(request.params.id);
+  if (tenantId === undefined) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Tenant id must be a positive integer' },
+    });
+  }
+
+  const parsedBody = parseBackendTokenCheckBody(request.body ?? {});
+  if ('error' in parsedBody) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: parsedBody.error },
+    });
+  }
+
+  const tenant = await getTenant(tenantId);
+  if (!tenant) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'EHR tenant not found' },
+    });
+  }
+
+  const config = await loadBackendServicesConfig(tenant.id);
+  if (!config) {
+    return reply.status(409).send({
+      success: false,
+      error: {
+        code: 'BACKEND_SERVICES_NOT_CONFIGURED',
+        message: 'No enabled SMART Backend Services client registration exists for this tenant',
+      },
+    });
+  }
+
+  try {
+    const result = await requestBackendServiceToken({
+      config,
+      scope: parsedBody.input.scope,
+    });
+    const scopeCount = splitScopes(result.accessToken.scope).length;
+    await request.auditLog('ehr_backend_token_check', 'ehr_tenant', String(tenant.id), {
+      tenantId: tenant.id,
+      orgId: tenant.orgId,
+      authMethod: config.authMethod,
+      scopeCount,
+      tokenType: result.accessToken.tokenType,
+      expiresAt: result.accessToken.expiresAt ?? null,
+      tokenMetadataId: result.tokenMetadata?.id ?? null,
+    });
+
+    return reply.send({
+      success: true,
+      data: {
+        tenant,
+        backendTokenCheck: {
+          status: 'succeeded',
+          authMethod: config.authMethod,
+          tokenType: result.accessToken.tokenType,
+          scope: result.accessToken.scope ?? null,
+          scopeCount,
+          expiresAt: result.accessToken.expiresAt ?? null,
+          tokenMetadataId: result.tokenMetadata?.id ?? null,
+        },
+      },
+    });
+  } catch (error) {
+    const statusCode = error instanceof BackendServicesError ? error.status : 502;
+    const code = error instanceof BackendServicesError ? error.code : 'backend_token_check_failed';
+    await request.auditLog('ehr_backend_token_check_failed', 'ehr_tenant', String(tenant.id), {
+      tenantId: tenant.id,
+      orgId: tenant.orgId,
+      authMethod: config.authMethod,
+      errorCode: code,
+      error: errorMessage(error),
+    });
+    return reply.status(statusCode).send({
+      success: false,
+      error: {
+        code: code.toUpperCase(),
+        message: errorMessage(error),
+      },
+    });
+  }
 }
 
 async function sendTenantReadinessEvidence(
@@ -1236,6 +1340,17 @@ function parseQdmReplayBody(
   return { input };
 }
 
+function parseBackendTokenCheckBody(
+  body: BackendTokenCheckBody,
+): { input: { scope?: string } } | { error: string } {
+  if (!isRecord(body)) return { error: 'Request body must be an object' };
+  const scope = optionalString(body.scope);
+  if (body.scope !== undefined && scope === undefined) {
+    return { error: 'scope must be a non-empty string' };
+  }
+  return { input: scope ? { scope } : {} };
+}
+
 function parseQdmCqlLoadBody(
   body: TenantQdmCqlLoadBody,
 ): { input: NonNullable<Parameters<typeof loadQdmEventsToCqlEngine>[0]> } | { error: string } {
@@ -1614,6 +1729,11 @@ function requiredString(value: unknown, label: string): { value: string } | { er
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function splitScopes(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split(/\s+/).map((scope) => scope.trim()).filter(Boolean);
 }
 
 function optionalNullableString(value: unknown): string | null | undefined {

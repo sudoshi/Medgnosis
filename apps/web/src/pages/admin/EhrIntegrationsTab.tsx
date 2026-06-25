@@ -79,6 +79,19 @@ interface EhrDiagnosticsResponse {
   snapshot: EhrCapabilitySnapshot;
 }
 
+interface EhrBackendTokenCheckResponse {
+  tenant: EhrTenant;
+  backendTokenCheck: {
+    status: 'succeeded';
+    authMethod: string;
+    tokenType: string;
+    scope: string | null;
+    scopeCount: number;
+    expiresAt: string | null;
+    tokenMetadataId: string | null;
+  };
+}
+
 interface EhrIngestRunsResponse {
   tenant: EhrTenant;
   ingestRuns: EhrIngestRun[];
@@ -375,6 +388,27 @@ export function EhrIntegrationsTab() {
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-readiness-evidence', selectedTenantId] });
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Diagnostics failed')),
+  });
+
+  const backendTokenCheckMutation = useMutation({
+    mutationFn: () => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      return api.post<EhrBackendTokenCheckResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/backend-token-check',
+        {},
+      );
+    },
+    onSuccess: (response) => {
+      const check = response.data?.backendTokenCheck;
+      toast.success(
+        check
+          ? `Backend token check succeeded for ${formatCount(check.scopeCount)} scope(s)`
+          : 'Backend token check succeeded',
+      );
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-readiness-evidence', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Backend token check failed')),
   });
 
   const bulkExportMutation = useMutation({
@@ -848,6 +882,8 @@ export function EhrIntegrationsTab() {
               evidence={readinessEvidence}
               isFetching={readinessEvidenceQuery.isFetching}
               onRefresh={() => void readinessEvidenceQuery.refetch()}
+              onCheckBackendToken={() => backendTokenCheckMutation.mutate()}
+              isCheckingBackendToken={backendTokenCheckMutation.isPending}
             />
 
             <SyncStatusPanel
@@ -1011,15 +1047,22 @@ function ReadinessEvidencePanel({
   evidence,
   isFetching,
   onRefresh,
+  onCheckBackendToken,
+  isCheckingBackendToken,
 }: {
   evidence: EhrTenantReadinessEvidence | null;
   isFetching: boolean;
   onRefresh: () => void;
+  onCheckBackendToken: () => void;
+  isCheckingBackendToken: boolean;
 }) {
   const issues = evidence?.issues ?? [];
   const issueTone = highestIssueSeverity(issues);
   const discovery = evidence?.discovery;
+  const capability = evidence?.capability;
+  const backend = evidence?.backendServices;
   const launch = evidence?.launch;
+  const bulk = evidence?.bulkDiagnostics;
 
   return (
     <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
@@ -1043,7 +1086,7 @@ function ReadinessEvidencePanel({
         <p className="text-sm text-ghost py-8 text-center">Select a tenant to load readiness evidence.</p>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-12 gap-3">
             <SnapshotItem
               label="SMART"
               value={discovery?.smartOk ? 'OK' : 'Issue'}
@@ -1060,6 +1103,21 @@ function ReadinessEvidencePanel({
               tone={discovery?.issuerMatches === false ? 'amber' : discovery?.issuerMatches === true ? 'emerald' : 'dim'}
             />
             <SnapshotItem label="Resources" value={formatCount(discovery?.resourceCount ?? 0)} />
+            <SnapshotItem
+              label="Bulk coverage"
+              value={formatPercent(capability?.bulkResourceCoverageRatio ?? null)}
+              tone={(capability?.missingRequiredBulkResourceTypes.length ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="Backend"
+              value={backendCredentialLabel(backend?.credentialStatus)}
+              tone={backend?.credentialStatus === 'ready' ? 'emerald' : backend?.credentialStatus === 'incomplete' ? 'amber' : 'dim'}
+            />
+            <SnapshotItem
+              label="Token"
+              value={backend?.latestTokenIssuedAt ? 'Seen' : backend?.readyForTokenExchange ? 'Ready' : 'Blocked'}
+              tone={backend?.latestTokenExpired ? 'amber' : backend?.latestTokenIssuedAt ? 'emerald' : backend?.readyForTokenExchange ? 'emerald' : 'amber'}
+            />
             <SnapshotItem label="Launch 24h" value={formatCount(launch?.launchesStarted24h ?? 0)} />
             <SnapshotItem
               label="Callbacks"
@@ -1076,9 +1134,19 @@ function ReadinessEvidencePanel({
               value={formatCount(launch?.activePendingLaunches ?? 0)}
               tone={(launch?.activePendingLaunches ?? 0) > 0 ? 'amber' : 'dim'}
             />
+            <SnapshotItem
+              label="Bulk ready"
+              value={bulk?.readyForManualKickoff ? 'Ready' : 'Blocked'}
+              tone={bulk?.readyForManualKickoff ? 'emerald' : 'amber'}
+            />
+            <SnapshotItem
+              label="Bulk fails"
+              value={formatCount(bulk?.failedJobs24h ?? 0)}
+              tone={(bulk?.failedJobs24h ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
             <div className="border border-edge/20 rounded-card p-3">
               <p className="text-xs text-ghost uppercase tracking-wider mb-3">Discovery</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1086,6 +1154,36 @@ function ReadinessEvidencePanel({
                 <EvidenceLine label="FHIR" value={discovery?.fhirVersion ?? 'Unknown'} />
                 <EvidenceLine label="Registered issuer" value={discovery?.registeredIssuer ?? 'None'} />
                 <EvidenceLine label="Discovered issuer" value={discovery?.discoveredIssuer ?? 'None'} />
+                <EvidenceLine label="Previous snapshot" value={capability?.previousCapturedAt ? fmtDateTime(capability.previousCapturedAt) : 'None'} />
+                <EvidenceLine label="Added" value={formatResourceList(capability?.addedResourceTypes ?? [])} />
+                <EvidenceLine label="Removed" value={formatResourceList(capability?.removedResourceTypes ?? [])} />
+                <EvidenceLine label="Changed" value={formatCount(capability?.changedResourceCount ?? 0)} />
+                <EvidenceLine label="Required Bulk" value={formatResourceList(capability?.requiredBulkResourceTypes ?? [])} />
+                <EvidenceLine label="Missing Bulk" value={formatResourceList(capability?.missingRequiredBulkResourceTypes ?? [])} />
+              </div>
+            </div>
+            <div className="border border-edge/20 rounded-card p-3">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="text-xs text-ghost uppercase tracking-wider">Backend</p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onCheckBackendToken}
+                  disabled={!backend?.readyForTokenExchange || isCheckingBackendToken}
+                >
+                  <RefreshCw className={isCheckingBackendToken ? 'animate-spin' : ''} />
+                  Token
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <EvidenceLine label="Clients" value={formatCount(backend?.enabledClientCount ?? 0)} />
+                <EvidenceLine label="Auth" value={formatBackendAuthMethods(backend?.authMethods ?? [])} />
+                <EvidenceLine label="Credential" value={backendCredentialLabel(backend?.credentialStatus)} />
+                <EvidenceLine label="Scopes" value={`${formatCount(backend?.scopesRequestedCount ?? 0)}/${formatCount(backend?.scopesGrantedCount ?? 0)}`} />
+                <EvidenceLine label="Last token" value={backend?.latestTokenIssuedAt ? fmtDateTime(backend.latestTokenIssuedAt) : 'None'} />
+                <EvidenceLine label="Expires" value={backend?.latestTokenExpiresAt ? fmtDateTime(backend.latestTokenExpiresAt) : 'None'} />
+                <EvidenceLine label="Token 24h" value={formatCount(backend?.tokenRequests24h ?? 0)} />
+                <EvidenceLine label="JWKS" value={backend?.hasJwksUrl ? 'Configured' : 'None'} />
               </div>
             </div>
             <div className="border border-edge/20 rounded-card p-3">
@@ -1095,6 +1193,17 @@ function ReadinessEvidencePanel({
                 <EvidenceLine label="Callback" value={launch?.latestCallbackSucceededAt ? fmtDateTime(launch.latestCallbackSucceededAt) : 'None'} />
                 <EvidenceLine label="Handoff" value={launch?.latestHandoffCompletedAt ? fmtDateTime(launch.latestHandoffCompletedAt) : 'None'} />
                 <EvidenceLine label="Expired pending" value={formatCount(launch?.expiredPendingLaunches ?? 0)} />
+              </div>
+            </div>
+            <div className="border border-edge/20 rounded-card p-3">
+              <p className="text-xs text-ghost uppercase tracking-wider mb-3">Bulk</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <EvidenceLine label="Active" value={formatCount(bulk?.activeJobs ?? 0)} />
+                <EvidenceLine label="Failed 24h" value={formatCount(bulk?.failedJobs24h ?? 0)} />
+                <EvidenceLine label="Completed 24h" value={formatCount(bulk?.completedJobs24h ?? 0)} />
+                <EvidenceLine label="Schedules" value={formatCount(bulk?.enabledScheduleCount ?? 0)} />
+                <EvidenceLine label="Next" value={bulk?.nextScheduledAt ? fmtDateTime(bulk.nextScheduledAt) : 'None'} />
+                <EvidenceLine label="Last complete" value={bulk?.latestCompletedAt ? fmtDateTime(bulk.latestCompletedAt) : 'None'} />
               </div>
             </div>
           </div>
@@ -2273,6 +2382,18 @@ function formatResourceList(values: string[]): string {
   if (values.length === 0) return '-';
   if (values.length <= 3) return values.join(', ');
   return `${values.slice(0, 3).join(', ')} +${values.length - 3}`;
+}
+
+function formatBackendAuthMethods(values: string[]): string {
+  if (values.length === 0) return '-';
+  return formatResourceList(values.map((value) => value.replace(/_/g, ' ')));
+}
+
+function backendCredentialLabel(status: EhrTenantReadinessEvidence['backendServices']['credentialStatus'] | undefined): string {
+  if (status === 'ready') return 'Ready';
+  if (status === 'incomplete') return 'Incomplete';
+  if (status === 'not_configured') return 'Missing';
+  return 'Unknown';
 }
 
 function runStatusVariant(status: EhrIngestRun['status']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {

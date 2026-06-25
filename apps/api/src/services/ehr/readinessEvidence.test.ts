@@ -36,6 +36,20 @@ describe('getTenantReadinessEvidence', () => {
   it('reports discovery drift, launch timestamps, and operational issues', async () => {
     mockSql.mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join('');
+      if (text.includes('FROM phm_edw.ehr_capability_snapshot') && text.includes('OFFSET 1')) {
+        expect(values).toContain(42);
+        return Promise.resolve([
+          {
+            id: 11,
+            resource_support: {
+              Patient: { interactions: ['read'], searchParams: ['_id'] },
+              Encounter: { interactions: ['search-type'], searchParams: ['patient'] },
+              MedicationRequest: { interactions: ['search-type'], searchParams: ['patient'] },
+            },
+            captured_at: '2026-06-17 12:00:00+00',
+          },
+        ]);
+      }
       if (text.includes('FROM phm_edw.ehr_capability_snapshot')) {
         expect(values).toContain(42);
         return Promise.resolve([
@@ -78,6 +92,52 @@ describe('getTenantReadinessEvidence', () => {
           },
         ]);
       }
+      if (text.includes('FROM phm_edw.ehr_client_registration')) {
+        expect(values).toContain(42);
+        return Promise.resolve([
+          {
+            auth_method: 'private_key_jwt',
+            has_client_secret_ref: false,
+            has_private_key_ref: true,
+            has_jwks_url: true,
+            scopes_requested: 'system/Patient.rs system/Observation.rs',
+            scopes_granted: 'system/Patient.rs system/Observation.rs',
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.smart_token_metadata')) {
+        expect(values).toContain(42);
+        return Promise.resolve([
+          {
+            latest_token_issued_at: '2026-06-19 10:30:00+00',
+            latest_token_expires_at: '2026-06-19 11:30:00+00',
+            latest_token_expired: true,
+            token_requests_24h: '2',
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_bulk_job')) {
+        expect(values).toContain(42);
+        return Promise.resolve([
+          {
+            active_jobs: '1',
+            failed_jobs_24h: '1',
+            completed_jobs_24h: '3',
+            latest_job_requested_at: '2026-06-19 11:15:00+00',
+            latest_completed_at: '2026-06-19 11:45:00+00',
+          },
+        ]);
+      }
+      if (text.includes('FROM phm_edw.ehr_bulk_schedule')) {
+        expect(values).toContain(42);
+        return Promise.resolve([
+          {
+            enabled_schedule_count: '1',
+            overdue_schedule_count: '1',
+            next_scheduled_at: '2026-06-19 11:00:00+00',
+          },
+        ]);
+      }
       if (text.includes('FROM audit_log')) {
         expect(values).toContain('42');
         return Promise.resolve([
@@ -116,6 +176,33 @@ describe('getTenantReadinessEvidence', () => {
         fhirVersion: '4.0.1',
         resourceCount: 2,
       },
+      capability: {
+        previousSnapshotId: 11,
+        previousCapturedAt: '2026-06-17 12:00:00+00',
+        addedResourceTypes: ['Observation'],
+        removedResourceTypes: ['Encounter', 'MedicationRequest'],
+        changedResourceTypes: [],
+        changedResourceCount: 0,
+        requiredBulkResourceTypes: ['Patient', 'Observation', 'Condition', 'Encounter'],
+        supportedRequiredBulkResourceTypes: ['Patient', 'Observation'],
+        missingRequiredBulkResourceTypes: ['Condition', 'Encounter'],
+        bulkResourceCoverageRatio: 0.5,
+      },
+      backendServices: {
+        enabledClientCount: 1,
+        authMethods: ['private_key_jwt'],
+        credentialStatus: 'ready',
+        hasPrivateKeyRef: true,
+        hasJwksUrl: true,
+        scopesRequestedCount: 2,
+        scopesGrantedCount: 2,
+        tokenEndpointPresent: true,
+        readyForTokenExchange: true,
+        latestTokenIssuedAt: '2026-06-19 10:30:00+00',
+        latestTokenExpiresAt: '2026-06-19 11:30:00+00',
+        latestTokenExpired: true,
+        tokenRequests24h: 2,
+      },
       launch: {
         latestLaunchStartedAt: '2026-06-19 10:00:00+00',
         latestCallbackSucceededAt: '2026-06-19 10:02:00+00',
@@ -125,13 +212,29 @@ describe('getTenantReadinessEvidence', () => {
         launchesDenied24h: 1,
         callbacksFailed24h: 1,
       },
+      bulkDiagnostics: {
+        readyForManualKickoff: false,
+        activeJobs: 1,
+        failedJobs24h: 1,
+        completedJobs24h: 3,
+        latestJobRequestedAt: '2026-06-19 11:15:00+00',
+        latestCompletedAt: '2026-06-19 11:45:00+00',
+        enabledScheduleCount: 1,
+        overdueScheduleCount: 1,
+        nextScheduledAt: '2026-06-19 11:00:00+00',
+      },
     });
     expect(evidence.issues.map((issue) => issue.code)).toEqual(
       expect.arrayContaining([
         'issuer_mismatch',
+        'bulk_resource_capability_gap',
+        'capability_resource_removed',
+        'backend_token_expired',
         'launch_denials_24h',
         'callback_failures_24h',
         'expired_pending_launches',
+        'bulk_failures_24h',
+        'bulk_schedules_overdue',
       ]),
     );
   });
