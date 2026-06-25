@@ -609,11 +609,24 @@ describe('EHR admin routes', () => {
           resourcesReceived: 12,
           resourcesStaged: 12,
           resourcesUpdated: 10,
+          operationalSummary: {
+            source: 'smart-patient-context-refresh',
+            qdmReplayStatus: 'ready',
+            canReplayQdm: true,
+            contextResourceTypesAttempted: ['Observation'],
+            contextResourcesReceived: 12,
+            contextResourcesStaged: 12,
+            recommendedAction: 'Replay QDM normalization for staged resources.',
+          },
         },
         ingestRuns: [
           {
             id: ingestRunRow.id,
             status: 'succeeded',
+            operationalSummary: {
+              qdmReplayStatus: 'ready',
+              canReplayQdm: true,
+            },
             metadata: {
               source: 'smart-patient-context-refresh',
             },

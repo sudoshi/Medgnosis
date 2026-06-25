@@ -271,6 +271,27 @@ describe('listIngestRuns', () => {
         finished_at: '2026-06-16 12:05:00+00',
         resources_received: 8,
         resources_staged: 8,
+        resources_updated: 7,
+        metadata: {
+          source: 'smart-patient-context-refresh',
+          contextResources: {
+            attempted: ['Observation', 'Condition'],
+            skipped: [{ resourceType: 'Condition', reason: 'scope_missing' }],
+            received: 8,
+            staged: 8,
+            errors: [],
+            remainingNextUrls: [{ resourceType: 'Observation', nextUrl: 'https://ehr.example.test/next' }],
+          },
+          edwHydration: { resourcesHydrated: 7, resourcesFailed: 1 },
+          qdmBridge: {
+            resourcesSeen: 8,
+            resourcesNormalized: 7,
+            resourcesSkipped: 0,
+            resourcesFailed: 1,
+            eventsUpserted: 7,
+            errors: [],
+          },
+        },
       },
     ]);
 
@@ -288,6 +309,28 @@ describe('listIngestRuns', () => {
       status: 'succeeded',
       resourcesReceived: 8,
       resourcesStaged: 8,
+      resourcesUpdated: 7,
+      operationalSummary: {
+        source: 'smart-patient-context-refresh',
+        durationMs: 300000,
+        hasErrors: true,
+        completionRatio: 1,
+        updateRatio: 0.875,
+        contextResourceTypesAttempted: ['Observation', 'Condition'],
+        contextResourceTypesSkipped: 1,
+        contextResourcesReceived: 8,
+        contextResourcesStaged: 8,
+        continuationPagesRemaining: 1,
+        edwResourcesHydrated: 7,
+        edwResourcesFailed: 1,
+        qdmReplayStatus: 'failed',
+        canReplayQdm: true,
+        qdmResourcesSeen: 8,
+        qdmResourcesNormalized: 7,
+        qdmResourcesFailed: 1,
+        qdmEventsUpserted: 7,
+        recommendedAction: 'Review QDM replay errors, then rerun QDM normalization for the ingest run.',
+      },
     });
     expect(mockSql.mock.calls[0]!.slice(1)).toEqual(
       expect.arrayContaining([

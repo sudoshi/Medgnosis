@@ -76,6 +76,11 @@ devlogs do not override the current codebase state.
   read-only production tenant-2 Bulk summary probe, `./scripts/deploy-production.sh`,
   public health, service status, and production migration dry-run passed;
   production still reports 90 applied migrations and no pending migrations.
+- Current implementation checkpoint adds PHI-light ingest-run operational
+  summaries and a selectable EHR Integrations run-detail panel outside the Bulk
+  table, including context counts, EDW/QDM counts, QDM replay state, linked Bulk
+  job ids, recommended actions, and an ingest-run QDM replay control. It remains
+  pending final release/deploy evidence in the next checkpoint.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
@@ -90,7 +95,7 @@ devlogs do not override the current codebase state.
 1. Keep README, env docs, and validation runbooks truthful.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
-4. Capture vendor sandbox evidence and add broader import-run detail pages beyond the Bulk job table.
+4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the new Bulk replay/dead-letter runbook against a failed-file or sandbox replay incident.
 6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and external alert readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.

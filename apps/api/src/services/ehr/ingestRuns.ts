@@ -10,7 +10,34 @@ import {
 
 export type EhrIngestRunMode = 'incremental' | 'backfill' | 'bulk' | 'manual';
 export type EhrIngestRunStatus = 'running' | 'succeeded' | 'failed' | 'canceled';
+export type EhrIngestRunQdmReplayStatus = 'not_ready' | 'ready' | 'replayed' | 'failed';
 export type JsonObject = Record<string, unknown>;
+
+export interface EhrIngestRunOperationalSummary {
+  source: string;
+  recommendedAction: string;
+  durationMs: number | null;
+  hasErrors: boolean;
+  completionRatio: number | null;
+  updateRatio: number | null;
+  bulkJobId: string | null;
+  bulkOutputCount: number | null;
+  contextResourceTypesAttempted: string[];
+  contextResourceTypesSkipped: number;
+  contextResourcesReceived: number | null;
+  contextResourcesStaged: number | null;
+  contextErrors: number | null;
+  continuationPagesRemaining: number | null;
+  edwResourcesHydrated: number | null;
+  edwResourcesFailed: number | null;
+  qdmReplayStatus: EhrIngestRunQdmReplayStatus;
+  canReplayQdm: boolean;
+  qdmResourcesSeen: number | null;
+  qdmResourcesNormalized: number | null;
+  qdmResourcesFailed: number | null;
+  qdmEventsUpserted: number | null;
+  qdmLastReplayedAt: string | null;
+}
 
 export interface EhrIngestRun {
   id: string;
@@ -29,9 +56,12 @@ export interface EhrIngestRun {
   errorMessage: string | null;
   errors: unknown[];
   metadata: JsonObject;
+  operationalSummary: EhrIngestRunOperationalSummary;
   createdAt: string;
   updatedAt: string;
 }
+
+type EhrIngestRunCore = Omit<EhrIngestRun, 'operationalSummary'>;
 
 export interface StartEhrIngestRunInput {
   orgId: number | null;
@@ -121,7 +151,7 @@ function mapNullableDbNumber(value: number | string | null): number | null {
 }
 
 function mapIngestRun(row: EhrIngestRunRow): EhrIngestRun {
-  return {
+  const run: EhrIngestRunCore = {
     id: row.id,
     orgId: mapNullableDbNumber(row.org_id),
     ehrTenantId: mapDbNumber(row.ehr_tenant_id),
@@ -140,6 +170,10 @@ function mapIngestRun(row: EhrIngestRunRow): EhrIngestRun {
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+  return {
+    ...run,
+    operationalSummary: buildIngestRunOperationalSummary(run),
   };
 }
 
@@ -171,6 +205,148 @@ function countOrNull(value: number | undefined): number | null {
     throw new Error('EHR ingest run counts must be non-negative integers');
   }
   return value;
+}
+
+function buildIngestRunOperationalSummary(run: EhrIngestRunCore): EhrIngestRunOperationalSummary {
+  const metadata = run.metadata ?? {};
+  const contextResources = metadataRecord(metadata, 'contextResources');
+  const bulkImport = metadataRecord(metadata, 'bulkImport');
+  const manifest = metadataRecord(metadata, 'manifest');
+  const edwHydration = metadataRecord(metadata, 'edwHydration') ?? metadataRecord(bulkImport, 'edwHydration');
+  const qdmBridge = metadataRecord(metadata, 'qdmBridge');
+  const qdmReplay = metadataRecord(metadata, 'qdmReplay');
+  const qdmResourcesFailed = metadataNumber(qdmBridge, 'resourcesFailed');
+  const qdmResourcesNormalized = metadataNumber(qdmBridge, 'resourcesNormalized');
+  const qdmReplayStatus = ingestRunQdmStatus({
+    run,
+    qdmBridge,
+    qdmResourcesFailed,
+    qdmResourcesNormalized,
+    qdmLastReplayedAt: metadataString(qdmReplay, 'replayedAt'),
+  });
+  const canReplayQdm = run.status !== 'running' && run.resourcesStaged > 0;
+
+  return {
+    source: metadataString(metadata, 'source') ?? metadataString(qdmReplay, 'sourceSystem') ?? 'ehr-ingest',
+    recommendedAction: ingestRunRecommendedAction({ run, qdmReplayStatus, canReplayQdm, edwHydration }),
+    durationMs: durationMs(run.startedAt, run.finishedAt),
+    hasErrors: run.errorCount > 0 || run.errors.length > 0 || (qdmResourcesFailed ?? 0) > 0 || (metadataNumber(edwHydration, 'resourcesFailed') ?? 0) > 0,
+    completionRatio: ratio(run.resourcesStaged, run.resourcesReceived),
+    updateRatio: ratio(run.resourcesUpdated, run.resourcesStaged),
+    bulkJobId: metadataString(metadata, 'bulkJobId'),
+    bulkOutputCount: metadataNumber(manifest, 'outputCount'),
+    contextResourceTypesAttempted: metadataStringArray(contextResources, 'attempted'),
+    contextResourceTypesSkipped: metadataRecordArrayLength(contextResources, 'skipped') ?? 0,
+    contextResourcesReceived: metadataNumber(contextResources, 'received'),
+    contextResourcesStaged: metadataNumber(contextResources, 'staged'),
+    contextErrors: metadataRecordArrayLength(contextResources, 'errors'),
+    continuationPagesRemaining: metadataRecordArrayLength(contextResources, 'remainingNextUrls'),
+    edwResourcesHydrated: metadataNumber(edwHydration, 'resourcesHydrated'),
+    edwResourcesFailed: metadataNumber(edwHydration, 'resourcesFailed'),
+    qdmReplayStatus,
+    canReplayQdm,
+    qdmResourcesSeen: metadataNumber(qdmBridge, 'resourcesSeen'),
+    qdmResourcesNormalized,
+    qdmResourcesFailed,
+    qdmEventsUpserted: metadataNumber(qdmBridge, 'eventsUpserted'),
+    qdmLastReplayedAt: metadataString(qdmReplay, 'replayedAt'),
+  };
+}
+
+function ingestRunQdmStatus(input: {
+  run: EhrIngestRunCore;
+  qdmBridge: JsonObject | null;
+  qdmResourcesFailed: number | null;
+  qdmResourcesNormalized: number | null;
+  qdmLastReplayedAt: string | null;
+}): EhrIngestRunQdmReplayStatus {
+  if (input.run.resourcesStaged === 0) return 'not_ready';
+  if ((input.qdmResourcesFailed ?? 0) > 0) return 'failed';
+  if (input.qdmBridge || input.qdmLastReplayedAt || input.qdmResourcesNormalized !== null) return 'replayed';
+  return 'ready';
+}
+
+function ingestRunRecommendedAction(input: {
+  run: EhrIngestRunCore;
+  qdmReplayStatus: EhrIngestRunQdmReplayStatus;
+  canReplayQdm: boolean;
+  edwHydration: JsonObject | null;
+}): string {
+  const edwResourcesFailed = metadataNumber(input.edwHydration, 'resourcesFailed') ?? 0;
+  if (input.run.status === 'running') {
+    return 'Monitor ingest progress before replaying downstream normalization.';
+  }
+  if (input.run.status === 'failed') {
+    return input.canReplayQdm
+      ? 'Review ingest errors, then replay QDM normalization if staged resources are trustworthy.'
+      : 'Review ingest errors and rerun the source workflow after fixing the upstream issue.';
+  }
+  if (input.qdmReplayStatus === 'failed') {
+    return 'Review QDM replay errors, then rerun QDM normalization for the ingest run.';
+  }
+  if (edwResourcesFailed > 0) {
+    return 'Review EDW hydration errors before relying on downstream patient detail.';
+  }
+  if (input.canReplayQdm && input.qdmReplayStatus === 'ready') {
+    return 'Replay QDM normalization for staged resources.';
+  }
+  if (input.run.resourcesReceived > 0 && input.run.resourcesStaged === 0) {
+    return 'Review staging filters or upstream payload eligibility before retrying.';
+  }
+  if (input.run.resourcesStaged > 0 && input.qdmReplayStatus === 'replayed') {
+    return 'Ingest, staging, and QDM replay have completed; review downstream evidence if needed.';
+  }
+  return 'No operator action is currently required.';
+}
+
+function ratio(numerator: number, denominator: number): number | null {
+  if (denominator <= 0) return null;
+  return numerator / denominator;
+}
+
+function durationMs(startedAt: string, finishedAt: string | null): number | null {
+  if (!finishedAt) return null;
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) return null;
+  return finished - started;
+}
+
+function metadataRecord(value: unknown, key: string): JsonObject | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return isRecord(nested) ? nested : null;
+}
+
+function metadataNumber(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  if (typeof nested === 'number' && Number.isFinite(nested)) return nested;
+  if (typeof nested === 'string' && /^\d+$/.test(nested)) return Number(nested);
+  return null;
+}
+
+function metadataString(value: unknown, key: string): string | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return typeof nested === 'string' && nested.trim().length > 0 ? nested : null;
+}
+
+function metadataStringArray(value: unknown, key: string): string[] {
+  if (!isRecord(value)) return [];
+  const nested = value[key];
+  if (!Array.isArray(nested)) return [];
+  return nested.flatMap((item) => (typeof item === 'string' && item.trim().length > 0 ? [item] : []));
+}
+
+function metadataRecordArrayLength(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return Array.isArray(nested) ? nested.filter(isRecord).length : null;
+}
+
+function isRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function startIngestRun(input: StartEhrIngestRunInput): Promise<EhrIngestRun> {

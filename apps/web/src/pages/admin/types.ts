@@ -324,6 +324,7 @@ export type EhrEnvironment = 'sandbox' | 'staging' | 'production';
 export type EhrClientType = 'smart_launch' | 'backend_services' | 'cds_hooks';
 export type EhrIngestRunMode = 'incremental' | 'backfill' | 'bulk' | 'manual';
 export type EhrIngestRunStatus = 'running' | 'succeeded' | 'failed' | 'canceled';
+export type EhrIngestRunQdmReplayStatus = 'not_ready' | 'ready' | 'replayed' | 'failed';
 export type EhrBulkJobStatus = 'accepted' | 'in_progress' | 'completed' | 'failed' | 'canceled';
 export type EhrBulkExportLevel = 'system' | 'group' | 'patient';
 export type EhrBulkScheduleSinceMode = 'none' | 'fixed' | 'last_success';
@@ -409,6 +410,32 @@ export interface EhrTenantDetail {
   };
 }
 
+export interface EhrIngestRunOperationalSummary {
+  source: string;
+  recommendedAction: string;
+  durationMs: number | null;
+  hasErrors: boolean;
+  completionRatio: number | null;
+  updateRatio: number | null;
+  bulkJobId: string | null;
+  bulkOutputCount: number | null;
+  contextResourceTypesAttempted: string[];
+  contextResourceTypesSkipped: number;
+  contextResourcesReceived: number | null;
+  contextResourcesStaged: number | null;
+  contextErrors: number | null;
+  continuationPagesRemaining: number | null;
+  edwResourcesHydrated: number | null;
+  edwResourcesFailed: number | null;
+  qdmReplayStatus: EhrIngestRunQdmReplayStatus;
+  canReplayQdm: boolean;
+  qdmResourcesSeen: number | null;
+  qdmResourcesNormalized: number | null;
+  qdmResourcesFailed: number | null;
+  qdmEventsUpserted: number | null;
+  qdmLastReplayedAt: string | null;
+}
+
 export interface EhrIngestRun {
   id: string;
   orgId: number | null;
@@ -426,6 +453,7 @@ export interface EhrIngestRun {
   errorMessage: string | null;
   errors: unknown[];
   metadata: Record<string, unknown>;
+  operationalSummary: EhrIngestRunOperationalSummary;
   createdAt: string;
   updatedAt: string;
 }

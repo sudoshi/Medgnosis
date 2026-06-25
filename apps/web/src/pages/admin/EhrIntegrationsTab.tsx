@@ -251,6 +251,8 @@ export function EhrIntegrationsTab() {
   const [bulkImportJobId, setBulkImportJobId] = useState<string | null>(null);
   const [bulkCancelJobId, setBulkCancelJobId] = useState<string | null>(null);
   const [bulkQdmReplayJobId, setBulkQdmReplayJobId] = useState<string | null>(null);
+  const [selectedIngestRunId, setSelectedIngestRunId] = useState<string | null>(null);
+  const [ingestQdmReplayRunId, setIngestQdmReplayRunId] = useState<string | null>(null);
 
   const tenantsQuery = useQuery({
     queryKey: ['ehr', 'tenants', vendorFilter, environmentFilter],
@@ -264,6 +266,7 @@ export function EhrIntegrationsTab() {
   useEffect(() => {
     if (selectedTenantId === null && tenants.length > 0) {
       setSelectedTenantId(tenants[0]!.id);
+      setSelectedIngestRunId(null);
     }
   }, [selectedTenantId, tenants]);
 
@@ -278,7 +281,7 @@ export function EhrIntegrationsTab() {
     queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId],
     queryFn: () => {
       if (selectedTenantId === null) throw new Error('No EHR tenant selected');
-      return api.get<EhrIngestRunsResponse>(`/ehr/admin/tenants/${selectedTenantId}/ingest-runs?limit=5`);
+      return api.get<EhrIngestRunsResponse>(`/ehr/admin/tenants/${selectedTenantId}/ingest-runs?limit=50`);
     },
     enabled: selectedTenantId !== null,
     staleTime: 15_000,
@@ -325,7 +328,8 @@ export function EhrIntegrationsTab() {
   });
 
   const detail = detailQuery.data?.data;
-  const ingestRuns = ingestRunsQuery.data?.data?.ingestRuns ?? [];
+  const ingestRunRows = ingestRunsQuery.data?.data?.ingestRuns;
+  const ingestRuns = useMemo(() => ingestRunRows ?? [], [ingestRunRows]);
   const latestIngestRun = ingestRunsQuery.data?.data?.latest ?? null;
   const bulkJobs = bulkJobsQuery.data?.data?.bulkJobs ?? [];
   const latestBulkJob = bulkJobsQuery.data?.data?.latest ?? null;
@@ -340,12 +344,21 @@ export function EhrIntegrationsTab() {
     [detail],
   );
 
+  useEffect(() => {
+    if (!selectedIngestRunId && ingestRuns.length > 0) {
+      setSelectedIngestRunId(ingestRuns[0]!.id);
+    }
+  }, [ingestRuns, selectedIngestRunId]);
+
   const upsertMutation = useMutation({
     mutationFn: () => api.post<EhrRegistrationResponse>('/ehr/admin/tenants', buildUpsertPayload(form)),
     onSuccess: (response) => {
       const tenantId = response.data?.tenant.id ?? null;
       toast.success('EHR tenant saved');
-      if (tenantId !== null) setSelectedTenantId(tenantId);
+      if (tenantId !== null) {
+        setSelectedTenantId(tenantId);
+        setSelectedIngestRunId(null);
+      }
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenants'] });
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-detail'] });
       void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status'] });
@@ -473,6 +486,30 @@ export function EhrIntegrationsTab() {
     onSettled: () => setBulkQdmReplayJobId(null),
   });
 
+  const ingestQdmReplayMutation = useMutation({
+    mutationFn: (run: EhrIngestRun) => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      const limit = Math.max(run.resourcesStaged, 1);
+      return api.post<EhrQdmReplayResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/ingest-runs/' + run.id + '/qdm-normalization',
+        { limit, sourceSystem: 'ehr-admin-ingest-run-qdm-replay' },
+      );
+    },
+    onSuccess: (response) => {
+      const qdm = response.data?.qdm;
+      toast.success(
+        qdm
+          ? `QDM replay normalized ${formatCount(qdm.resourcesNormalized)} resource(s)`
+          : 'QDM replay completed',
+      );
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'QDM replay failed')),
+    onSettled: () => setIngestQdmReplayRunId(null),
+  });
+
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? detail?.tenant ?? null;
 
   return (
@@ -555,7 +592,10 @@ export function EhrIntegrationsTab() {
                     key={tenant.id}
                     data-state={selectedTenantId === tenant.id ? 'selected' : undefined}
                     className="cursor-pointer"
-                    onClick={() => setSelectedTenantId(tenant.id)}
+                    onClick={() => {
+                      setSelectedTenantId(tenant.id);
+                      setSelectedIngestRunId(null);
+                    }}
                   >
                     <TableCell>
                       <div className="min-w-0">
@@ -819,6 +859,13 @@ export function EhrIntegrationsTab() {
             <IngestRunsPanel
               runs={ingestRuns}
               latest={latestIngestRun}
+              selectedRunId={selectedIngestRunId}
+              onSelectRun={setSelectedIngestRunId}
+              onReplayQdm={(run) => {
+                setIngestQdmReplayRunId(run.id);
+                ingestQdmReplayMutation.mutate(run);
+              }}
+              replayingRunId={ingestQdmReplayRunId}
               isFetching={ingestRunsQuery.isFetching}
               onRefresh={() => void ingestRunsQuery.refetch()}
             />
@@ -851,6 +898,7 @@ export function EhrIntegrationsTab() {
                 bulkQdmReplayMutation.mutate(job);
               }}
               replayingQdmJobId={bulkQdmReplayJobId}
+              onInspectIngestRun={(ingestRunId) => setSelectedIngestRunId(ingestRunId)}
               onCancel={(job) => {
                 setBulkCancelJobId(job.id);
                 bulkCancelMutation.mutate(job);
@@ -1436,17 +1484,29 @@ function ResourceIssueBadges({ resource }: { resource: EhrTenantSyncStatus['reso
 function IngestRunsPanel({
   runs,
   latest,
+  selectedRunId,
+  onSelectRun,
+  onReplayQdm,
+  replayingRunId,
   isFetching,
   onRefresh,
 }: {
   runs: EhrIngestRun[];
   latest: EhrIngestRun | null;
+  selectedRunId: string | null;
+  onSelectRun: (runId: string) => void;
+  onReplayQdm: (run: EhrIngestRun) => void;
+  replayingRunId: string | null;
   isFetching: boolean;
   onRefresh: () => void;
 }) {
   const received = latest?.resourcesReceived ?? 0;
   const staged = latest?.resourcesStaged ?? 0;
   const updated = latest?.resourcesUpdated ?? 0;
+  const selectedFromRows = selectedRunId ? runs.find((run) => run.id === selectedRunId) ?? null : null;
+  const selected = selectedFromRows ?? (selectedRunId ? null : latest ?? runs[0] ?? null);
+  const selectedSummary = selected?.operationalSummary ?? null;
+  const missingSelectedRunId = selectedRunId !== null && selectedFromRows === null;
 
   return (
     <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
@@ -1479,44 +1539,151 @@ function IngestRunsPanel({
             <TableHead>Mode</TableHead>
             <TableHead>Resource</TableHead>
             <TableHead>Rows</TableHead>
+            <TableHead>QDM</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Started</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {runs.map((run) => (
-            <TableRow key={run.id}>
-              <TableCell>
-                <div>
-                  <p className="font-data text-xs text-bright">{shortId(run.id)}</p>
-                  <p className="text-[11px] text-ghost truncate max-w-[220px]">{runSource(run)}</p>
-                </div>
-              </TableCell>
-              <TableCell><span className="text-xs text-dim">{titleCase(run.mode)}</span></TableCell>
-              <TableCell><span className="text-xs text-dim">{run.resourceType ?? 'Mixed'}</span></TableCell>
-              <TableCell>
-                <span className="font-data text-xs text-dim tabular-nums">
-                  {run.resourcesStaged}/{run.resourcesReceived}
-                </span>
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-col gap-1">
-                  <Badge variant={runStatusVariant(run.status)}>{titleCase(run.status)}</Badge>
-                  {run.errorCount > 0 && <span className="text-[11px] text-crimson">{run.errorCount} errors</span>}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                <span className="font-data text-[11px] text-ghost">{fmtDateTime(run.startedAt)}</span>
-              </TableCell>
-            </TableRow>
-          ))}
+          {runs.map((run) => {
+            const summary = run.operationalSummary;
+            const selectedRow = selected?.id === run.id;
+            return (
+              <TableRow
+                key={run.id}
+                data-state={selectedRow ? 'selected' : undefined}
+                aria-selected={selectedRow}
+                tabIndex={0}
+                className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 focus-visible:ring-inset"
+                onClick={() => onSelectRun(run.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelectRun(run.id);
+                  }
+                }}
+              >
+                <TableCell>
+                  <div>
+                    <p className="font-data text-xs text-bright">{shortId(run.id)}</p>
+                    <p className="text-[11px] text-ghost truncate max-w-[220px]">{summary.source}</p>
+                  </div>
+                </TableCell>
+                <TableCell><span className="text-xs text-dim">{titleCase(run.mode)}</span></TableCell>
+                <TableCell><span className="text-xs text-dim">{run.resourceType ?? 'Mixed'}</span></TableCell>
+                <TableCell>
+                  <span className="font-data text-xs text-dim tabular-nums">
+                    {formatCount(run.resourcesStaged)}/{formatCount(run.resourcesReceived)}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1">
+                    <Badge variant={qdmReplayVariant(summary.qdmReplayStatus)}>{qdmReplayLabel(summary.qdmReplayStatus)}</Badge>
+                    {summary.qdmResourcesNormalized !== null && (
+                      <span className="font-data text-[11px] text-ghost tabular-nums">
+                        {formatCount(summary.qdmResourcesNormalized)} normalized
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1">
+                    <Badge variant={runStatusVariant(run.status)}>{titleCase(run.status)}</Badge>
+                    {run.errorCount > 0 && <span className="text-[11px] text-crimson">{formatCount(run.errorCount)} errors</span>}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <span className="font-data text-[11px] text-ghost">{fmtDateTime(run.startedAt)}</span>
+                </TableCell>
+              </TableRow>
+            );
+          })}
           {runs.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-ghost">No ingest runs found</TableCell>
+              <TableCell colSpan={7} className="text-center text-ghost">No ingest runs found</TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
+
+      {missingSelectedRunId && (
+        <div className="mt-4 border-t border-edge/20 pt-4">
+          <p className="text-xs text-amber">
+            Linked ingest run <span className="font-data">{shortId(selectedRunId)}</span> is outside the current recent-run list.
+          </p>
+          <p className="text-[11px] text-ghost mt-1">
+            Refresh sync status after the run is indexed, or use the linked run id for audit lookup.
+          </p>
+        </div>
+      )}
+
+      {selected && selectedSummary && (
+        <div className="mt-4 border-t border-edge/20 pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+            <div>
+              <p className="text-xs text-ghost uppercase tracking-wider mb-1">Run detail</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-data text-xs text-bright">{shortId(selected.id)}</span>
+                <Badge variant={runStatusVariant(selected.status)}>{titleCase(selected.status)}</Badge>
+                <Badge variant={qdmReplayVariant(selectedSummary.qdmReplayStatus)}>{qdmReplayLabel(selectedSummary.qdmReplayStatus)}</Badge>
+              </div>
+            </div>
+            {selectedSummary.canReplayQdm && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onReplayQdm(selected)}
+                disabled={replayingRunId === selected.id}
+              >
+                <RefreshCw className={replayingRunId === selected.id ? 'animate-spin' : ''} />
+                QDM
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+            <SnapshotItem label="Duration" value={formatDurationMs(selectedSummary.durationMs)} />
+            <SnapshotItem label="Completion" value={formatPercent(selectedSummary.completionRatio)} />
+            <SnapshotItem label="Update rate" value={formatPercent(selectedSummary.updateRatio)} />
+            <SnapshotItem
+              label="Context"
+              value={`${formatCount(selectedSummary.contextResourcesStaged ?? selected.resourcesStaged)}/${formatCount(selectedSummary.contextResourcesReceived ?? selected.resourcesReceived)}`}
+            />
+            <SnapshotItem
+              label="EDW hydrated"
+              value={selectedSummary.edwResourcesHydrated === null ? '-' : formatCount(selectedSummary.edwResourcesHydrated)}
+              tone={(selectedSummary.edwResourcesFailed ?? 0) > 0 ? 'amber' : 'emerald'}
+            />
+            <SnapshotItem
+              label="QDM events"
+              value={selectedSummary.qdmEventsUpserted === null ? '-' : formatCount(selectedSummary.qdmEventsUpserted)}
+              tone={selectedSummary.qdmReplayStatus === 'failed' ? 'amber' : selectedSummary.qdmReplayStatus === 'replayed' ? 'emerald' : 'dim'}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+            <div>
+              <p className="text-ghost uppercase tracking-wider mb-1">Lineage</p>
+              <p className="text-dim">Source: <span className="font-data text-bright">{selectedSummary.source}</span></p>
+              <p className="text-dim">Bulk job: <span className="font-data text-bright">{selectedSummary.bulkJobId ? shortId(selectedSummary.bulkJobId) : '-'}</span></p>
+              <p className="text-dim">Output files: <span className="font-data text-bright">{selectedSummary.bulkOutputCount ?? '-'}</span></p>
+            </div>
+            <div>
+              <p className="text-ghost uppercase tracking-wider mb-1">Context</p>
+              <p className="text-dim">Attempted: <span className="font-data text-bright">{formatResourceList(selectedSummary.contextResourceTypesAttempted)}</span></p>
+              <p className="text-dim">Skipped types: <span className="font-data text-bright">{formatCount(selectedSummary.contextResourceTypesSkipped)}</span></p>
+              <p className="text-dim">Continuation pages: <span className="font-data text-bright">{selectedSummary.continuationPagesRemaining ?? '-'}</span></p>
+            </div>
+            <div>
+              <p className="text-ghost uppercase tracking-wider mb-1">Action</p>
+              <p className={selectedSummary.hasErrors ? 'text-amber' : 'text-dim'}>{selectedSummary.recommendedAction}</p>
+              {selectedSummary.qdmLastReplayedAt && (
+                <p className="font-data text-ghost mt-1">QDM replayed {fmtDateTime(selectedSummary.qdmLastReplayedAt)}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1540,6 +1707,7 @@ function BulkJobsPanel({
   importingJobId,
   onReplayQdm,
   replayingQdmJobId,
+  onInspectIngestRun,
   onCancel,
   cancelingJobId,
   disabled,
@@ -1562,6 +1730,7 @@ function BulkJobsPanel({
   importingJobId: string | null;
   onReplayQdm: (job: EhrBulkJob) => void;
   replayingQdmJobId: string | null;
+  onInspectIngestRun: (ingestRunId: string) => void;
   onCancel: (job: EhrBulkJob) => void;
   cancelingJobId: string | null;
   disabled: boolean;
@@ -1728,11 +1897,28 @@ function BulkJobsPanel({
                 <TableCell>
                   <div>
                     <Badge variant={qdmReplayVariant(summary.qdmReplayStatus)}>{qdmReplayLabel(summary.qdmReplayStatus)}</Badge>
-                    <p className="font-data text-[11px] text-ghost tabular-nums mt-1">
-                      {summary.qdmResourcesNormalized !== null
-                        ? `${formatCount(summary.qdmResourcesNormalized)} normalized / ${formatCount(summary.qdmEventsUpserted ?? 0)} events`
-                        : summary.ingestRunId ? shortId(summary.ingestRunId) : 'No ingest run'}
-                    </p>
+                    {summary.qdmResourcesNormalized !== null ? (
+                      <p className="font-data text-[11px] text-ghost tabular-nums mt-1">
+                        {formatCount(summary.qdmResourcesNormalized)} normalized / {formatCount(summary.qdmEventsUpserted ?? 0)} events
+                      </p>
+                    ) : (
+                      <p className="font-data text-[11px] text-ghost tabular-nums mt-1">
+                        {summary.ingestRunId ? 'Awaiting replay counts' : 'No ingest run'}
+                      </p>
+                    )}
+                    {summary.ingestRunId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-0 py-0 font-data text-[11px] text-ghost hover:bg-transparent"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onInspectIngestRun(summary.ingestRunId!);
+                        }}
+                      >
+                        {shortId(summary.ingestRunId)}
+                      </Button>
+                    )}
                     {summary.qdmLastReplayedAt && (
                       <p className="font-data text-[11px] text-ghost">{fmtDateTime(summary.qdmLastReplayedAt)}</p>
                     )}
@@ -2069,6 +2255,26 @@ function formatCount(value: number): string {
   return value.toLocaleString('en-US');
 }
 
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '-';
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatDurationMs(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '-';
+  const seconds = Math.round(value / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+}
+
+function formatResourceList(values: string[]): string {
+  if (values.length === 0) return '-';
+  if (values.length <= 3) return values.join(', ');
+  return `${values.slice(0, 3).join(', ')} +${values.length - 3}`;
+}
+
 function runStatusVariant(status: EhrIngestRun['status']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {
   if (status === 'succeeded') return 'emerald';
   if (status === 'running') return 'info';
@@ -2117,11 +2323,6 @@ function bulkFileStats(job: EhrBulkJob): { total: number; completed: number; sta
 
 function shortId(value: string): string {
   return value.length > 13 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
-}
-
-function runSource(run: EhrIngestRun): string {
-  const source = run.metadata['source'];
-  return typeof source === 'string' && source.trim() ? source : 'EHR ingest';
 }
 
 function titleCase(value: string): string {
