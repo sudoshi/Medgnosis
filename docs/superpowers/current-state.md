@@ -58,20 +58,28 @@ devlogs do not override the current codebase state.
   sync-rollup application release `25b6f7d`; `medgnosis-api`,
   `medgnosis-worker`, and `medgnosis-auto-deploy` were active, public health was
   healthy, and production migration dry-run still reported no pending migrations.
+- Follow-up production checkpoint on 2026-06-25 deployed the sync-status
+  drilldown release `ab87e84`; tenant sync status now returns bounded crosswalk
+  conflict targets, stale patient/resource drilldowns, and structured sync issue
+  source/recommended-action metadata. Focused API tests, API/web typechecks,
+  API/web lint, API/web builds, `git diff --check`, a read-only production
+  tenant-2 service probe, `./scripts/deploy-production.sh`, public health,
+  service status, and production migration dry-run passed; production still
+  reports 90 applied migrations and no pending migrations.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
   for tenant-specific patient-detail needs, deeper Bulk replay/dead-letter runbooks,
-  vendor sandbox evidence, deeper patient/resource drilldowns, FHIR-read/QDM-promotion
-  audit coverage, and alerting.
+  vendor sandbox evidence, FHIR-read/QDM-promotion audit coverage, stale-data
+  runbooks, and external alerting beyond the structured sync issue feed.
 
 ## First Implementation Priorities
 
 1. Keep README, env docs, and validation runbooks truthful.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
-4. Add deeper patient/resource sync drilldowns and capture vendor sandbox evidence.
+4. Capture vendor sandbox evidence and extend sync status toward import-run/QDM replay drilldowns.
 5. Add deeper Bulk replay/dead-letter runbooks on top of the manual/admin kickoff, resume, recurring schedule, and EMPI-seeded Patient crosswalk path.
-6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and alert readiness.
+6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and external alert readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.
