@@ -434,7 +434,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         codeVerifier: string;
       }>(query.state, 'state');
 
-      if (!statePayload) {
+      if (
+        !statePayload ||
+        typeof statePayload.nonce !== 'string' ||
+        typeof statePayload.codeVerifier !== 'string'
+      ) {
         return reply.status(400).send({
           success: false,
           error: { code: 'OIDC_STATE_INVALID', message: 'OIDC state is invalid or expired' },
@@ -519,7 +523,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       }
 
       const payload = await consumeHandshake<{ userId: string }>(body.code, 'exchange');
-      if (!payload) {
+      if (!payload || typeof payload.userId !== 'string') {
         return reply.status(400).send({
           success: false,
           error: { code: 'CODE_INVALID', message: 'OIDC exchange code is invalid or expired' },
