@@ -29,6 +29,8 @@ const SUPPORTED_RESOURCE_TYPES = [
   'Condition',
   'Observation',
   'MedicationRequest',
+  'MedicationDispense',
+  'MedicationAdministration',
   'Procedure',
   'AllergyIntolerance',
   'Immunization',
@@ -271,16 +273,18 @@ async function findHydratableStagedResources(
                WHEN 'Condition' THEN 5
                WHEN 'Observation' THEN 6
                WHEN 'MedicationRequest' THEN 7
-               WHEN 'Procedure' THEN 8
-               WHEN 'AllergyIntolerance' THEN 9
-               WHEN 'Immunization' THEN 10
-               WHEN 'ServiceRequest' THEN 11
-               WHEN 'DiagnosticReport' THEN 12
-               WHEN 'DocumentReference' THEN 13
-               WHEN 'CarePlan' THEN 14
-               WHEN 'Goal' THEN 15
-               WHEN 'CareTeam' THEN 16
-               WHEN 'Coverage' THEN 17
+               WHEN 'MedicationDispense' THEN 8
+               WHEN 'MedicationAdministration' THEN 9
+               WHEN 'Procedure' THEN 10
+               WHEN 'AllergyIntolerance' THEN 11
+               WHEN 'Immunization' THEN 12
+               WHEN 'ServiceRequest' THEN 13
+               WHEN 'DiagnosticReport' THEN 14
+               WHEN 'DocumentReference' THEN 15
+               WHEN 'CarePlan' THEN 16
+               WHEN 'Goal' THEN 17
+               WHEN 'CareTeam' THEN 18
+               WHEN 'Coverage' THEN 19
                ELSE 90
              END,
              received_at ASC,
@@ -378,6 +382,8 @@ const SOFT_DELETE_PK: Record<string, string> = {
   'phm_edw.condition_diagnosis': 'condition_diagnosis_id',
   'phm_edw.observation': 'observation_id',
   'phm_edw.medication_order': 'medication_order_id',
+  'phm_edw.medication_dispense': 'medication_dispense_id',
+  'phm_edw.medication_administration': 'medication_administration_id',
   'phm_edw.procedure_performed': 'procedure_performed_id',
   'phm_edw.patient_allergy': 'patient_allergy_id',
   'phm_edw.immunization': 'immunization_id',
@@ -499,6 +505,10 @@ async function hydrateByResourceType(
       return hydrateObservation(tx, row, patientId, existing);
     case 'MedicationRequest':
       return hydrateMedicationRequest(tx, row, patientId, existing);
+    case 'MedicationDispense':
+      return hydrateMedicationDispense(tx, row, patientId, existing);
+    case 'MedicationAdministration':
+      return hydrateMedicationAdministration(tx, row, patientId, existing);
     case 'Procedure':
       return hydrateProcedure(tx, row, patientId, existing);
     case 'AllergyIntolerance':
@@ -843,7 +853,7 @@ async function hydrateMedicationRequest(
   existing: LocalTarget,
 ): Promise<HydratedResourceTarget> {
   const resource = row.resource;
-  const medication = firstConcept(resource['medicationCodeableConcept']) ?? medicationReferenceConcept(resource);
+  const medication = medicationConcept(resource);
   const medicationId = await upsertMedicationMaster(tx, row, medication);
   const encounterId = await resolveEncounterId(tx, row, referenceId(resource['encounter'], 'Encounter'));
   const dispense = record(resource['dispenseRequest']);
@@ -898,6 +908,197 @@ async function hydrateMedicationRequest(
   return {
     localTable: 'phm_edw.medication_order',
     localId: Number(rows[0]!.medication_order_id),
+    operation: 'inserted',
+  };
+}
+
+async function hydrateMedicationDispense(
+  tx: Tx,
+  row: StagedFhirResourceRow,
+  patientId: number,
+  existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const medication = medicationConcept(resource);
+  const medicationId = await upsertMedicationMaster(tx, row, medication);
+  const encounterId = await resolveEncounterId(tx, row, referenceId(resource['context'], 'Encounter'));
+  const medicationOrderId = await resolveMedicationOrderId(
+    tx,
+    row,
+    referenceId(firstRecord(resource['authorizingPrescription']), 'MedicationRequest'),
+  );
+  const quantity = record(resource['quantity']);
+  const daysSupply = record(resource['daysSupply']);
+  const dosage = firstRecord(resource['dosageInstruction']);
+  const status = truncateNullable(cleanString(resource['status']), 50);
+  const dispenseAt = cleanString(resource['whenHandedOver'])
+    ?? cleanString(resource['whenPrepared'])
+    ?? row.source_last_updated
+    ?? row.received_at;
+  const preparedAt = cleanString(resource['whenPrepared']);
+  const handedOverAt = cleanString(resource['whenHandedOver']);
+  const quantityValue = optionalNumber(quantity?.['value']);
+  const quantityUnit = truncateNullable(cleanString(quantity?.['unit']) ?? cleanString(quantity?.['code']), 50);
+  const daysSupplyValue = optionalNumber(daysSupply?.['value']);
+  const daysSupplyUnit = truncateNullable(cleanString(daysSupply?.['unit']) ?? cleanString(daysSupply?.['code']), 50);
+  const dosageText = truncateNullable(cleanString(dosage?.['text']), 500);
+  const performerDisplay = truncateNullable(firstPerformerDisplay(resource), 255);
+
+  if (existing.localTable === 'phm_edw.medication_dispense' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ medication_dispense_id: number | string }[]>(
+      `UPDATE phm_edw.medication_dispense
+       SET patient_id=$2, encounter_id=$3, medication_id=$4, medication_order_id=$5,
+           status=$6, dispense_datetime=$7::timestamp, prepared_datetime=$8::timestamp,
+           handed_over_datetime=$9::timestamp, quantity_value=$10, quantity_unit=$11,
+           days_supply_value=$12, days_supply_unit=$13, dosage_text=$14,
+           performer_display=$15, updated_date=NOW()
+       WHERE medication_dispense_id=$1 RETURNING medication_dispense_id`,
+      [
+        existing.localId,
+        patientId,
+        encounterId,
+        medicationId,
+        medicationOrderId,
+        status,
+        dispenseAt,
+        preparedAt,
+        handedOverAt,
+        quantityValue,
+        quantityUnit,
+        daysSupplyValue,
+        daysSupplyUnit,
+        dosageText,
+        performerDisplay,
+      ],
+    );
+    return {
+      localTable: 'phm_edw.medication_dispense',
+      localId: Number(rows[0]?.medication_dispense_id ?? existing.localId),
+      operation: 'updated',
+    };
+  }
+
+  const rows = await tx.unsafe<{ medication_dispense_id: number | string }[]>(
+    `INSERT INTO phm_edw.medication_dispense
+       (patient_id, encounter_id, medication_id, medication_order_id, status,
+        dispense_datetime, prepared_datetime, handed_over_datetime, quantity_value,
+        quantity_unit, days_supply_value, days_supply_unit, dosage_text, performer_display,
+        active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5,$6::timestamp,$7::timestamp,$8::timestamp,$9,$10,$11,$12,$13,$14,'Y',NOW(),NOW())
+     RETURNING medication_dispense_id`,
+    [
+      patientId,
+      encounterId,
+      medicationId,
+      medicationOrderId,
+      status,
+      dispenseAt,
+      preparedAt,
+      handedOverAt,
+      quantityValue,
+      quantityUnit,
+      daysSupplyValue,
+      daysSupplyUnit,
+      dosageText,
+      performerDisplay,
+    ],
+  );
+  return {
+    localTable: 'phm_edw.medication_dispense',
+    localId: Number(rows[0]!.medication_dispense_id),
+    operation: 'inserted',
+  };
+}
+
+async function hydrateMedicationAdministration(
+  tx: Tx,
+  row: StagedFhirResourceRow,
+  patientId: number,
+  existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const medication = medicationConcept(resource);
+  const medicationId = await upsertMedicationMaster(tx, row, medication);
+  const encounterId = await resolveEncounterId(tx, row, referenceId(resource['context'], 'Encounter'));
+  const medicationOrderId = await resolveMedicationOrderId(tx, row, referenceId(resource['request'], 'MedicationRequest'));
+  const effectivePeriod = record(resource['effectivePeriod']);
+  const dosage = record(resource['dosage']);
+  const dose = record(dosage?.['dose']);
+  const status = truncateNullable(cleanString(resource['status']), 50);
+  const effectiveStart = cleanString(resource['effectiveDateTime'])
+    ?? cleanString(effectivePeriod?.['start'])
+    ?? row.source_last_updated
+    ?? row.received_at;
+  const effectiveEnd = cleanString(effectivePeriod?.['end']);
+  const dosageText = truncateNullable(cleanString(dosage?.['text']), 500);
+  const doseValue = optionalNumber(dose?.['value']);
+  const doseUnit = truncateNullable(cleanString(dose?.['unit']) ?? cleanString(dose?.['code']), 50);
+  const route = truncateNullable(conceptLabel(record(dosage?.['route'])), 100);
+  const performerDisplay = truncateNullable(firstPerformerDisplay(resource), 255);
+  const reasonText = truncateNullable(
+    conceptLabel(firstConcept(resource['reasonCode']))
+      ?? cleanString(firstRecord(resource['reasonReference'])?.['display']),
+    500,
+  );
+
+  if (existing.localTable === 'phm_edw.medication_administration' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ medication_administration_id: number | string }[]>(
+      `UPDATE phm_edw.medication_administration
+       SET patient_id=$2, encounter_id=$3, medication_id=$4, medication_order_id=$5,
+           status=$6, effective_start_datetime=$7::timestamp, effective_end_datetime=$8::timestamp,
+           dosage_text=$9, dose_value=$10, dose_unit=$11, route=$12, performer_display=$13,
+           reason_text=$14, updated_date=NOW()
+       WHERE medication_administration_id=$1 RETURNING medication_administration_id`,
+      [
+        existing.localId,
+        patientId,
+        encounterId,
+        medicationId,
+        medicationOrderId,
+        status,
+        effectiveStart,
+        effectiveEnd,
+        dosageText,
+        doseValue,
+        doseUnit,
+        route,
+        performerDisplay,
+        reasonText,
+      ],
+    );
+    return {
+      localTable: 'phm_edw.medication_administration',
+      localId: Number(rows[0]?.medication_administration_id ?? existing.localId),
+      operation: 'updated',
+    };
+  }
+
+  const rows = await tx.unsafe<{ medication_administration_id: number | string }[]>(
+    `INSERT INTO phm_edw.medication_administration
+       (patient_id, encounter_id, medication_id, medication_order_id, status,
+        effective_start_datetime, effective_end_datetime, dosage_text, dose_value,
+        dose_unit, route, performer_display, reason_text, active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5,$6::timestamp,$7::timestamp,$8,$9,$10,$11,$12,$13,'Y',NOW(),NOW())
+     RETURNING medication_administration_id`,
+    [
+      patientId,
+      encounterId,
+      medicationId,
+      medicationOrderId,
+      status,
+      effectiveStart,
+      effectiveEnd,
+      dosageText,
+      doseValue,
+      doseUnit,
+      route,
+      performerDisplay,
+      reasonText,
+    ],
+  );
+  return {
+    localTable: 'phm_edw.medication_administration',
+    localId: Number(rows[0]!.medication_administration_id),
     operation: 'inserted',
   };
 }
@@ -1505,6 +1706,22 @@ async function resolveOrgId(tx: Tx, row: StagedFhirResourceRow, ref: string | nu
   return optionalPositiveNumber(rows[0]?.local_id);
 }
 
+async function resolveMedicationOrderId(
+  tx: Tx,
+  row: StagedFhirResourceRow,
+  medicationRequestResourceId: string | null,
+): Promise<number | null> {
+  if (!medicationRequestResourceId) return null;
+  const rows = await tx.unsafe<Array<{ local_id: number | string | null }>>(
+    `SELECT local_id FROM phm_edw.ehr_resource_crosswalk
+     WHERE ehr_tenant_id = $1 AND resource_type = 'MedicationRequest' AND ehr_resource_id = $2
+       AND local_table = 'phm_edw.medication_order' AND local_id IS NOT NULL
+     ORDER BY last_seen_at DESC LIMIT 1`,
+    [Number(row.ehr_tenant_id), medicationRequestResourceId],
+  );
+  return optionalPositiveNumber(rows[0]?.local_id);
+}
+
 function containedResource(resource: FhirResource, type: string, ref: string | null): FhirResource | null {
   const contained = recordArray(resource['contained']).find(
     (r) => cleanString(r['resourceType']) === type && (!ref || cleanString(r['id']) === ref),
@@ -1815,6 +2032,27 @@ function medicationReferenceConcept(resource: FhirResource): CodeConcept {
     display: cleanString(reference?.['display']),
     text: cleanString(reference?.['display']),
   };
+}
+
+function medicationConcept(resource: FhirResource): CodeConcept {
+  const coded = firstConcept(resource['medicationCodeableConcept']);
+  return conceptHasValue(coded) ? coded : medicationReferenceConcept(resource);
+}
+
+function firstPerformerDisplay(resource: FhirResource): string | null {
+  const performer = firstRecord(resource['performer']);
+  const actor = record(performer?.['actor']);
+  return cleanString(actor?.['display'])
+    ?? referenceId(actor, 'Practitioner')
+    ?? referenceId(actor, 'Organization')
+    ?? cleanString(performer?.['display']);
+}
+
+function conceptHasValue(concept: CodeConcept): boolean {
+  return concept.system !== null
+    || concept.code !== null
+    || concept.display !== null
+    || concept.text !== null;
 }
 
 function emptyConcept(): CodeConcept {

@@ -1,6 +1,6 @@
 # Medgnosis Current-State Index
 
-Last updated: 2026-06-19
+Last updated: 2026-06-25
 
 ## Purpose
 
@@ -45,11 +45,14 @@ devlogs do not override the current codebase state.
   cancellation, tenant-specific recurring Bulk schedules, optional manifest
   checksum/size validation, Bulk Patient EMPI/crosswalk seeding, and admin Bulk
   job/file/schedule visibility with worker failure/overdue-poll sync metrics.
+  First-pass EDW hydration now includes `DocumentReference`, `DiagnosticReport`,
+  `MedicationDispense`, and `MedicationAdministration` in addition to the core
+  patient workspace resources.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
-- EHR production completion still requires all-domain EDW normalization for
-  remaining staged resource families, deeper Bulk replay/dead-letter runbooks,
+- EHR production completion still requires remaining EDW/local-matching breadth
+  for tenant-specific patient-detail needs, deeper Bulk replay/dead-letter runbooks,
   vendor sandbox evidence, broader patient/resource last-success rollups,
   FHIR-read/QDM-promotion audit coverage, and alerting.
 

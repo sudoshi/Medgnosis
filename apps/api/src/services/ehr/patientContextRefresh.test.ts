@@ -126,6 +126,22 @@ const immunizationResource = {
   occurrenceDateTime: '2025-10-01T12:00:00Z',
 } satisfies FhirResource;
 
+const medicationDispenseResource = {
+  resourceType: 'MedicationDispense',
+  id: 'disp-1',
+  subject: { reference: 'Patient/pat-1' },
+  medicationCodeableConcept: { text: 'Metformin' },
+  status: 'completed',
+} satisfies FhirResource;
+
+const medicationAdministrationResource = {
+  resourceType: 'MedicationAdministration',
+  id: 'admin-1',
+  subject: { reference: 'Patient/pat-1' },
+  medicationCodeableConcept: { text: 'Metformin' },
+  status: 'completed',
+} satisfies FhirResource;
+
 const edwHydration = {
   resourcesSeen: 2,
   resourcesHydrated: 2,
@@ -352,6 +368,91 @@ describe('refreshSmartPatientContext', () => {
       ehrTenantId: 42,
       ingestRunId: ingestRun.id,
       resourceTypes: ['Procedure', 'AllergyIntolerance', 'Immunization'],
+      limit: 250,
+    });
+  });
+
+  it('supports EDW-backed MedicationDispense and MedicationAdministration refreshes', async () => {
+    const medicationConfig: BackendServicesConfig = {
+      ...backendConfig,
+      scopesRequested: 'system/MedicationDispense.rs system/MedicationAdministration.rs',
+      scopesGranted: 'system/MedicationDispense.rs system/MedicationAdministration.rs',
+    };
+    const medicationTokenResult: BackendServiceTokenResult = {
+      ...tokenResult,
+      accessToken: {
+        ...tokenResult.accessToken,
+        scope: 'system/MedicationDispense.rs system/MedicationAdministration.rs',
+      },
+      tokenResponse: {
+        ...tokenResult.tokenResponse,
+        scope: 'system/MedicationDispense.rs system/MedicationAdministration.rs',
+      },
+    };
+    const loadBackendServicesConfig = vi.fn().mockResolvedValue(medicationConfig);
+    const requestBackendServiceToken = vi.fn().mockResolvedValue(medicationTokenResult);
+    const fhirClient = {
+      search: vi.fn()
+        .mockResolvedValueOnce({ resources: [medicationDispenseResource], audit: {} })
+        .mockResolvedValueOnce({ resources: [medicationAdministrationResource], audit: {} }),
+    };
+    const startIngestRun = vi.fn().mockResolvedValue(ingestRun);
+    const stageFhirResource = vi.fn().mockResolvedValue({ id: 301 });
+    const medicationEdwHydration = {
+      ...edwHydration,
+      resourcesSeen: 2,
+      resourcesHydrated: 2,
+      rowsInserted: 2,
+      byResourceType: {
+        MedicationDispense: { seen: 1, hydrated: 1, skipped: 0, failed: 0 },
+        MedicationAdministration: { seen: 1, hydrated: 1, skipped: 0, failed: 0 },
+      },
+    };
+    const hydrateStagedRunToEdw = vi.fn().mockResolvedValue(medicationEdwHydration);
+    const finishIngestRun = vi.fn().mockResolvedValue({
+      run: { ...ingestRun, status: 'succeeded' },
+      qdmBridge,
+    });
+
+    const result = await refreshSmartPatientContext(
+      {
+        ehrTenantId: 42,
+        orgId: 7,
+        patientResourceId: 'pat-1',
+        localPatientId: 123,
+        resourceTypes: ['MedicationDispense', 'MedicationAdministration'],
+      },
+      {
+        loadBackendServicesConfig,
+        requestBackendServiceToken,
+        fhirClient,
+        startIngestRun,
+        stageFhirResource,
+        hydrateStagedRunToEdw,
+        finishIngestRun,
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      contextResources: {
+        attempted: ['MedicationDispense', 'MedicationAdministration'],
+        received: 2,
+        staged: 2,
+      },
+      edwHydration: medicationEdwHydration,
+    });
+    expect(requestBackendServiceToken).toHaveBeenCalledWith({
+      config: medicationConfig,
+      scope: 'system/MedicationDispense.rs system/MedicationAdministration.rs',
+      fetchImpl: undefined,
+    });
+    expect(fhirClient.search).toHaveBeenCalledTimes(2);
+    expect(hydrateStagedRunToEdw).toHaveBeenCalledWith({
+      orgId: 7,
+      ehrTenantId: 42,
+      ingestRunId: ingestRun.id,
+      resourceTypes: ['MedicationDispense', 'MedicationAdministration'],
       limit: 250,
     });
   });

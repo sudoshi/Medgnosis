@@ -39,6 +39,8 @@ export const SMART_PATIENT_CONTEXT_REFRESH_RESOURCE_TYPES = [
   'Condition',
   'Observation',
   'MedicationRequest',
+  'MedicationDispense',
+  'MedicationAdministration',
   'Procedure',
   'AllergyIntolerance',
   'Immunization',

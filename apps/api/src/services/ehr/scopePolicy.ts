@@ -23,6 +23,8 @@ export const DEFAULT_BACKEND_SERVICE_RESOURCES = [
   'Condition',
   'Observation',
   'MedicationRequest',
+  'MedicationDispense',
+  'MedicationAdministration',
   'AllergyIntolerance',
   'Procedure',
   'Immunization',
@@ -94,4 +96,3 @@ export function assertNoWildcardScopes(scopes: readonly string[]): string[] {
 function patientAccessForResource(resource: string): 'r' | 'rs' {
   return resource === 'Patient' ? 'r' : 'rs';
 }
-

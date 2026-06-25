@@ -532,6 +532,53 @@ const documentReference = {
   content: [{ attachment: { contentType: 'application/pdf', url: 'http://x/y.pdf', title: 'Discharge Summary' } }],
 } as unknown as FhirResource;
 
+const medicationDispense = {
+  resourceType: 'MedicationDispense',
+  id: 'disp-1',
+  subject: { reference: 'Patient/pat-1' },
+  context: { reference: 'Encounter/enc-1' },
+  status: 'completed',
+  medicationCodeableConcept: {
+    coding: [{ system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '860975', display: 'Metformin' }],
+  },
+  authorizingPrescription: [{ reference: 'MedicationRequest/med-1' }],
+  whenPrepared: '2026-06-06T08:00:00Z',
+  whenHandedOver: '2026-06-06T09:00:00Z',
+  quantity: { value: 60, unit: 'tablet' },
+  daysSupply: { value: 30, unit: 'day' },
+  dosageInstruction: [{ text: '500 mg twice daily' }],
+  performer: [{ actor: { reference: 'Organization/pharmacy-1', display: 'Acme Pharmacy' } }],
+} as unknown as FhirResource;
+
+const medicationDispenseWithReference = {
+  resourceType: 'MedicationDispense',
+  id: 'disp-ref-1',
+  subject: { reference: 'Patient/pat-1' },
+  status: 'completed',
+  medicationReference: { reference: 'Medication/med-ref-1', display: 'Referenced Metformin' },
+  whenHandedOver: '2026-06-06T09:00:00Z',
+} as unknown as FhirResource;
+
+const medicationAdministration = {
+  resourceType: 'MedicationAdministration',
+  id: 'admin-1',
+  subject: { reference: 'Patient/pat-1' },
+  context: { reference: 'Encounter/enc-1' },
+  request: { reference: 'MedicationRequest/med-1' },
+  status: 'completed',
+  medicationCodeableConcept: {
+    coding: [{ system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '860975', display: 'Metformin' }],
+  },
+  effectivePeriod: { start: '2026-06-06T10:00:00Z', end: '2026-06-06T10:05:00Z' },
+  dosage: {
+    text: '500 mg oral dose',
+    route: { text: 'Oral' },
+    dose: { value: 500, unit: 'mg' },
+  },
+  performer: [{ actor: { reference: 'Practitioner/nurse-1', display: 'Nurse Example' } }],
+  reasonCode: [{ text: 'Diabetes management' }],
+} as unknown as FhirResource;
+
 describe('Phase C batch 1 hydrators', () => {
   it('hydrates a ServiceRequest into clinical_order (insert)', async () => {
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
@@ -627,6 +674,114 @@ describe('Phase C batch 1 hydrators', () => {
     expect(result.rowsUpdated).toBe(1);
     expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.document_reference'))).toBe(true);
     expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.document_reference'))).toBe(false);
+  });
+
+  it('hydrates a MedicationDispense into medication_dispense (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'MedicationDispense', 'disp-1', medicationDispense)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('SELECT medication_id')) return Promise.resolve([{ medication_id: 432 }]);
+      if (text.includes("resource_type = 'MedicationRequest'")) return Promise.resolve([{ local_id: 876 }]);
+      if (text.includes('INSERT INTO phm_edw.medication_dispense')) return Promise.resolve([{ medication_dispense_id: 910 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['MedicationDispense']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.medication_dispense'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123, 432, 876]));
+    const crosswalk = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'));
+    expect(crosswalk?.[5]).toBe('phm_edw.medication_dispense');
+    expect(crosswalk?.[6]).toBe(910);
+  });
+
+  it('hydrates MedicationDispense medicationReference into medication master identity', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'MedicationDispense', 'disp-ref-1', medicationDispenseWithReference)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('SELECT medication_id')) return Promise.resolve([]);
+      if (text.includes("resource_type = 'MedicationRequest'")) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.medication\n')) return Promise.resolve([{ medication_id: 433 }]);
+      if (text.includes('INSERT INTO phm_edw.medication_dispense')) return Promise.resolve([{ medication_dispense_id: 911 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsInserted).toBe(1);
+    const medicationInsert = mockSql.mock.calls.find(([s]) =>
+      (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.medication\n'),
+    );
+    expect(medicationInsert?.slice(1)).toEqual(['med-ref-1', 'Referenced Metformin', 'OTHER']);
+  });
+
+  it('updates an existing medication_dispense on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'MedicationDispense', 'disp-1', medicationDispense)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.medication_dispense', local_id: 910 }]);
+      if (text.includes('SELECT medication_id')) return Promise.resolve([{ medication_id: 432 }]);
+      if (text.includes("resource_type = 'MedicationRequest'")) return Promise.resolve([{ local_id: 876 }]);
+      if (text.includes('UPDATE phm_edw.medication_dispense')) return Promise.resolve([{ medication_dispense_id: 910 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.medication_dispense'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.medication_dispense'))).toBe(false);
+  });
+
+  it('hydrates a MedicationAdministration into medication_administration (insert)', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'MedicationAdministration', 'admin-1', medicationAdministration)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('SELECT medication_id')) return Promise.resolve([{ medication_id: 432 }]);
+      if (text.includes("resource_type = 'MedicationRequest'")) return Promise.resolve([{ local_id: 876 }]);
+      if (text.includes('INSERT INTO phm_edw.medication_administration')) return Promise.resolve([{ medication_administration_id: 920 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsInserted).toBe(1);
+    expect(result.byResourceType['MedicationAdministration']).toMatchObject({ hydrated: 1 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.medication_administration'));
+    expect(insert).toBeDefined();
+    expect(insert!.slice(1)).toEqual(expect.arrayContaining([123, 432, 876]));
+    const crosswalk = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'));
+    expect(crosswalk?.[5]).toBe('phm_edw.medication_administration');
+    expect(crosswalk?.[6]).toBe(920);
+  });
+
+  it('updates an existing medication_administration on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'MedicationAdministration', 'admin-1', medicationAdministration)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.medication_administration', local_id: 920 }]);
+      if (text.includes('SELECT medication_id')) return Promise.resolve([{ medication_id: 432 }]);
+      if (text.includes("resource_type = 'MedicationRequest'")) return Promise.resolve([{ local_id: 876 }]);
+      if (text.includes('UPDATE phm_edw.medication_administration')) return Promise.resolve([{ medication_administration_id: 920 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.medication_administration'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.medication_administration'))).toBe(false);
   });
 });
 

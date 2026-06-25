@@ -1,7 +1,7 @@
 # Medgnosis EHR Integration Devlog - Current State
 
 - **Date:** 2026-06-17
-- **Last assessed:** 2026-06-19
+- **Last assessed:** 2026-06-25
 - **Scope:** Epic, Oracle Cerner, SMART Health IT, generic SMART/FHIR, CDS Hooks, Backend Services, Bulk Data, and the follow-on FHIR/QDM bridge integration work
 - **Repository:** `/home/smudoshi/Github/Medgnosis`
 - **Primary plan:** `docs/superpowers/plans/2026-06-16-ehr-integration-implementation-plan.md`
@@ -9,31 +9,30 @@
 
 ## Executive Summary
 
-Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, recent ingest, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, and a QDM/CQL shadow-governance path for staged FHIR evidence.
+Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, recent ingest, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, a QDM/CQL shadow-governance path for staged FHIR evidence, and first-pass EDW hydration across 17 FHIR resource families including `DiagnosticReport`, `DocumentReference`, `MedicationDispense`, and `MedicationAdministration`.
 
-Post-deploy baseline on 2026-06-19: `main` and `origin/main` are at `c8d662f`, production has migrations through `087_patient_identity_empi.sql`, `.env.production` dry-run reports 86 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` are active, and `https://medgnosis.acumenus.net/health` returns healthy with the database up.
+Last recorded production checkpoint in this devlog remains 2026-06-19: `main` and `origin/main` were at `c8d662f`, production had migrations through `087_patient_identity_empi.sql`, `.env.production` dry-run reported 86 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and `https://medgnosis.acumenus.net/health` returned healthy with the database up. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation. Re-run production migration dry-run before the next deploy because this current worktree adds `091_ehr_medication_events.sql`.
 
-Current continuation after that deployment is focused on the remaining EHR ingestion work. The active code slice routes staged Bulk `Patient` resources through the EMPI identity resolver before child resources hydrate, so Bulk imports can create/reuse `phm_edw.person`, link `phm_edw.patient`, and seed tenant-scoped Patient crosswalks through the same identity policy used by SMART launch.
+Current continuation after that deployment is focused on non-EMPI EHR ingestion breadth. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. EMPI/identity continuation remains explicitly separate from this slice.
 
-The same continuation also adds an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence shows 1,005,791 existing `phm_edw.patient` rows are currently unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This has not been applied to production; it should be scheduled deliberately because it will write over a million additive identity rows.
+Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
 
-- **Full Epic/Cerner/other-EHR program:** about 66 percent complete.
-- **Local vendor-neutral platform:** about 94 percent complete.
+- **Full Epic/Cerner/other-EHR program:** about 67 percent complete.
+- **Local vendor-neutral platform:** about 95 percent complete.
 - **FHIR/QDM analytics bridge for the scoped CMS122 shadow-governance milestone:** complete.
-- **Epic/Cerner production onboarding:** still low, roughly 20-25 percent, because vendor credentials, app registration, sandbox launch evidence, customer scope approval, broader EDW normalization, durable sync visibility, and go-live artifacts remain external or incomplete.
+- **Epic/Cerner production onboarding:** still low, roughly 20-25 percent, because vendor credentials, app registration, customer scope approval, durable sync visibility, patient/resource rollups, local matching policy, and go-live artifacts remain external or incomplete.
 
 ## Current Worktree State
 
 Assessment baseline for this refresh:
 
 - Current branch: `main`.
-- `origin/main` is at `c8d662f fix(api): compile injectable identity repository`.
-- Production is deployed from `c8d662f`.
-- Production migrations are current through `087_patient_identity_empi.sql`.
-- The active worktree after deployment contains the next continuation slice: Bulk Patient EMPI hydration in `apps/api/src/services/ehr/edwHydration.ts`, focused regression coverage in `apps/api/src/services/ehr/edwHydration.test.ts`, and this documentation refresh.
-- The active worktree also includes `packages/db/src/backfill-empi.ts` plus `npm run db:backfill-empi -- --dry-run` wiring for legacy patient identity backfill.
+- `origin/main` is at `3dabd58 docs(auth): devlog for Authentik 'Medgnosis Admins' group (fleet SSO)`.
+- Last recorded production deployment checkpoint in this devlog is `c8d662f`; the current checkout has advanced and must be validated/deployed as a new release before production claims are updated.
+- Migrations on disk now extend through `091_ehr_medication_events.sql`; `091` is the current medication-event continuation migration.
+- The active non-EMPI worktree slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, and this documentation refresh.
 
 Relevant commits now in history:
 
@@ -44,6 +43,7 @@ Relevant commits now in history:
 - `2f45bfd fix(deploy): publish readable web build`
 - `28c562d feat: advance auth ehr and operations readiness`
 - `c8d662f fix(api): compile injectable identity repository`
+- `3dabd58 docs(auth): devlog for Authentik 'Medgnosis Admins' group (fleet SSO)`
 
 ## Implemented Capabilities
 
@@ -202,7 +202,7 @@ Implemented callback:
 - Reads the launch Patient from the tenant FHIR API while the raw SMART access token is still only in memory.
 - Starts a manual `Patient` ingest run, stages the raw Patient resource, creates a minimal local `phm_edw.patient` when required demographics are present, and populates tenant-scoped `ehr_resource_crosswalk`.
 - Stages one bounded page each of launch-context `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, and `AllergyIntolerance` resources when granted patient scopes allow those searches, hydrates supported resources into EDW workspace tables, then replays callback-staged resources through the QDM bridge without blocking launch on replay errors.
-- Enqueues a backend-services BullMQ refresh after successful launch patient resolution for broader `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, `AllergyIntolerance`, and `Immunization` patient-context pages, including next-link continuation jobs, without storing SMART launch bearer tokens.
+- Enqueues a backend-services BullMQ refresh after successful launch patient resolution for broader `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `MedicationDispense`, `MedicationAdministration`, `Procedure`, `AllergyIntolerance`, and `Immunization` patient-context pages, including next-link continuation jobs, without storing SMART launch bearer tokens.
 - Preserves existing non-null Patient crosswalk mappings rather than reassigning patients automatically.
 - Provides an authenticated `/ehr/launch/complete` handoff endpoint that binds the launch to the current Medgnosis session and resolves local patients through launch-context sync status or `ehr_resource_crosswalk`.
 
@@ -210,7 +210,7 @@ Important remaining gaps:
 
 - EHR user linking is not complete.
 - Queued broader patient-context refresh and next-link continuation exist for supported patient-context resource types.
-- Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages, but DocumentReference, DiagnosticReport, medication administration/dispense, delete semantics, and fuller local matching still need EDW normalization.
+- Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages. `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration` now have first-pass EDW hydration; delete semantics, durable patient/resource rollups, and fuller local matching still need hardening.
 - A read-only tenant ingest-run status API, recent-sync panel, Bulk job/file/schedule status panel, completed-job import replay, failed-file-only resume, recurring Bulk schedules, and active-job cancellation exist, but alerts, deeper dead-letter runbooks, automated/tenant EHR audit coverage, and broader patient/resource last-success rollups remain incomplete.
 - Provider access/PCP attribution policy for newly imported launch patients still needs tenant-specific design.
 
@@ -325,11 +325,11 @@ Implemented:
 
 Known remaining gaps:
 
-- EDW normalization from staged resources now covers initial Patient routing, Bulk Patient EMPI resolution/crosswalk seeding, and first-pass workspace rows for `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, `AllergyIntolerance`, and `Immunization`; full all-domain normalization, document references, diagnostic reports, medication dispense/administration, and richer local matching are not complete.
-- The FHIR/QDM bridge now covers the scoped quality-measure path, but it is not a full all-domain EDW normalization contract.
-- EHR resource crosswalks exist, initial SMART launch Patient import now populates Patient crosswalks, Bulk Patient hydration now routes through EMPI before creating/linking local patient rows, and FHIR/QDM source crosswalks exist for the bridge, but broader EDW patient-context normalization still needs provider attribution, durable sync status, and all-domain resource breadth.
+- EDW normalization from staged resources now covers initial Patient routing, Bulk Patient EMPI resolution/crosswalk seeding, and first-pass workspace rows for `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `MedicationDispense`, `MedicationAdministration`, `Procedure`, `AllergyIntolerance`, `Immunization`, `ServiceRequest`, `DiagnosticReport`, `DocumentReference`, `CarePlan`, `Goal`, `CareTeam`, and `Coverage`; richer local matching and additional tenant-specific domain needs are not complete.
+- The FHIR/QDM bridge now covers the scoped quality-measure path, but it is not a complete EDW normalization contract for every possible FHIR domain.
+- EHR resource crosswalks exist, initial SMART launch Patient import now populates Patient crosswalks, Bulk Patient hydration routes through EMPI before creating/linking local patient rows, and FHIR/QDM source crosswalks exist for the bridge. Broader EDW patient-context normalization still needs provider attribution, durable sync status, patient/resource rollups, and local matching policy.
 - Data-quality issue rows for unmapped codes/units/statuses remain to be implemented.
-- Bounded patient-context staging beyond the launch Patient is wired after SMART launch, hydrated into EDW workspace rows for supported patient-context resource types, automatically replayed into QDM evidence, and extended by a backend-services queued refresh with continuation jobs, but all-domain EDW normalization remains incomplete.
+- Bounded patient-context staging beyond the launch Patient is wired after SMART launch, hydrated into EDW workspace rows for supported patient-context resource types, automatically replayed into QDM evidence, and extended by a backend-services queued refresh with continuation jobs. Remaining gaps are now less about the original core/document/report/medication-event families and more about durable sync visibility, local matching, delete semantics, and tenant-specific resource breadth.
 
 Key implementation files:
 
@@ -586,7 +586,7 @@ Follow-on bridge/governance migrations:
 - `078_measure_semantic_drift_dossier.sql`
 - `079_qdm_bridge_operations.sql`
 
-Application-completion and EHR hardening migrations now applied in production:
+Application-completion and EHR hardening migrations recorded as applied in the 2026-06-19 production checkpoint:
 
 - `080_invite_activation_tokens.sql`
 - `081_password_reset_tokens.sql`
@@ -597,12 +597,21 @@ Application-completion and EHR hardening migrations now applied in production:
 - `086_ehr_bulk_schedules.sql`
 - `087_patient_identity_empi.sql`
 
+Later EHR/identity migrations now present in the current checkout:
+
+- `088_identity_review_probabilistic_reason.sql`
+- `089_ehr_diagnostic_report_document_reference.sql`
+- `090_ehr_resource_crosswalk_soft_delete.sql`
+- `091_ehr_medication_events.sql`
+
 Current database status:
 
-- Production `.env.production` dry-run reports 86 applied migrations.
-- Pending production migrations: none.
-- Latest migration on disk: `087_patient_identity_empi.sql`.
-- The earlier 067 handoff state is superseded by the 068-087 bridge/governance/auth/Bulk/EMPI migration tranche.
+- Last recorded production `.env.production` dry-run in this devlog reported 86 applied migrations.
+- The 2026-06-20 FHIR EDW expansion closeout records `089` and `090` applied to the `medgnosis` database and verified against live Epic sandbox data.
+- Local `.env` migration dry-run with the host override on 2026-06-25 reported 89 applied migrations and one pending migration: `091_ehr_medication_events.sql`.
+- Latest migration on disk: `091_ehr_medication_events.sql`.
+- Pending production migrations must be rechecked before deployment; this refresh did not run a production migration dry-run.
+- The earlier 067 handoff state is superseded by the 068-091 bridge/governance/auth/Bulk/EMPI/EDW migration tranche.
 - Legacy patient identity backfill is not a migration. It is an explicit operator script: `npm run db:backfill-empi -- --dry-run` first, then `npm run db:backfill-empi` only during a planned backfill window.
 
 CLI note:
@@ -662,6 +671,13 @@ Focused non-EMPI EHR readiness/audit/sync validation after the latest continuati
 - `npm run lint --workspace=apps/web` passed.
 - `npm run build --workspace=apps/web` passed.
 - `git diff --check` passed.
+
+Focused medication-event EDW hydration validation on 2026-06-25:
+
+- `npm run test --workspace=apps/api -- edwHydration.test.ts patientContextRefresh.test.ts vendorAdapters.test.ts` passed 3 files and 58 tests.
+- Coverage includes insert/update hydration for `MedicationDispense` and `MedicationAdministration`, backend-services patient-context refresh staging for both resources, vendor adapter regression coverage, and medication-reference fallback into the EDW medication master.
+- `npm run typecheck --workspace=apps/api`, `npm run lint --workspace=apps/api`, `npm run build --workspace=apps/api`, `npm run typecheck --workspace=packages/db`, `npm run build --workspace=packages/db`, and `git diff --check` passed. API lint emitted one existing warning in `apps/api/src/routes/admin/identityReview.test.ts`.
+- Local `.env` migration dry-run with `host.docker.internal` rewritten to `127.0.0.1` passed and reported 89 applied migrations with `091_ehr_medication_events.sql` pending.
 
 Focused EHR tests covered during the EHR foundation tranche:
 
@@ -751,8 +767,8 @@ Still needed:
 
 Still needed:
 
-- Expand active/recent pilot resources to allergies, procedures, immunizations, and other tenant-specific display needs.
-- Normalize additional staged resource families into EDW tables.
+- Expand tenant-specific display needs beyond the currently hydrated resource families where pilot workflows require them.
+- Normalize any additional staged resource families that become product-critical and do not yet have durable EDW tables.
 - Extend beyond tenant ingest/readiness/worker rollups into patient/resource last-success timestamps, conflicts, and stale-data warnings.
 
 ### Bulk Data Import
@@ -807,11 +823,11 @@ Mitigation:
 
 ### Risk: SMART launch patient workspace is not fully hydrated after bounded callback staging
 
-Launch/callback/token mechanics, authenticated handoff binding, initial Patient import/crosswalk, bounded staging of core launch-context resources, first-pass EDW hydration, automatic QDM replay, and queued backend-services refresh with next-link continuation for core resource pages now work in code. The remaining risk is that newly imported launch patients still lack tenant-specific provider attribution, broader resource history, durable sync visibility, and vendor sandbox proof.
+Launch/callback/token mechanics, authenticated handoff binding, initial Patient import/crosswalk, bounded staging of patient-context resources, first-pass EDW hydration, automatic QDM replay, and queued backend-services refresh with next-link continuation for supported resource pages now work in code. The remaining risk is that newly imported launch patients still lack tenant-specific provider attribution, durable patient/resource sync visibility, local matching policy, and vendor sandbox proof.
 
 Mitigation:
 
-- Prioritize EDW normalization breadth, durable sync status, and patient access policy next.
+- Prioritize durable sync status, patient/resource rollups, local matching, and patient access policy next.
 - Add end-to-end vendor/sandbox launch evidence that opens patient detail.
 - Keep Patient import/crosswalk regression tests in the SMART launch suite before production launch work.
 
@@ -848,14 +864,14 @@ Mitigation:
 ## Recommended Next Development Sequence
 
 1. **Patient-context normalization breadth and visibility**
-   - Extend the bounded callback staging, EDW hydration, QDM replay, and backend-services queue path to the remaining patient-detail resource families not yet covered by existing EDW tables.
-   - Broaden EDW normalization into document references, diagnostic reports, medication administration/dispense, and richer local matching where patient detail needs it.
+   - Extend the bounded callback staging, EDW hydration, QDM replay, and backend-services queue path to any remaining patient-detail resource families required by tenant workflows.
+   - Add richer local matching where patient detail needs it, especially provider attribution, medication-event lineage, document/report display grouping, and encounter association.
    - Add sync status persistence and admin/clinician-safe error reporting.
 
 2. **EHR patient crosswalk and EDW normalization**
    - Keep launch and Bulk Patient crosswalks as routing sources of truth.
    - Keep Bulk Patient hydration behind EMPI so strong identifiers and demographic-review queues prevent avoidable duplicate patients.
-   - Continue from the already-covered workspace resources into DocumentReference, DiagnosticReport, medication administration/dispense, and richer local matching.
+   - Continue from the already-covered workspace/document/report/medication-event resources into richer local matching and tenant-specific resource breadth.
 
 3. **SMART user linking and audit**
    - Add EHR `fhirUser` to Medgnosis user linking policy.
@@ -975,12 +991,12 @@ Scripts:
 | Admin onboarding API | Mostly complete | CRUD/upsert/detail/diagnostics/capabilities/test-connection present |
 | Admin EHR UI | Partial | Tenant onboarding/readiness evidence, recent ingest-run sync status, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, completed-job import replay, failed-import resume, and active-job cancel present; alerting, dead-letter drilldowns, and broader patient/resource last-success rollups missing |
 | SMART discovery | Partial | Works locally; needs HTTPS enforcement, hash/drift detection |
-| EHR launch | Partial | Launch/callback, lifecycle audit/rate limits, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, readiness evidence, and refresh continuation work; user linking, access attribution, all-domain normalization, broader sync rollups, and vendor evidence remain |
+| EHR launch | Partial | Launch/callback, lifecycle audit/rate limits, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, readiness evidence, and refresh continuation work; user linking, access attribution, local matching, broader sync rollups, and vendor evidence remain |
 | Standalone launch | Partial | Route and scope behavior present; end-to-end patient selection evidence pending |
 | Token metadata | Mostly complete | Hash-only persistence present; refresh/reacquisition remains |
 | Backend Services | Partial | Token flow implemented; no real vendor validation |
 | FHIR client | Mostly complete | Reads/search/pagination/retry present; vendor-specific constraints need expansion |
-| Resource staging | Partial | Raw staging, Bulk Patient EMPI hydration, callback EDW hydration, callback QDM replay, queued supported-resource refresh, and continuation work; all-domain EDW normalization remains incomplete |
+| Resource staging | Partial | Raw staging, Bulk Patient EMPI hydration, callback EDW hydration, callback QDM replay, queued supported-resource refresh, first-pass EDW hydration for 17 resource families, and continuation work; durable rollups, local matching, delete/tombstone operations, and tenant-specific breadth remain incomplete |
 | FHIR/QDM bridge | Mostly complete for scoped milestone | QDM spine, FHIR crosswalk, CQL shadow, reconciliation, semantic drift, and ops ledger present |
 | Measure governance | Partial | Admin tab and audited evidence drilldown present; CMS122 promotion remains governance-blocked |
 | CDS Hooks auth | Partial | JWT/JWKS validation present; production governance incomplete |
