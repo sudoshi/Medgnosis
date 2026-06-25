@@ -11,9 +11,9 @@
 
 Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, recent ingest, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, a QDM/CQL shadow-governance path for staged FHIR evidence, and first-pass EDW hydration across 17 FHIR resource families including `DiagnosticReport`, `DocumentReference`, `MedicationDispense`, and `MedicationAdministration`.
 
-Last recorded production checkpoint in this devlog remains 2026-06-19: `main` and `origin/main` were at `c8d662f`, production had migrations through `087_patient_identity_empi.sql`, `.env.production` dry-run reported 86 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and `https://medgnosis.acumenus.net/health` returned healthy with the database up. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation. Re-run production migration dry-run before the next deploy because this current worktree adds `091_ehr_medication_events.sql`.
+Production checkpoint on 2026-06-25: the medication-event application code release `e467846` was pushed and deployed, production migrations are current through `091_ehr_medication_events.sql`, the follow-up `.env.production` dry-run reported 90 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and both `http://127.0.0.1:3081/health` and `https://medgnosis.acumenus.net/health` returned healthy with the database up. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation.
 
-Current continuation after that deployment is focused on non-EMPI EHR ingestion breadth. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. EMPI/identity continuation remains explicitly separate from this slice.
+Current continuation is focused on non-EMPI EHR ingestion breadth. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. EMPI/identity continuation remains explicitly separate from this slice.
 
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
@@ -29,10 +29,10 @@ Current completion estimate:
 Assessment baseline for this refresh:
 
 - Current branch: `main`.
-- `origin/main` is at `3dabd58 docs(auth): devlog for Authentik 'Medgnosis Admins' group (fleet SSO)`.
-- Last recorded production deployment checkpoint in this devlog is `c8d662f`; the current checkout has advanced and must be validated/deployed as a new release before production claims are updated.
-- Migrations on disk now extend through `091_ehr_medication_events.sql`; `091` is the current medication-event continuation migration.
-- The active non-EMPI worktree slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, and this documentation refresh.
+- Medication-event application release commit: `e467846 feat(ehr): hydrate medication event resources`.
+- Production was deployed successfully after `091` was applied; the documentation checkpoint may be a later commit on top of the same application release.
+- Production migrations are current through `091_ehr_medication_events.sql`.
+- The deployed non-EMPI work slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, and this documentation refresh.
 
 Relevant commits now in history:
 
@@ -44,6 +44,7 @@ Relevant commits now in history:
 - `28c562d feat: advance auth ehr and operations readiness`
 - `c8d662f fix(api): compile injectable identity repository`
 - `3dabd58 docs(auth): devlog for Authentik 'Medgnosis Admins' group (fleet SSO)`
+- `e467846 feat(ehr): hydrate medication event resources`
 
 ## Implemented Capabilities
 
@@ -606,11 +607,11 @@ Later EHR/identity migrations now present in the current checkout:
 
 Current database status:
 
-- Last recorded production `.env.production` dry-run in this devlog reported 86 applied migrations.
+- Production `.env.production` dry-run after the 2026-06-25 medication-event deploy reported 90 applied migrations and no pending migrations.
 - The 2026-06-20 FHIR EDW expansion closeout records `089` and `090` applied to the `medgnosis` database and verified against live Epic sandbox data.
-- Local `.env` migration dry-run with the host override on 2026-06-25 reported 89 applied migrations and one pending migration: `091_ehr_medication_events.sql`.
+- `091_ehr_medication_events.sql` was applied on 2026-06-25.
 - Latest migration on disk: `091_ehr_medication_events.sql`.
-- Pending production migrations must be rechecked before deployment; this refresh did not run a production migration dry-run.
+- Pending production migrations: none as of the 2026-06-25 post-deploy dry-run.
 - The earlier 067 handoff state is superseded by the 068-091 bridge/governance/auth/Bulk/EMPI/EDW migration tranche.
 - Legacy patient identity backfill is not a migration. It is an explicit operator script: `npm run db:backfill-empi -- --dry-run` first, then `npm run db:backfill-empi` only during a planned backfill window.
 
@@ -677,7 +678,8 @@ Focused medication-event EDW hydration validation on 2026-06-25:
 - `npm run test --workspace=apps/api -- edwHydration.test.ts patientContextRefresh.test.ts vendorAdapters.test.ts` passed 3 files and 58 tests.
 - Coverage includes insert/update hydration for `MedicationDispense` and `MedicationAdministration`, backend-services patient-context refresh staging for both resources, vendor adapter regression coverage, and medication-reference fallback into the EDW medication master.
 - `npm run typecheck --workspace=apps/api`, `npm run lint --workspace=apps/api`, `npm run build --workspace=apps/api`, `npm run typecheck --workspace=packages/db`, `npm run build --workspace=packages/db`, and `git diff --check` passed. API lint emitted one existing warning in `apps/api/src/routes/admin/identityReview.test.ts`.
-- Local `.env` migration dry-run with `host.docker.internal` rewritten to `127.0.0.1` passed and reported 89 applied migrations with `091_ehr_medication_events.sql` pending.
+- Production `.env.production` migration dry-run passed before deployment with 89 applied migrations and `091_ehr_medication_events.sql` pending; `npm run db:migrate` then applied `091`, and the follow-up dry-run reported 90 applied migrations with no pending migrations.
+- `./scripts/deploy-production.sh` passed after commit `e467846`; `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, and `https://medgnosis.acumenus.net/health` returned healthy.
 
 Focused EHR tests covered during the EHR foundation tranche:
 
@@ -710,10 +712,10 @@ Latest live SMART Health IT onboarding smoke:
 - SKIP Backend token exchange because no backend-services registration exists.
 - SKIP authenticated FHIR read because no smoke access token/resource was supplied.
 
-Production assessment rechecks on 2026-06-19:
+Production assessment rechecks for the medication-event release on 2026-06-25:
 
-- `main` and `origin/main` point at `c8d662f`.
-- `set -a; . ./.env.production; set +a; npm run db:migrate:dry-run` reported 86 applied migrations and no pending migrations.
+- Medication-event application release commit `e467846` was pushed to `origin/main` before deployment.
+- `set -a; . ./.env.production; set +a; npm run db:migrate:dry-run` reported 90 applied migrations and no pending migrations.
 - `https://medgnosis.acumenus.net/health` returned healthy with database up.
 - `http://127.0.0.1:3081/health` returned healthy with database up during deploy verification.
 
@@ -723,7 +725,7 @@ Production API:
 
 - Public health endpoint: `https://medgnosis.acumenus.net/health`.
 - Local systemd/reverse-proxy target health endpoint: `http://127.0.0.1:3081/health`.
-- Both health endpoints returned `{"status":"healthy","version":"1.0.0","services":{"database":"up"}}` during the 2026-06-19 deployment verification.
+- Both health endpoints returned `{"status":"healthy","version":"1.0.0","services":{"database":"up"}}` during the 2026-06-25 deployment verification.
 
 Production web/admin:
 

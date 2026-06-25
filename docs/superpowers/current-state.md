@@ -48,6 +48,10 @@ devlogs do not override the current codebase state.
   First-pass EDW hydration now includes `DocumentReference`, `DiagnosticReport`,
   `MedicationDispense`, and `MedicationAdministration` in addition to the core
   patient workspace resources.
+- Production checkpoint on 2026-06-25 deployed `e467846`; production migrations
+  are current through `091_ehr_medication_events.sql`, post-deploy migration
+  dry-run reported 90 applied migrations and no pending migrations, and both
+  local and public health endpoints returned healthy.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
