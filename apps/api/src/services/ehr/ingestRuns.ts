@@ -79,6 +79,14 @@ export interface FinishEhrIngestRunResult {
   qdmBridge: NormalizeStagedRunToQdmResult | null;
 }
 
+export interface RecordEhrIngestRunQdmReplayInput {
+  id: string;
+  ehrTenantId: number;
+  result: NormalizeStagedRunToQdmResult;
+  limit?: number;
+  sourceSystem?: string;
+}
+
 interface EhrIngestRunRow {
   id: string;
   org_id: number | null;
@@ -303,6 +311,49 @@ export async function failIngestRun(input: FailEhrIngestRunInput): Promise<EhrIn
               updated_at::text AS updated_at
   `;
   return requireReturnedRun(rows, 'fail');
+}
+
+export async function recordQdmReplayResult(input: RecordEhrIngestRunQdmReplayInput): Promise<EhrIngestRun> {
+  const replayedAt = new Date().toISOString();
+  const metadata = {
+    qdmBridge: input.result,
+    qdmReplay: {
+      replayedAt,
+      limit: input.limit ?? null,
+      sourceSystem: input.sourceSystem ?? 'ehr-admin-qdm-replay',
+      resourcesSeen: input.result.resourcesSeen,
+      resourcesNormalized: input.result.resourcesNormalized,
+      resourcesFailed: input.result.resourcesFailed,
+      eventsUpserted: input.result.eventsUpserted,
+    },
+  };
+
+  const rows = await sql<EhrIngestRunRow[]>`
+    UPDATE phm_edw.ehr_ingest_run
+    SET metadata = metadata || ${sql.json(asSqlJson(metadata))},
+        updated_at = NOW()
+    WHERE id = ${input.id}::uuid
+      AND ehr_tenant_id = ${input.ehrTenantId}
+    RETURNING id::text AS id,
+              org_id,
+              ehr_tenant_id,
+              resource_type,
+              mode,
+              status,
+              requested_since::text AS requested_since,
+              started_at::text AS started_at,
+              finished_at::text AS finished_at,
+              resources_received,
+              resources_staged,
+              resources_updated,
+              error_count,
+              error_message,
+              errors,
+              metadata,
+              created_at::text AS created_at,
+              updated_at::text AS updated_at
+  `;
+  return requireReturnedRun(rows, 'record QDM replay');
 }
 
 export async function listIngestRuns(input: ListEhrIngestRunsInput): Promise<EhrIngestRun[]> {

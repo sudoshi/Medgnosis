@@ -601,12 +601,29 @@ describe('listBulkJobs', () => {
       .mockResolvedValueOnce([
         bulkJobRow({
           status: 'completed',
+          ingest_run_id: bulkIngestRun.id,
           manifest,
           output_files: manifest.output,
           completed_at: '2026-06-17 12:05:00+00',
         }),
       ])
-      .mockResolvedValueOnce([bulkImportFileRow()]);
+      .mockResolvedValueOnce([bulkImportFileRow()])
+      .mockResolvedValueOnce([
+        {
+          id: bulkIngestRun.id,
+          status: 'succeeded',
+          finished_at: '2026-06-17 12:07:00+00',
+          resources_received: '1',
+          resources_staged: '1',
+          resources_updated: '1',
+          error_count: '0',
+          metadata: {
+            bulkImport: { edwHydration: bulkEdwHydration },
+            qdmBridge: bulkQdmBridge,
+            qdmReplay: { replayedAt: '2026-06-17T12:08:00.000Z' },
+          },
+        },
+      ]);
 
     const jobs = await listBulkJobs({ ehrTenantId: 42, status: 'completed', limit: 5 });
 
@@ -622,9 +639,71 @@ describe('listBulkJobs', () => {
           resourcesStaged: 1,
         },
       ],
+      importSummary: {
+        totalFiles: 1,
+        completedFiles: 1,
+        rowsRead: 1,
+        resourcesStaged: 1,
+        errorCount: 0,
+        canResumeFailedFiles: false,
+        canReplayQdm: true,
+        ingestRunId: bulkIngestRun.id,
+        ingestStatus: 'succeeded',
+        edwResourcesHydrated: 1,
+        qdmReplayStatus: 'replayed',
+        qdmResourcesNormalized: 2,
+        qdmEventsUpserted: 2,
+        qdmLastReplayedAt: '2026-06-17T12:08:00.000Z',
+      },
     });
     expect(jobs[0]?.requestUrl).toContain('__bulk_output__');
     expect(JSON.stringify(jobs)).not.toContain('patient.ndjson');
+  });
+
+  it('treats zero-normalized QDM replay metadata as replayed', async () => {
+    mockSql
+      .mockResolvedValueOnce([
+        bulkJobRow({
+          status: 'completed',
+          ingest_run_id: bulkIngestRun.id,
+          manifest,
+          output_files: manifest.output,
+          completed_at: '2026-06-17 12:05:00+00',
+        }),
+      ])
+      .mockResolvedValueOnce([bulkImportFileRow()])
+      .mockResolvedValueOnce([
+        {
+          id: bulkIngestRun.id,
+          status: 'succeeded',
+          finished_at: '2026-06-17 12:07:00+00',
+          resources_received: '1',
+          resources_staged: '1',
+          resources_updated: '1',
+          error_count: '0',
+          metadata: {
+            qdmBridge: {
+              resourcesSeen: 1,
+              resourcesNormalized: 0,
+              resourcesSkipped: 1,
+              resourcesFailed: 0,
+              eventsUpserted: 0,
+              errors: [],
+            },
+            qdmReplay: { replayedAt: '2026-06-17T12:08:00.000Z' },
+          },
+        },
+      ]);
+
+    const [job] = await listBulkJobs({ ehrTenantId: 42, status: 'completed', limit: 5 });
+
+    expect(job?.importSummary).toMatchObject({
+      qdmReplayStatus: 'replayed',
+      qdmResourcesNormalized: 0,
+      qdmEventsUpserted: 0,
+      canReplayQdm: true,
+      qdmLastReplayedAt: '2026-06-17T12:08:00.000Z',
+    });
   });
 });
 

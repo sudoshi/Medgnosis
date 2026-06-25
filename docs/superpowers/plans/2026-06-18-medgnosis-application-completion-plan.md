@@ -48,10 +48,10 @@ Medgnosis is not a prototype shell. The core application builds, tests, serves h
 The unfinished work is concentrated in productionizing those foundations:
 
 - Auth/security claims are now closer to implementation. MFA has TOTP setup, QR/manual secret delivery, challenge verification before session issuance, hashed recovery codes, disable flow, OIDC/local enforcement, refresh-token MFA gating, and Settings UX. Admin-created users have tokenized invite activation with revoke/status UX, password reset uses one-time token links that revoke refresh tokens when complete, and Settings exposes active-session/device visibility with per-session revoke controls.
-- EHR integration has credible tenant registry, strict SMART launch validation, short-lived Medgnosis handoff binding, initial launch Patient import/crosswalk, bounded launch-context resource staging with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh plus continuation jobs for supported patient-context resources, tenant ingest-run status API and recent-sync panel, readiness evidence API/UI, JWKS, discovery, onboarding, SMART lifecycle audit/rate limits, Bulk kickoff/polling ledger, manual/admin Bulk kickoff, worker polling/import orchestration, PHI-safe automated Bulk worker audit, manual completed-job import replay, failed-file-only resume, active-job cancellation, tenant-specific recurring Bulk schedules, Bulk Patient EMPI/crosswalk seeding, legacy-patient EMPI backfill tooling, admin Bulk job/file/schedule visibility, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, and first-pass EDW hydration for `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration`. It still lacks remaining EDW/local-matching breadth for tenant-specific patient-detail needs, deeper Bulk replay/dead-letter runbooks, vendor sandbox evidence, import-run/QDM replay drilldowns, FHIR-read/QDM-promotion audit coverage, stale-data runbooks, and external alerting.
+- EHR integration has credible tenant registry, strict SMART launch validation, short-lived Medgnosis handoff binding, initial launch Patient import/crosswalk, bounded launch-context resource staging with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh plus continuation jobs for supported patient-context resources, tenant ingest-run status API and recent-sync panel, readiness evidence API/UI, JWKS, discovery, onboarding, SMART lifecycle audit/rate limits, Bulk kickoff/polling ledger, manual/admin Bulk kickoff, worker polling/import orchestration, PHI-safe automated Bulk worker audit, manual completed-job import replay, failed-file-only resume, active-job cancellation, tenant-specific recurring Bulk schedules, Bulk Patient EMPI/crosswalk seeding, legacy-patient EMPI backfill tooling, admin Bulk job/file/schedule visibility, Bulk import/QDM replay summaries with poll-count and normalized-row visibility, linked QDM replay controls for Bulk ingest runs, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, and first-pass EDW hydration for `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration`. It still lacks remaining EDW/local-matching breadth for tenant-specific patient-detail needs, exercised Bulk replay/dead-letter incident evidence, vendor sandbox evidence, broader import-run detail pages beyond the Bulk job table, FHIR-read/QDM-promotion audit coverage, stale-data runbooks, and external alerting.
 - CQL/QDM/quality reporting has a real seam and governance path, but SQL remains authoritative by default, CMS122 promotion is intentionally blocked by semantic drift, local CMS measure content is minimal, test-deck coverage is not surfaced in dossiers, and QRDA/QPP conformance validation is not yet in CI.
 - Some clinical workflows are intentionally simulated or narrow: the surveillance lane is synthetic, the rules worker evaluates only care-gap-overdue, and the AI worker has a `population_summary` job type without implementation.
-- Frontend/admin coverage is functional but incomplete for production operations: System Health now shows workers, queues, and EHR Bulk readiness, EHR Integrations now shows tenant readiness evidence, recent ingest runs, worker failure/overdue-poll sync metrics, Bulk job/file status, completed-job import replay, failed-file-only resume, active-job cancellation, Bulk schedule next/last-success state, bounded patient/resource rollups, bounded conflict/stale-resource drilldowns, and structured sync issue actions, but not deeper dead-letter runbooks, import-run/QDM replay drilldowns, or external alerting. Measure Governance defaults around CMS122, and E2E tests are still narrower than full product workflows.
+- Frontend/admin coverage is functional but incomplete for production operations: System Health now shows workers, queues, and EHR Bulk readiness, EHR Integrations now shows tenant readiness evidence, recent ingest runs, worker failure/overdue-poll sync metrics, Bulk job/file status, completed-job import replay, failed-file-only resume, active-job cancellation, Bulk schedule next/last-success state, Bulk import/QDM replay summaries, linked QDM replay controls for Bulk ingest runs, bounded patient/resource rollups, bounded conflict/stale-resource drilldowns, and structured sync issue actions, but not broader import-run detail pages, external alerting, or full incident rehearsal evidence. Measure Governance defaults around CMS122, and E2E tests are still narrower than full product workflows.
 - Historical documentation still has drift. README and `.env.example` have been brought closer to current behavior, but the design log still mixes old audit findings with "complete" phase status.
 
 ## Definition Of Complete
@@ -269,7 +269,7 @@ Objective: move from EHR connectivity metadata to repeatable ingestion that upda
   - [x] Add recent ingest-run status to the EHR Integrations readiness panel.
   - [x] Bulk jobs table: tenant, level, group/patient, status, files, rows staged, failures, next poll, and timestamps.
   - [x] Add manual completed-job import replay and active-job cancel actions.
-  - [ ] Extend Bulk jobs table with poll count, normalized row counts, and QDM replay links.
+  - [x] Extend Bulk jobs table with poll count, normalized row counts, and QDM replay links.
   - [x] Add failed-import resume controls for completed jobs with failed file rows.
   - [x] Add bounded patient/resource last-seen rollups and stale-patient warnings to tenant sync status.
   - [x] Expand patient/resource sync visibility with bounded conflict drilldowns, stale-resource drilldowns, and structured issue action metadata.
@@ -379,7 +379,8 @@ Objective: expose the production-critical back-end state to users and operators.
   - [x] Add tenant readiness evidence for discovery, launch, callback, and handoff health.
   - [x] Add tenant sync-status metrics for crosswalk, ingest, Bulk import, Bulk schedule, worker failures, and overdue polls.
   - [x] Add bounded conflict/stale-resource drilldowns and structured issue actions to patient sync status.
-  - [ ] Add import-run drilldowns and QDM normalization run links.
+  - [x] Add Bulk-linked import/QDM replay summaries and QDM normalization replay controls.
+  - [ ] Add broader import-run detail pages outside the Bulk job table.
   - [ ] Add capability drift warnings and backend token checks.
   - [ ] Add manual diagnostic actions for Bulk controls.
   - [x] Add audit coverage for Bulk kickoff/import/resume/cancel controls.
@@ -543,18 +544,20 @@ Recommended second sprint:
 
 - [x] Add bounded patient/resource last-seen rollups to EHR sync status.
 - [x] Add bounded conflict/stale-resource drilldowns and structured sync issue actions to EHR sync status.
-- [ ] Add external alerts, stale-data runbook depth, dead-letter runbook depth, import-run/QDM replay drilldowns, and remaining EDW/local-matching breadth for tenant-specific patient-detail needs.
+- [x] Add Bulk replay/dead-letter runbook depth and Bulk job QDM replay drilldowns.
+- [ ] Add external alerts, stale-data runbook depth, broader import-run detail pages, and remaining EDW/local-matching breadth for tenant-specific patient-detail needs.
 - [x] Add Bulk mock-server integration tests.
 - [x] Add EHR admin Bulk/job status UI.
 - [ ] Add QRDA Cat I/III Cypress validation plan and script.
 - [ ] Add QPP validation plan and fixture.
 - [ ] Expand role-based E2E coverage.
-- [ ] Add production runbooks for worker restart, Bulk replay, and CQL sidecar restart.
+- [x] Add the EHR Bulk replay/dead-letter production runbook.
+- [ ] Add production runbooks for worker restart and CQL sidecar restart.
 
 ## Key Risks
 
 - EHR integration risk: SMART launch can appear complete while still lacking vendor sandbox evidence, remaining FHIR-read/token audit surfaces, external alert routing, access-policy attribution, and tenant-specific EDW/local-matching breadth.
-- Data risk: Bulk Data kickoff/poll/import/scheduling can create a false sense of production readiness until vendor sandbox evidence, deeper replay/dead-letter runbooks, tombstone behavior, stale-data runbooks, external alerting, and import-run/QDM replay drilldowns are proven.
+- Data risk: Bulk Data kickoff/poll/import/scheduling can create a false sense of production readiness until vendor sandbox evidence, incident-tested replay/dead-letter workflows, tombstone behavior, stale-data runbooks, external alerting, and broader import-run detail pages are proven.
 - Measurement risk: SQL and CQL semantics can diverge; per-measure promotion must stay evidence-gated.
 - Compliance risk: remaining audit, PHI logging, and AI claims must continue to match implemented controls as auth and EHR surfaces expand.
 - Test risk: current E2E no longer passes with known API proxy errors, but it still needs broader authenticated provider, analyst, super-admin, EHR, and Measure Governance workflows.

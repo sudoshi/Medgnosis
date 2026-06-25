@@ -149,6 +149,19 @@ interface EhrBulkCancelResponse {
   };
 }
 
+interface EhrQdmReplayResponse {
+  tenant: EhrTenant;
+  ingestRunId: string;
+  qdm: {
+    resourcesSeen: number;
+    resourcesNormalized: number;
+    resourcesSkipped: number;
+    resourcesFailed: number;
+    eventsUpserted: number;
+    errors: unknown[];
+  };
+}
+
 interface FormState {
   apiBaseUrl: string;
   tenantName: string;
@@ -237,6 +250,7 @@ export function EhrIntegrationsTab() {
   const [bulkForm, setBulkForm] = useState<BulkExportFormState>(() => defaultBulkExportFormState());
   const [bulkImportJobId, setBulkImportJobId] = useState<string | null>(null);
   const [bulkCancelJobId, setBulkCancelJobId] = useState<string | null>(null);
+  const [bulkQdmReplayJobId, setBulkQdmReplayJobId] = useState<string | null>(null);
 
   const tenantsQuery = useQuery({
     queryKey: ['ehr', 'tenants', vendorFilter, environmentFilter],
@@ -432,6 +446,31 @@ export function EhrIntegrationsTab() {
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Bulk export cancellation failed')),
     onSettled: () => setBulkCancelJobId(null),
+  });
+
+  const bulkQdmReplayMutation = useMutation({
+    mutationFn: (job: EhrBulkJob) => {
+      if (selectedTenantId === null) throw new Error('No EHR tenant selected');
+      if (!job.importSummary.ingestRunId) throw new Error('Bulk job has no linked ingest run');
+      const limit = Math.max(job.importSummary.resourcesStaged, 1);
+      return api.post<EhrQdmReplayResponse>(
+        '/ehr/admin/tenants/' + selectedTenantId + '/ingest-runs/' + job.importSummary.ingestRunId + '/qdm-normalization',
+        { limit, sourceSystem: 'ehr-admin-bulk-qdm-replay' },
+      );
+    },
+    onSuccess: (response) => {
+      const qdm = response.data?.qdm;
+      toast.success(
+        qdm
+          ? `QDM replay normalized ${formatCount(qdm.resourcesNormalized)} resource(s)`
+          : 'QDM replay completed',
+      );
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-bulk-jobs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-ingest-runs', selectedTenantId] });
+      void qc.invalidateQueries({ queryKey: ['ehr', 'tenant-sync-status', selectedTenantId] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'QDM replay failed')),
+    onSettled: () => setBulkQdmReplayJobId(null),
   });
 
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? detail?.tenant ?? null;
@@ -807,6 +846,11 @@ export function EhrIntegrationsTab() {
                 bulkImportMutation.mutate({ job, resumeFailedOnly });
               }}
               importingJobId={bulkImportJobId}
+              onReplayQdm={(job) => {
+                setBulkQdmReplayJobId(job.id);
+                bulkQdmReplayMutation.mutate(job);
+              }}
+              replayingQdmJobId={bulkQdmReplayJobId}
               onCancel={(job) => {
                 setBulkCancelJobId(job.id);
                 bulkCancelMutation.mutate(job);
@@ -1494,6 +1538,8 @@ function BulkJobsPanel({
   canSaveSchedule,
   onImport,
   importingJobId,
+  onReplayQdm,
+  replayingQdmJobId,
   onCancel,
   cancelingJobId,
   disabled,
@@ -1514,14 +1560,18 @@ function BulkJobsPanel({
   canSaveSchedule: boolean;
   onImport: (job: EhrBulkJob, resumeFailedOnly?: boolean) => void;
   importingJobId: string | null;
+  onReplayQdm: (job: EhrBulkJob) => void;
+  replayingQdmJobId: string | null;
   onCancel: (job: EhrBulkJob) => void;
   cancelingJobId: string | null;
   disabled: boolean;
 }) {
   const latestFiles = latest?.importFiles ?? [];
-  const staged = latestFiles.reduce((sum, file) => sum + file.resourcesStaged, 0);
-  const errors = latestFiles.reduce((sum, file) => sum + file.errorCount, 0);
-  const completedFiles = latestFiles.filter((file) => file.status === 'completed').length;
+  const latestSummary = latest?.importSummary;
+  const staged = latestSummary?.resourcesStaged ?? latestFiles.reduce((sum, file) => sum + file.resourcesStaged, 0);
+  const errors = latestSummary?.errorCount ?? latestFiles.reduce((sum, file) => sum + file.errorCount, 0);
+  const completedFiles = latestSummary?.completedFiles ?? latestFiles.filter((file) => file.status === 'completed').length;
+  const totalFiles = latestSummary?.totalFiles ?? latestFiles.length;
 
   return (
     <div className="border border-edge/25 bg-s1/40 rounded-card p-4">
@@ -1560,7 +1610,7 @@ function BulkJobsPanel({
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <SnapshotItem label="Files" value={`${completedFiles}/${latestFiles.length}`} />
+        <SnapshotItem label="Files" value={`${completedFiles}/${totalFiles}`} />
         <SnapshotItem label="Staged" value={staged} />
         <SnapshotItem label="Errors" value={errors} tone={errors > 0 ? 'amber' : 'emerald'} />
         <SnapshotItem
@@ -1640,7 +1690,8 @@ function BulkJobsPanel({
             <TableHead>Job</TableHead>
             <TableHead>Target</TableHead>
             <TableHead>Resources</TableHead>
-            <TableHead>Files</TableHead>
+            <TableHead>Import</TableHead>
+            <TableHead>QDM</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Next</TableHead>
             <TableHead className="text-right">Action</TableHead>
@@ -1648,27 +1699,49 @@ function BulkJobsPanel({
         </TableHeader>
         <TableBody>
           {jobs.map((job) => {
+            const summary = job.importSummary;
             const fileStats = bulkFileStats(job);
-            const canResume = job.status === 'completed' && fileStats.errors > 0;
+            const canResume = summary.canResumeFailedFiles;
+            const isBusy = importingJobId === job.id || cancelingJobId === job.id || replayingQdmJobId === job.id;
             return (
               <TableRow key={job.id}>
                 <TableCell>
                   <div>
                     <p className="font-data text-xs text-bright">{shortId(job.id)}</p>
                     <p className="text-[11px] text-ghost">{titleCase(job.exportLevel)} export</p>
+                    <p className="font-data text-[11px] text-ghost tabular-nums">{formatCount(job.pollCount)} polls</p>
                   </div>
                 </TableCell>
                 <TableCell><span className="font-data text-xs text-dim">{bulkTarget(job)}</span></TableCell>
                 <TableCell><span className="text-xs text-dim">{job.resourceTypes.join(', ')}</span></TableCell>
                 <TableCell>
-                  <span className="font-data text-xs text-dim tabular-nums">
-                    {fileStats.completed}/{fileStats.total} / {fileStats.staged} staged
-                  </span>
+                  <div>
+                    <p className="font-data text-xs text-dim tabular-nums">
+                      {summary.completedFiles}/{summary.totalFiles} files / {formatCount(summary.resourcesStaged)} staged
+                    </p>
+                    <p className="font-data text-[11px] text-ghost tabular-nums">
+                      {formatCount(summary.rowsRead)} read{summary.manifestRows !== null ? ` / ${formatCount(summary.manifestRows)} manifest` : ''}
+                    </p>
+                    {fileStats.errors > 0 && <p className="text-[11px] text-crimson">{formatCount(fileStats.errors)} import errors</p>}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div>
+                    <Badge variant={qdmReplayVariant(summary.qdmReplayStatus)}>{qdmReplayLabel(summary.qdmReplayStatus)}</Badge>
+                    <p className="font-data text-[11px] text-ghost tabular-nums mt-1">
+                      {summary.qdmResourcesNormalized !== null
+                        ? `${formatCount(summary.qdmResourcesNormalized)} normalized / ${formatCount(summary.qdmEventsUpserted ?? 0)} events`
+                        : summary.ingestRunId ? shortId(summary.ingestRunId) : 'No ingest run'}
+                    </p>
+                    {summary.qdmLastReplayedAt && (
+                      <p className="font-data text-[11px] text-ghost">{fmtDateTime(summary.qdmLastReplayedAt)}</p>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col gap-1">
                     <Badge variant={bulkStatusVariant(job.status)}>{titleCase(job.status)}</Badge>
-                    {fileStats.errors > 0 && <span className="text-[11px] text-crimson">{fileStats.errors} errors</span>}
+                    <span className="text-[11px] text-ghost">{summary.recommendedAction}</span>
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
@@ -1683,7 +1756,7 @@ function BulkJobsPanel({
                         variant="secondary"
                         size="sm"
                         onClick={() => onImport(job, false)}
-                        disabled={disabled || importingJobId === job.id || cancelingJobId === job.id}
+                        disabled={disabled || isBusy}
                       >
                         <RefreshCw className={importingJobId === job.id ? 'animate-spin' : ''} />
                         Import
@@ -1694,10 +1767,21 @@ function BulkJobsPanel({
                         variant="secondary"
                         size="sm"
                         onClick={() => onImport(job, true)}
-                        disabled={disabled || importingJobId === job.id || cancelingJobId === job.id}
+                        disabled={disabled || isBusy}
                       >
                         <RefreshCw className={importingJobId === job.id ? 'animate-spin' : ''} />
                         Resume
+                      </Button>
+                    )}
+                    {summary.canReplayQdm && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onReplayQdm(job)}
+                        disabled={disabled || isBusy}
+                      >
+                        <RefreshCw className={replayingQdmJobId === job.id ? 'animate-spin' : ''} />
+                        QDM
                       </Button>
                     )}
                     {(job.status === 'accepted' || job.status === 'in_progress') && (
@@ -1705,13 +1789,13 @@ function BulkJobsPanel({
                         variant="secondary"
                         size="sm"
                         onClick={() => onCancel(job)}
-                        disabled={disabled || cancelingJobId === job.id || importingJobId === job.id}
+                        disabled={disabled || isBusy}
                       >
                         <XCircle className={cancelingJobId === job.id ? 'animate-pulse' : ''} />
                         Cancel
                       </Button>
                     )}
-                    {job.status !== 'completed' && job.status !== 'accepted' && job.status !== 'in_progress' && (
+                    {!summary.canReplayQdm && job.status !== 'completed' && job.status !== 'accepted' && job.status !== 'in_progress' && (
                       <span className="text-xs text-ghost">-</span>
                     )}
                   </div>
@@ -1721,7 +1805,7 @@ function BulkJobsPanel({
           })}
           {jobs.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-ghost">No Bulk jobs found</TableCell>
+              <TableCell colSpan={8} className="text-center text-ghost">No Bulk jobs found</TableCell>
             </TableRow>
           )}
         </TableBody>
@@ -1999,6 +2083,18 @@ function bulkStatusVariant(status: EhrBulkJob['status']): 'emerald' | 'amber' | 
   if (status === 'failed') return 'crimson';
   if (status === 'canceled') return 'amber';
   return 'dim';
+}
+
+function qdmReplayVariant(status: EhrBulkJob['importSummary']['qdmReplayStatus']): 'emerald' | 'amber' | 'crimson' | 'dim' | 'info' {
+  if (status === 'replayed') return 'emerald';
+  if (status === 'ready') return 'info';
+  if (status === 'failed') return 'crimson';
+  return 'dim';
+}
+
+function qdmReplayLabel(status: EhrBulkJob['importSummary']['qdmReplayStatus']): string {
+  if (status === 'not_ready') return 'Not ready';
+  return titleCase(status);
 }
 
 function bulkTarget(job: EhrBulkJob): string {

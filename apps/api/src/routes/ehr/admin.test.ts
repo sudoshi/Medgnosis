@@ -1056,6 +1056,20 @@ describe('EHR admin routes', () => {
       if (text.includes('FROM phm_edw.ehr_bulk_import_file')) {
         return Promise.resolve([bulkImportFileRow]);
       }
+      if (text.includes('FROM phm_edw.ehr_ingest_run')) {
+        return Promise.resolve([
+          {
+            id: '00000000-0000-4000-8000-000000000063',
+            status: 'succeeded',
+            finished_at: '2026-06-17 12:06:00+00',
+            resources_received: '1',
+            resources_staged: '1',
+            resources_updated: '1',
+            error_count: '0',
+            metadata: {},
+          },
+        ]);
+      }
       return Promise.resolve([]);
     });
     const app = await buildApp();
@@ -1074,6 +1088,7 @@ describe('EHR admin routes', () => {
         latest: {
           id: '00000000-0000-4000-8000-000000000067',
           status: 'completed',
+          pollCount: 3,
           importFiles: [
             {
               resourceType: 'Patient',
@@ -1082,6 +1097,14 @@ describe('EHR admin routes', () => {
               resourcesStaged: 1,
             },
           ],
+          importSummary: {
+            totalFiles: 1,
+            completedFiles: 1,
+            rowsRead: 1,
+            resourcesStaged: 1,
+            qdmReplayStatus: 'ready',
+            canReplayQdm: true,
+          },
         },
       },
     });
@@ -1591,7 +1614,9 @@ describe('EHR admin routes', () => {
       eventsUpserted: 2,
       errors: [],
     };
-    mockSql.mockResolvedValueOnce([tenantRow]);
+    mockSql
+      .mockResolvedValueOnce([tenantRow])
+      .mockResolvedValueOnce([{ ...ingestRunRow, id: '00000000-0000-4000-8000-000000000068', metadata: { qdmBridge: qdm } }]);
     normalizeStagedRunToQdm.mockResolvedValueOnce(qdm);
     const app = await buildApp();
 
@@ -1620,6 +1645,7 @@ describe('EHR admin routes', () => {
       limit: 25,
       sourceSystem: 'admin-test',
     });
+    expect(mockSql).toHaveBeenCalledTimes(2);
     expect(mockAuditLog).toHaveBeenCalledWith(
       'ehr_qdm_normalization_replay',
       'ehr_ingest_run',

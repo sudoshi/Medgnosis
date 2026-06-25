@@ -452,6 +452,33 @@ export interface EhrBulkImportFile {
   updatedAt: string;
 }
 
+export type EhrBulkQdmReplayStatus = 'not_ready' | 'ready' | 'replayed' | 'failed';
+
+export interface EhrBulkImportSummary {
+  totalFiles: number;
+  completedFiles: number;
+  failedFiles: number;
+  activeFiles: number;
+  skippedFiles: number;
+  rowsRead: number;
+  manifestRows: number | null;
+  resourcesStaged: number;
+  errorCount: number;
+  canResumeFailedFiles: boolean;
+  canReplayQdm: boolean;
+  ingestRunId: string | null;
+  ingestStatus: string | null;
+  ingestFinishedAt: string | null;
+  edwResourcesHydrated: number | null;
+  edwResourcesFailed: number | null;
+  qdmReplayStatus: EhrBulkQdmReplayStatus;
+  qdmResourcesNormalized: number | null;
+  qdmResourcesFailed: number | null;
+  qdmEventsUpserted: number | null;
+  qdmLastReplayedAt: string | null;
+  recommendedAction: string;
+}
+
 export interface EhrBulkJob {
   id: string;
   orgId: number | null;
@@ -478,6 +505,7 @@ export interface EhrBulkJob {
   createdAt: string;
   updatedAt: string;
   importFiles: EhrBulkImportFile[];
+  importSummary: EhrBulkImportSummary;
 }
 
 export interface EhrBulkSchedule {

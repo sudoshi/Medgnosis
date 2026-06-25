@@ -7,6 +7,7 @@ import {
 } from '../../services/ehr/bulkData.js';
 import {
   listIngestRuns,
+  recordQdmReplayResult,
   type EhrIngestRunMode,
   type EhrIngestRunStatus,
   type ListEhrIngestRunsInput,
@@ -598,6 +599,13 @@ async function sendQdmNormalizationReplay(
     ingestRunId: runId,
     ehrTenantId: tenant.id,
     orgId: tenant.orgId,
+    limit: parsedBody.input.limit,
+    sourceSystem: parsedBody.input.sourceSystem ?? 'ehr-admin-qdm-replay',
+  });
+  await recordQdmReplayResult({
+    id: runId,
+    ehrTenantId: tenant.id,
+    result,
     limit: parsedBody.input.limit,
     sourceSystem: parsedBody.input.sourceSystem ?? 'ehr-admin-qdm-replay',
   });

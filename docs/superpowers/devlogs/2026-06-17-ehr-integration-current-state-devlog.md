@@ -216,7 +216,7 @@ Important remaining gaps:
 - EHR user linking is not complete.
 - Queued broader patient-context refresh and next-link continuation exist for supported patient-context resource types.
 - Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages. `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration` now have first-pass EDW hydration; delete semantics, stale-data runbooks, and fuller local matching still need hardening.
-- A read-only tenant ingest-run status API, recent-sync panel, Bulk job/file/schedule status panel, bounded patient/resource rollup, bounded conflict/stale drilldowns, structured sync issue actions, completed-job import replay, failed-file-only resume, recurring Bulk schedules, and active-job cancellation exist, but external alerts, deeper dead-letter runbooks, automated/tenant EHR audit coverage, import-run drilldowns, and QDM replay links remain incomplete.
+- A read-only tenant ingest-run status API, recent-sync panel, Bulk job/file/schedule status panel, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource rollup, bounded conflict/stale drilldowns, structured sync issue actions, completed-job import replay, failed-file-only resume, recurring Bulk schedules, and active-job cancellation exist, but external alerts, incident-tested dead-letter workflows, automated/tenant EHR audit coverage, and broader import-run detail pages remain incomplete.
 - Provider access/PCP attribution policy for newly imported launch patients still needs tenant-specific design.
 
 Key implementation files:
@@ -378,7 +378,7 @@ Key implementation files:
 
 ### 9. Bulk Data Foundation
 
-A first Bulk Data foundation is implemented. It now includes the auditable kickoff/poll/manifest ledger, manual/admin kickoff, tenant-specific recurring schedules, vendor-safe BullMQ polling, automatic import enqueue after completion, manual completed-job import replay, failed-file-only resume, BullMQ retry/failed-job retention for incomplete imports, active-job cancellation, optional manifest checksum/size validation, PHI-safe audit entries for manual Bulk controls, PHI-safe automated worker lifecycle audit entries, completed-job NDJSON import worker, Bulk Patient EMPI/crosswalk seeding before downstream resource hydration, and bounded patient/resource sync drilldowns. Deleted-output/tombstone handling, deeper dead-letter runbooks, stale-data runbooks, external alerting, and vendor sandbox proof remain open.
+A first Bulk Data foundation is implemented. It now includes the auditable kickoff/poll/manifest ledger, manual/admin kickoff, tenant-specific recurring schedules, vendor-safe BullMQ polling, automatic import enqueue after completion, manual completed-job import replay, failed-file-only resume, BullMQ retry/failed-job retention for incomplete imports, active-job cancellation, optional manifest checksum/size validation, PHI-safe audit entries for manual Bulk controls, PHI-safe automated worker lifecycle audit entries, completed-job NDJSON import worker, Bulk Patient EMPI/crosswalk seeding before downstream resource hydration, Bulk import/QDM replay status summaries, a linked QDM replay action for Bulk ingest runs, the Bulk replay/dead-letter runbook, and bounded patient/resource sync drilldowns. Deleted-output/tombstone handling, incident rehearsal for dead-letter workflows, stale-data runbooks, external alerting, and vendor sandbox proof remain open.
 
 Implemented:
 
@@ -441,10 +441,13 @@ Implemented service logic:
 - Incomplete worker imports now throw after recording file/run status, allowing BullMQ retry attempts and retained failed jobs to act as the dead-letter surface.
 - PHI-safe audit entries are emitted for manual Bulk kickoff, completed-job import replay, failed-file-only resume, and active-job cancellation.
 - Nightly scheduling now enqueues due tenant Bulk schedules and marks last-enqueued, last Bulk job, last-success, and last-failure state without storing bearer tokens or raw NDJSON payloads.
+- Admin Bulk job summaries include poll count, import aggregate counts, linked ingest-run status, QDM replay state, normalized/event counts, recommended action, and a manual QDM replay action when staged resources are available.
+- Manual QDM replay writes durable ingest-run metadata so subsequent Bulk job status calls can show replayed/failed state without exposing raw FHIR payloads.
+- `docs/superpowers/runbooks/ehr-bulk-replay-dead-letter.md` documents PHI-light Bulk import resume, QDM replay, dead-letter triage, and closure checks.
 
 Known remaining gaps:
 
-- No dead-letter/replay runbook beyond BullMQ retry retention, manual completed-job replay, and failed-file-only resume.
+- The replay/dead-letter runbook has not yet been exercised against a real vendor sandbox incident or production failed-file incident.
 - No Bulk `deleted` tombstone handling.
 - Bounded patient/resource rollups and stale-resource drilldowns exist; stale-data runbooks and external alerting remain open.
 - No real Epic/Cerner Bulk Data sandbox job has been run.
@@ -480,13 +483,13 @@ Implemented UI features:
 - Sanitized display: secret refs are not shown, only readiness booleans.
 - Recent tenant ingest-run status panel.
 - Tenant sync-status panel with crosswalk, ingest, Bulk import, Bulk schedule, worker failure, overdue-poll, bounded patient/resource rollup metrics, bounded conflict/stale drilldowns, and structured sync issue actions.
-- Bulk job status panel with manual export kickoff, schedule save, manual completed-job import replay, active-job cancel, file counts, staged row counts, failures, next poll/request timestamps, schedule next-run/last-success state, and redacted per-file import status.
+- Bulk job status panel with manual export kickoff, schedule save, manual completed-job import replay, active-job cancel, file counts, staged row counts, failures, next poll/request timestamps, schedule next-run/last-success state, import/QDM replay summaries, linked QDM replay controls, and redacted per-file import status.
 
 Known UI gaps:
 
 - No dedicated UI test yet for admin-only EHR visibility or secret redaction.
 - Last sync display now includes bounded patient/resource rollups, conflict/stale drilldowns, and issue recommended actions; external alert routing is not implemented.
-- Failed-import resume controls exist for completed jobs with failed file rows, but QDM replay drilldowns are not implemented.
+- Failed-import resume controls and Bulk-linked QDM replay controls exist for completed jobs with staged resources; broader import-run detail pages are not implemented.
 - Data-quality/unmapped-code review UI is not implemented.
 
 Key implementation files:
@@ -803,13 +806,13 @@ Still needed:
 
 - Expand tenant-specific display needs beyond the currently hydrated resource families where pilot workflows require them.
 - Normalize any additional staged resource families that become product-critical and do not yet have durable EDW tables.
-- Extend beyond bounded conflict/stale drilldowns into stale-data runbooks, external alert routing, import-run drilldowns, and QDM replay links.
+- Extend beyond bounded conflict/stale drilldowns into stale-data runbooks, external alert routing, and broader import-run detail pages.
 
 ### Bulk Data Import
 
 Still needed:
 
-- Deeper dead-letter controls and replay runbook.
+- Exercise the replay/dead-letter runbook against a failed-file or sandbox replay incident and add deeper dead-letter dashboard controls.
 - Bulk `deleted` tombstone handling.
 - External alert routing and stale-data runbooks for sync issues.
 - Small approved group export against sandbox/vendor tenant.
@@ -900,7 +903,7 @@ Mitigation:
 1. **Patient-context normalization breadth and visibility**
    - Extend the bounded callback staging, EDW hydration, QDM replay, and backend-services queue path to any remaining patient-detail resource families required by tenant workflows.
    - Add richer local matching where patient detail needs it, especially provider attribution, medication-event lineage, document/report display grouping, and encounter association.
-   - Add stale-data runbooks, external alert routing, import-run drilldowns, QDM replay links, and admin/clinician-safe error reporting.
+   - Add stale-data runbooks, external alert routing, broader import-run detail pages, and admin/clinician-safe error reporting.
 
 2. **EHR patient crosswalk and EDW normalization**
    - Keep launch and Bulk Patient crosswalks as routing sources of truth.
@@ -912,13 +915,13 @@ Mitigation:
    - Extend the implemented SMART lifecycle audit/rate limits with vendor sandbox evidence for completed handoff into patient detail.
 
 4. **Bulk Data operational hardening**
-   - Add deeper dead-letter controls and runbooks.
+   - Exercise the Bulk replay/dead-letter runbook and add deeper dead-letter dashboard controls.
    - Define deleted-output tombstone behavior when vendors provide it.
    - Add vendor-specific recurring schedule evidence against an approved sandbox.
 
 5. **Admin UI completion**
    - Add UI test for secret redaction/admin-only access.
-   - Add Bulk replay/dead-letter drilldowns, stale-data runbooks, and import-run/QDM replay links beyond the current tenant readiness, patient rollup, conflict/stale drilldown, and worker failure/overdue-poll metrics.
+   - Add incident-tested Bulk replay/dead-letter drilldowns, stale-data runbooks, and broader import-run pages beyond the current tenant readiness, patient rollup, conflict/stale drilldown, Bulk-linked QDM replay, and worker failure/overdue-poll metrics.
 
 6. **EHR observability and runbooks**
    - Add token/FHIR-read audit coverage.
@@ -1023,20 +1026,20 @@ Scripts:
 | --- | --- | --- |
 | Tenant registry | Mostly complete | Tenant upsert and diagnostics audit exist; production secret-manager policy and remaining route/worker-adjacent audit gaps need review |
 | Admin onboarding API | Mostly complete | CRUD/upsert/detail/diagnostics/capabilities/test-connection present |
-| Admin EHR UI | Partial | Tenant onboarding/readiness evidence, recent ingest-run sync status, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, completed-job import replay, failed-import resume, and active-job cancel present; external alert routing, dead-letter drilldowns, import-run drilldowns, and QDM replay links missing |
+| Admin EHR UI | Partial | Tenant onboarding/readiness evidence, recent ingest-run sync status, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, completed-job import replay, failed-import resume, and active-job cancel present; external alert routing, broader import-run detail pages, and incident-tested dead-letter workflows remain |
 | SMART discovery | Partial | Works locally; needs HTTPS enforcement, hash/drift detection |
 | EHR launch | Partial | Launch/callback, lifecycle audit/rate limits, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, readiness evidence, sync rollups, conflict/stale drilldowns, and refresh continuation work; user linking, access attribution, local matching, external alerting, and vendor evidence remain |
 | Standalone launch | Partial | Route and scope behavior present; end-to-end patient selection evidence pending |
 | Token metadata | Mostly complete | Hash-only persistence present; refresh/reacquisition remains |
 | Backend Services | Partial | Token flow implemented; no real vendor validation |
 | FHIR client | Mostly complete | Reads/search/pagination/retry present; vendor-specific constraints need expansion |
-| Resource staging | Partial | Raw staging, Bulk Patient EMPI hydration, callback EDW hydration, callback QDM replay, queued supported-resource refresh, first-pass EDW hydration for 17 resource families, bounded patient/resource sync rollups, bounded conflict/stale drilldowns, and continuation work; local matching, delete/tombstone operations, import-run/QDM replay drilldowns, and tenant-specific breadth remain incomplete |
+| Resource staging | Partial | Raw staging, Bulk Patient EMPI hydration, callback EDW hydration, callback QDM replay, queued supported-resource refresh, first-pass EDW hydration for 17 resource families, bounded patient/resource sync rollups, bounded conflict/stale drilldowns, Bulk-linked QDM replay status, and continuation work; local matching, delete/tombstone operations, broader import-run detail pages, and tenant-specific breadth remain incomplete |
 | FHIR/QDM bridge | Mostly complete for scoped milestone | QDM spine, FHIR crosswalk, CQL shadow, reconciliation, semantic drift, and ops ledger present |
 | Measure governance | Partial | Admin tab and audited evidence drilldown present; CMS122 promotion remains governance-blocked |
 | CDS Hooks auth | Partial | JWT/JWKS validation present; production governance incomplete |
-| Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, bounded patient/resource rollups, bounded conflict/stale drilldowns, and admin status UI present; deeper dead-letter runbooks, tombstones, stale-data runbooks, external alerting, and vendor sandbox evidence remain |
+| Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, bounded patient/resource rollups, bounded conflict/stale drilldowns, replay/dead-letter runbook, and admin status UI present; tombstones, stale-data runbooks, external alerting, incident rehearsal, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Partial | QDM bridge runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, and structured sync issue actions exist; EHR launch/FHIR/CQL/DEQM dashboards, stale-data runbooks, and external alerts remain |
+| Observability/runbooks | Partial | QDM bridge runbook, EHR Bulk replay/dead-letter runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, and structured sync issue actions exist; EHR launch/FHIR/CQL/DEQM dashboards, stale-data runbooks, incident rehearsal evidence, and external alerts remain |
 
 Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.

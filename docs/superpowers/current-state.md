@@ -14,6 +14,7 @@ devlogs do not override the current codebase state.
 - [EHR integration current-state devlog](devlogs/2026-06-17-ehr-integration-current-state-devlog.md) - current EHR/SMART/Bulk/QDM integration status and gaps.
 - [FHIR/QDM bridge completion devlog](devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md) - completed QDM/CQL shadow-governance milestone and CMS122 promotion hold evidence.
 - [QDM bridge operations runbook](runbooks/qdm-bridge-operations.md) - how to run and monitor QDM/CQL shadow refreshes safely.
+- [EHR Bulk replay and dead-letter runbook](runbooks/ehr-bulk-replay-dead-letter.md) - PHI-light Bulk import resume, QDM replay, and worker dead-letter triage.
 - [Validation gates runbook](runbooks/validation-gates.md) - current command matrix for local/release validation.
 
 ## Active Implementation Plans
@@ -66,20 +67,26 @@ devlogs do not override the current codebase state.
   tenant-2 service probe, `./scripts/deploy-production.sh`, public health,
   service status, and production migration dry-run passed; production still
   reports 90 applied migrations and no pending migrations.
+- Current implementation checkpoint adds Bulk job import/QDM replay summaries,
+  poll-count and normalized-row visibility, a QDM replay action for linked Bulk
+  ingest runs, durable manual QDM replay metadata, and the EHR Bulk replay and
+  dead-letter runbook. It remains pending final release/deploy evidence in the
+  next checkpoint.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
-  for tenant-specific patient-detail needs, deeper Bulk replay/dead-letter runbooks,
-  vendor sandbox evidence, FHIR-read/QDM-promotion audit coverage, stale-data
-  runbooks, and external alerting beyond the structured sync issue feed.
+  for tenant-specific patient-detail needs, exercised Bulk replay/dead-letter
+  incident evidence, vendor sandbox evidence, FHIR-read/QDM-promotion audit
+  coverage, stale-data runbooks, and external alerting beyond the structured
+  sync issue feed.
 
 ## First Implementation Priorities
 
 1. Keep README, env docs, and validation runbooks truthful.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
-4. Capture vendor sandbox evidence and extend sync status toward import-run/QDM replay drilldowns.
-5. Add deeper Bulk replay/dead-letter runbooks on top of the manual/admin kickoff, resume, recurring schedule, and EMPI-seeded Patient crosswalk path.
+4. Capture vendor sandbox evidence and add broader import-run detail pages beyond the Bulk job table.
+5. Exercise the new Bulk replay/dead-letter runbook against a failed-file or sandbox replay incident.
 6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and external alert readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.

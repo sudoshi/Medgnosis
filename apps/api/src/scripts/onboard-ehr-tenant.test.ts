@@ -67,7 +67,7 @@ describe('parseCliOptions', () => {
       clientSlot: 'backend_services',
       privateKeyRef: 'env:EHR_BACKEND_PRIVATE_JWK_JSON?kid=backend-key-1&alg=RS384',
       scopesRequested:
-        'system/Patient.rs system/Encounter.rs system/Condition.rs system/Observation.rs system/MedicationRequest.rs system/AllergyIntolerance.rs system/Procedure.rs system/Immunization.rs system/DiagnosticReport.rs system/DocumentReference.rs system/ServiceRequest.rs system/CarePlan.rs system/CareTeam.rs system/Goal.rs system/Coverage.rs',
+        'system/Patient.rs system/Encounter.rs system/Condition.rs system/Observation.rs system/MedicationRequest.rs system/MedicationDispense.rs system/MedicationAdministration.rs system/AllergyIntolerance.rs system/Procedure.rs system/Immunization.rs system/DiagnosticReport.rs system/DocumentReference.rs system/ServiceRequest.rs system/CarePlan.rs system/CareTeam.rs system/Goal.rs system/Coverage.rs',
       authMethod: 'private_key_jwt',
       profileId: 'epic-smart-r4',
       profileVersion: '2026-06-17',

@@ -217,8 +217,36 @@ export interface EhrBulkImportFile {
   updatedAt: string;
 }
 
+export type EhrBulkQdmReplayStatus = 'not_ready' | 'ready' | 'replayed' | 'failed';
+
+export interface EhrBulkImportSummary {
+  totalFiles: number;
+  completedFiles: number;
+  failedFiles: number;
+  activeFiles: number;
+  skippedFiles: number;
+  rowsRead: number;
+  manifestRows: number | null;
+  resourcesStaged: number;
+  errorCount: number;
+  canResumeFailedFiles: boolean;
+  canReplayQdm: boolean;
+  ingestRunId: string | null;
+  ingestStatus: string | null;
+  ingestFinishedAt: string | null;
+  edwResourcesHydrated: number | null;
+  edwResourcesFailed: number | null;
+  qdmReplayStatus: EhrBulkQdmReplayStatus;
+  qdmResourcesNormalized: number | null;
+  qdmResourcesFailed: number | null;
+  qdmEventsUpserted: number | null;
+  qdmLastReplayedAt: string | null;
+  recommendedAction: string;
+}
+
 export interface EhrBulkJobSummary extends EhrBulkJob {
   importFiles: EhrBulkImportFile[];
+  importSummary: EhrBulkImportSummary;
 }
 
 interface ImportCompletedBulkExportJobDeps {
@@ -297,6 +325,17 @@ interface BulkImportFileListRow {
   metadata: JsonObject;
   created_at: string;
   updated_at: string;
+}
+
+interface BulkIngestRunSummaryRow {
+  id: string;
+  status: string;
+  finished_at: string | null;
+  resources_received: number | string;
+  resources_staged: number | string;
+  resources_updated: number | string;
+  error_count: number | string;
+  metadata: JsonObject;
 }
 
 interface BulkOutputFileIdentity {
@@ -387,6 +426,136 @@ function mapBulkImportFile(row: BulkImportFileListRow): EhrBulkImportFile {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function buildBulkImportSummary(
+  job: EhrBulkJob,
+  files: EhrBulkImportFile[],
+  ingestRun: BulkIngestRunSummaryRow | undefined,
+): EhrBulkImportSummary {
+  const totalFiles = files.length;
+  const completedFiles = files.filter((file) => file.status === 'completed').length;
+  const failedFiles = files.filter((file) => file.status === 'failed').length;
+  const activeFiles = files.filter((file) => file.status === 'pending' || file.status === 'running').length;
+  const skippedFiles = files.filter((file) => file.status === 'skipped').length;
+  const rowsRead = files.reduce((sum, file) => sum + file.rowsRead, 0);
+  const manifestRows = files.reduce<number | null>((sum, file) => {
+    if (file.manifestCount == null) return sum;
+    return (sum ?? 0) + file.manifestCount;
+  }, null);
+  const resourcesStaged = files.reduce((sum, file) => sum + file.resourcesStaged, 0);
+  const errorCount = files.reduce((sum, file) => sum + file.errorCount, 0);
+  const metadata = ingestRun?.metadata ?? {};
+  const qdmBridge = metadataRecord(metadata, 'qdmBridge');
+  const qdmReplay = metadataRecord(metadata, 'qdmReplay');
+  const bulkImport = metadataRecord(metadata, 'bulkImport');
+  const edwHydration = metadataRecord(bulkImport, 'edwHydration');
+  const qdmResourcesFailed = metadataNumber(qdmBridge, 'resourcesFailed');
+  const qdmResourcesNormalized = metadataNumber(qdmBridge, 'resourcesNormalized');
+  const qdmEventsUpserted = metadataNumber(qdmBridge, 'eventsUpserted');
+  const qdmLastReplayedAt = metadataString(qdmReplay, 'replayedAt');
+  const qdmReplayStatus = qdmStatus({
+    ingestRun,
+    resourcesStaged,
+    qdmResourcesNormalized,
+    qdmResourcesFailed,
+    qdmLastReplayedAt,
+  });
+  const canResumeFailedFiles = job.status === 'completed' && failedFiles > 0;
+  const canReplayQdm = Boolean(job.ingestRunId && ingestRun && resourcesStaged > 0);
+  return {
+    totalFiles,
+    completedFiles,
+    failedFiles,
+    activeFiles,
+    skippedFiles,
+    rowsRead,
+    manifestRows,
+    resourcesStaged,
+    errorCount,
+    canResumeFailedFiles,
+    canReplayQdm,
+    ingestRunId: job.ingestRunId,
+    ingestStatus: ingestRun?.status ?? null,
+    ingestFinishedAt: ingestRun?.finished_at ?? null,
+    edwResourcesHydrated: metadataNumber(edwHydration, 'resourcesHydrated') ?? mapNullableDbNumber(ingestRun?.resources_updated ?? null),
+    edwResourcesFailed: metadataNumber(edwHydration, 'resourcesFailed'),
+    qdmReplayStatus,
+    qdmResourcesNormalized,
+    qdmResourcesFailed,
+    qdmEventsUpserted,
+    qdmLastReplayedAt,
+    recommendedAction: bulkSummaryAction({
+      job,
+      failedFiles,
+      activeFiles,
+      errorCount,
+      resourcesStaged,
+      canReplayQdm,
+      qdmReplayStatus,
+    }),
+  };
+}
+
+function qdmStatus(input: {
+  ingestRun: BulkIngestRunSummaryRow | undefined;
+  resourcesStaged: number;
+  qdmResourcesNormalized: number | null;
+  qdmResourcesFailed: number | null;
+  qdmLastReplayedAt: string | null;
+}): EhrBulkQdmReplayStatus {
+  if (!input.ingestRun || input.resourcesStaged === 0) return 'not_ready';
+  if ((input.qdmResourcesFailed ?? 0) > 0) return 'failed';
+  if (input.qdmLastReplayedAt || (input.qdmResourcesNormalized ?? 0) > 0) return 'replayed';
+  return 'ready';
+}
+
+function bulkSummaryAction(input: {
+  job: EhrBulkJob;
+  failedFiles: number;
+  activeFiles: number;
+  errorCount: number;
+  resourcesStaged: number;
+  canReplayQdm: boolean;
+  qdmReplayStatus: EhrBulkQdmReplayStatus;
+}): string {
+  if (input.failedFiles > 0 || input.errorCount > 0) {
+    return 'Resume failed files after checking the import error summary.';
+  }
+  if (input.job.status === 'accepted' || input.job.status === 'in_progress' || input.activeFiles > 0) {
+    return 'Monitor polling and worker progress before replaying import outputs.';
+  }
+  if (input.canReplayQdm && input.qdmReplayStatus === 'ready') {
+    return 'Replay QDM normalization for the linked ingest run.';
+  }
+  if (input.qdmReplayStatus === 'failed') {
+    return 'Review QDM replay errors, then rerun QDM normalization.';
+  }
+  if (input.resourcesStaged > 0 && input.qdmReplayStatus === 'replayed') {
+    return 'Bulk import and QDM replay have completed; review downstream measure evidence if needed.';
+  }
+  if (input.job.status === 'failed') {
+    return 'Check Bulk job error metadata and enqueue a fresh export when the vendor issue is resolved.';
+  }
+  return 'No replay action is currently required.';
+}
+
+function metadataRecord(value: unknown, key: string): JsonObject | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return isRecord(nested) ? nested : null;
+}
+
+function metadataNumber(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return typeof nested === 'number' && Number.isFinite(nested) ? nested : null;
+}
+
+function metadataString(value: unknown, key: string): string | null {
+  if (!isRecord(value)) return null;
+  const nested = value[key];
+  return typeof nested === 'string' && nested.trim().length > 0 ? nested : null;
 }
 
 export async function kickoffBulkExport(input: KickoffBulkExportInput): Promise<EhrBulkJob> {
@@ -767,10 +936,30 @@ export async function listBulkJobs(input: ListBulkJobsInput): Promise<EhrBulkJob
     current.push(file);
     filesByJob.set(file.bulkJobId, current);
   }
+  const ingestRunIds = Array.from(
+    new Set(jobs.map((job) => job.ingestRunId).filter((id): id is string => Boolean(id))),
+  );
+  const ingestRows = ingestRunIds.length > 0
+    ? await sql<BulkIngestRunSummaryRow[]>`
+        SELECT id::text AS id,
+               status,
+               finished_at::text AS finished_at,
+               resources_received,
+               resources_staged,
+               resources_updated,
+               error_count,
+               metadata
+        FROM phm_edw.ehr_ingest_run
+        WHERE id = ANY(${ingestRunIds}::uuid[])
+          AND ehr_tenant_id = ${input.ehrTenantId}
+      `
+    : [];
+  const ingestRunsById = new Map(ingestRows.map((row) => [row.id, row]));
 
   return jobs.map((job) => ({
     ...sanitizeBulkJobForResult(job),
     importFiles: filesByJob.get(job.id) ?? [],
+    importSummary: buildBulkImportSummary(job, filesByJob.get(job.id) ?? [], ingestRunsById.get(job.ingestRunId ?? '')),
   }));
 }
 
