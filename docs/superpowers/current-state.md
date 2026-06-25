@@ -97,14 +97,22 @@ devlogs do not override the current codebase state.
   `./scripts/deploy-production.sh`, public health, service status, and
   production migration dry-run passed; production still reports 90 applied
   migrations and no pending migrations.
+- Follow-up production checkpoint on 2026-06-25 deployed the EHR sync alert
+  dispatch release `1eba305`; System Health now includes EHR Sync Alerts
+  configuration and last-dispatch state, admins can manually dispatch PHI-safe
+  aggregate alert snapshots, nightly dispatch is available behind explicit env
+  flags, webhook payloads are signed when `EHR_SYNC_ALERT_WEBHOOK_SECRET` is set,
+  and the stale-data/Bulk incident runbook is linked from this index. Focused
+  API/web tests, full `npm run test`, API/web typechecks, API/web lint, API/web
+  builds, and `git diff --check` passed before release.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
   for tenant-specific patient-detail needs, exercised Bulk replay/dead-letter
   incident evidence, vendor sandbox evidence, FHIR-read/QDM-promotion audit
-  coverage, stale-data runbooks, and external alerting beyond the structured
-  sync issue feed.
+  coverage, a configured external alert destination, and live stale-data/Bulk
+  incident evidence using the new runbook.
 
 ## First Implementation Priorities
 
@@ -112,6 +120,6 @@ devlogs do not override the current codebase state.
 2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
-5. Exercise the new Bulk replay/dead-letter runbook against a failed-file or sandbox replay incident.
-6. Extend the new worker/EHR/Bulk System Health visibility with CQL, FHIR, DEQM, and external alert readiness.
+5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
+6. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
 7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.

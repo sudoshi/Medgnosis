@@ -9,11 +9,11 @@
 
 ## Executive Summary
 
-Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, previous-snapshot CapabilityStatement drift, backend credential/token readiness, an explicit audited backend token-check action, aggregate Bulk diagnostics, recent ingest, selectable ingest-run operational details, worker failure/overdue-poll sync metrics, bounded patient/resource rollups, bounded crosswalk conflict and stale-resource drilldowns, structured sync issue actions, Bulk job/file/schedule status, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, a QDM/CQL shadow-governance path for staged FHIR evidence, and first-pass EDW hydration across 17 FHIR resource families including `DiagnosticReport`, `DocumentReference`, `MedicationDispense`, and `MedicationAdministration`.
+Medgnosis now has the foundation of a vendor-neutral EHR integration platform, plus a follow-on FHIR/QDM bridge that gives staged FHIR data an auditable path into quality-measure analytics. The platform supports tenant/client registration, SMART discovery diagnostics, SMART EHR launch, standalone SMART launch, callback/token exchange, strict ID-token/nonce validation, initial launch Patient read/stage/import/crosswalk, bounded launch-context staging for patient workspace resources with first-pass EDW hydration and automatic QDM replay, backend-services queued refresh with next-link continuation jobs for supported patient-context resources, hashed token metadata persistence, FHIR client reads/searches with retry and pagination, CDS Hooks `fhirAuthorization` validation, SMART Backend Services token acquisition, local SMART Health IT sandbox seeding and smoke tests, an admin EHR Integrations UI with tenant readiness evidence, previous-snapshot CapabilityStatement drift, backend credential/token readiness, an explicit audited backend token-check action, aggregate Bulk diagnostics, recent ingest, selectable ingest-run operational details, worker failure/overdue-poll sync metrics, bounded patient/resource rollups, bounded crosswalk conflict and stale-resource drilldowns, structured sync issue actions, PHI-safe EHR sync alert snapshots with explicit dispatch/audit, Bulk job/file/schedule status, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, completed-job import replay, failed-file resume, and active-job cancellation, SMART lifecycle audit/rate limits, PHI-safe admin EHR audit entries, a Bulk Data job ledger plus manual/admin/scheduled kickoff, vendor-safe worker polling, PHI-safe automated Bulk worker audit, automatic completed-job NDJSON import, optional manifest checksum/size validation, a QDM/CQL shadow-governance path for staged FHIR evidence, and first-pass EDW hydration across 17 FHIR resource families including `DiagnosticReport`, `DocumentReference`, `MedicationDispense`, and `MedicationAdministration`.
 
-Production checkpoint on 2026-06-25: the medication-event application code release `e467846` was pushed and deployed, production migrations are current through `091_ehr_medication_events.sql`, the follow-up `.env.production` dry-run reported 90 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and both `http://127.0.0.1:3081/health` and `https://medgnosis.acumenus.net/health` returned healthy with the database up. Follow-up application release `25b6f7d` added bounded patient/resource sync rollups and was also pushed, deployed, and public-health verified on 2026-06-25. Follow-up release `ab87e84` added bounded crosswalk conflict targets, stale patient/resource drilldowns, and structured sync issue source/recommended-action metadata to the existing sync-status API/UI; it was pushed, deployed, and public-health verified on 2026-06-25 with `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` active and production migration dry-run still reporting no pending migrations. Follow-up release `9ba7246` added Bulk import/QDM replay summaries, poll-count and normalized-row visibility, linked Bulk QDM replay controls, durable manual QDM replay metadata, and the EHR Bulk replay/dead-letter runbook; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a PHI-light tenant-2 Bulk summary probe returning QDM `replayed`, and production migration dry-run still reporting no pending migrations. Follow-up release `95af0de` added PHI-light ingest-run operational summaries and a selectable, keyboard-accessible EHR Integrations run-detail panel outside the Bulk table; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a tenant-2 ingest-run summary probe returning QDM `replayed`, 2,880 normalized resources/events, and production migration dry-run still reporting no pending migrations. Follow-up release `1c560e0` added previous-snapshot CapabilityStatement drift, backend credential/token readiness, an explicit audited backend token-check action, and aggregate Bulk diagnostics to the readiness evidence API/UI; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a read-only tenant-2 readiness probe, and production migration dry-run still reporting no pending migrations. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation.
+Production checkpoint on 2026-06-25: the medication-event application code release `e467846` was pushed and deployed, production migrations are current through `091_ehr_medication_events.sql`, the follow-up `.env.production` dry-run reported 90 applied migrations and no pending migrations, `./scripts/deploy-production.sh` completed successfully, `medgnosis-api` and `medgnosis-worker` were active, and both `http://127.0.0.1:3081/health` and `https://medgnosis.acumenus.net/health` returned healthy with the database up. Follow-up application release `25b6f7d` added bounded patient/resource sync rollups and was also pushed, deployed, and public-health verified on 2026-06-25. Follow-up release `ab87e84` added bounded crosswalk conflict targets, stale patient/resource drilldowns, and structured sync issue source/recommended-action metadata to the existing sync-status API/UI; it was pushed, deployed, and public-health verified on 2026-06-25 with `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` active and production migration dry-run still reporting no pending migrations. Follow-up release `9ba7246` added Bulk import/QDM replay summaries, poll-count and normalized-row visibility, linked Bulk QDM replay controls, durable manual QDM replay metadata, and the EHR Bulk replay/dead-letter runbook; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a PHI-light tenant-2 Bulk summary probe returning QDM `replayed`, and production migration dry-run still reporting no pending migrations. Follow-up release `95af0de` added PHI-light ingest-run operational summaries and a selectable, keyboard-accessible EHR Integrations run-detail panel outside the Bulk table; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a tenant-2 ingest-run summary probe returning QDM `replayed`, 2,880 normalized resources/events, and production migration dry-run still reporting no pending migrations. Follow-up release `1c560e0` added previous-snapshot CapabilityStatement drift, backend credential/token readiness, an explicit audited backend token-check action, and aggregate Bulk diagnostics to the readiness evidence API/UI; it was pushed, deployed, and public-health verified on 2026-06-25 with all three production services active, a read-only tenant-2 readiness probe, and production migration dry-run still reporting no pending migrations. Follow-up release `1eba305` added PHI-safe aggregate EHR sync alert snapshots, explicit audited admin dispatch, optional nightly dispatch, webhook signing, System Health alert status, and the stale-data/Bulk incident runbook; production delivery still requires an explicit webhook configuration. The 2026-06-20 FHIR EDW expansion closeout separately records migrations `089`/`090` applied to the `medgnosis` database and live Epic sandbox Bulk/read validation.
 
-Current continuation is focused on non-EMPI EHR ingestion breadth and operator visibility. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. Tenant sync status now also includes bounded patient/resource rollups, crosswalk conflict targets, stale patient/resource drilldowns, and PHI-light issue action metadata. Bulk job status now also exposes PHI-light import and QDM replay summaries plus a linked replay action for staged Bulk ingest runs, and recent ingest runs now expose PHI-light operational summaries with selectable detail outside the Bulk table. The latest tranche adds readiness evidence for previous-snapshot CapabilityStatement drift, required Bulk resource capability gaps, backend-services credential/token age, an explicit audited backend token-check action, and aggregate Bulk diagnostics. This tranche consumes existing crosswalk and EMPI-derived state but does not advance the parallel EMPI/identity track.
+Current continuation is focused on non-EMPI EHR ingestion breadth and operator visibility. `MedicationDispense` and `MedicationAdministration` now have additive EDW landing tables, insert/update hydrators, source crosswalk targets, backend-service refresh coverage, and medication-reference fallback coverage. Tenant sync status now also includes bounded patient/resource rollups, crosswalk conflict targets, stale patient/resource drilldowns, and PHI-light issue action metadata. Bulk job status now also exposes PHI-light import and QDM replay summaries plus a linked replay action for staged Bulk ingest runs, and recent ingest runs now expose PHI-light operational summaries with selectable detail outside the Bulk table. The latest tranches add readiness evidence for previous-snapshot CapabilityStatement drift, required Bulk resource capability gaps, backend-services credential/token age, an explicit audited backend token-check action, aggregate Bulk diagnostics, PHI-safe external EHR sync alert snapshots, and a stale-data/Bulk incident runbook. This tranche consumes existing crosswalk and EMPI-derived state but does not advance the parallel EMPI/identity track.
 
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
@@ -22,7 +22,7 @@ Current completion estimate:
 - **Full Epic/Cerner/other-EHR program:** about 68 percent complete.
 - **Local vendor-neutral platform:** about 96 percent complete.
 - **FHIR/QDM analytics bridge for the scoped CMS122 shadow-governance milestone:** complete.
-- **Epic/Cerner production onboarding:** still low, roughly 22-27 percent, because vendor credentials, app registration, customer scope approval, local matching policy, external alerting, and go-live artifacts remain external or incomplete.
+- **Epic/Cerner production onboarding:** still low, roughly 22-27 percent, because vendor credentials, app registration, customer scope approval, local matching policy, configured external alert delivery, and go-live artifacts remain external or incomplete.
 
 ## Current Worktree State
 
@@ -35,9 +35,10 @@ Assessment baseline for this refresh:
 - Bulk replay drilldown application release commit: `9ba7246 feat(ehr): add bulk replay drilldowns`.
 - Ingest-run drilldown application release commit: `95af0de feat(ehr): add ingest run drilldowns`.
 - Readiness token diagnostics application release commit: `1c560e0 feat(ehr): add readiness token diagnostics`.
-- Production was deployed successfully after `091` was applied, after `25b6f7d`, after `ab87e84`, after `9ba7246`, after `95af0de`, and again after `1c560e0`; the documentation checkpoint may be a later commit on top of the same application releases.
+- EHR sync alert dispatch application release commit: `1eba305 feat(ehr): add sync alert dispatch`.
+- Production was deployed successfully after `091` was applied, after `25b6f7d`, after `ab87e84`, after `9ba7246`, after `95af0de`, after `1c560e0`, and again after `1eba305`; the documentation checkpoint may be a later commit on top of the same application releases.
 - Production migrations are current through `091_ehr_medication_events.sql`.
-- The deployed non-EMPI work slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, bounded patient/resource rollups plus conflict/stale drilldowns and issue action metadata in `apps/api/src/services/ehr/syncStatus.ts` and `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, Bulk replay drilldowns, PHI-light ingest-run operational summaries in `apps/api/src/services/ehr/ingestRuns.ts`, selectable ingest-run details in `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, readiness capability/backend/Bulk diagnostics plus backend token checks in `apps/api/src/services/ehr/readinessEvidence.ts`, `apps/api/src/routes/ehr/admin.ts`, and `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, and this documentation refresh.
+- The deployed non-EMPI work slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, bounded patient/resource rollups plus conflict/stale drilldowns and issue action metadata in `apps/api/src/services/ehr/syncStatus.ts` and `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, Bulk replay drilldowns, PHI-light ingest-run operational summaries in `apps/api/src/services/ehr/ingestRuns.ts`, selectable ingest-run details in `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, readiness capability/backend/Bulk diagnostics plus backend token checks in `apps/api/src/services/ehr/readinessEvidence.ts`, PHI-safe sync alert snapshots in `apps/api/src/services/ehr/syncAlerts.ts`, System Health alert status/dispatch in `apps/api/src/services/systemHealth.ts`, `apps/api/src/routes/admin/index.ts`, and `apps/web/src/pages/admin/SystemHealthTab.tsx`, and this documentation refresh.
 
 Relevant commits now in history:
 
@@ -55,6 +56,7 @@ Relevant commits now in history:
 - `9ba7246 feat(ehr): add bulk replay drilldowns`
 - `95af0de feat(ehr): add ingest run drilldowns`
 - `1c560e0 feat(ehr): add readiness token diagnostics`
+- `1eba305 feat(ehr): add sync alert dispatch`
 
 ## Implemented Capabilities
 
@@ -222,8 +224,8 @@ Important remaining gaps:
 
 - EHR user linking is not complete.
 - Queued broader patient-context refresh and next-link continuation exist for supported patient-context resource types.
-- Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages. `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration` now have first-pass EDW hydration; delete semantics, stale-data runbooks, and fuller local matching still need hardening.
-- A read-only tenant ingest-run status API, PHI-light ingest-run operational summaries, recent-sync panel, selectable ingest-run detail view, Bulk job/file/schedule status panel, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource rollup, bounded conflict/stale drilldowns, structured sync issue actions, completed-job import replay, failed-file-only resume, recurring Bulk schedules, and active-job cancellation exist, but external alerts, incident-tested dead-letter workflows, and automated/tenant EHR audit coverage remain incomplete.
+- Callback-staged launch-context resources now hydrate into first-pass EDW workspace rows and replay into QDM evidence; queued refresh extends that path for supported patient-context pages. `DocumentReference`, `DiagnosticReport`, `MedicationDispense`, and `MedicationAdministration` now have first-pass EDW hydration; delete semantics and fuller local matching still need hardening.
+- A read-only tenant ingest-run status API, PHI-light ingest-run operational summaries, recent-sync panel, selectable ingest-run detail view, Bulk job/file/schedule status panel, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource rollup, bounded conflict/stale drilldowns, structured sync issue actions, completed-job import replay, failed-file-only resume, recurring Bulk schedules, active-job cancellation, PHI-safe sync alert snapshots, and stale-data/Bulk incident runbook exist, but configured external delivery, incident-tested dead-letter workflows, and automated/tenant EHR audit coverage remain incomplete.
 - Provider access/PCP attribution policy for newly imported launch patients still needs tenant-specific design.
 
 Key implementation files:
@@ -339,7 +341,7 @@ Known remaining gaps:
 
 - EDW normalization from staged resources now covers initial Patient routing, Bulk Patient EMPI resolution/crosswalk seeding, and first-pass workspace rows for `Encounter`, `Condition`, `Observation`, `MedicationRequest`, `MedicationDispense`, `MedicationAdministration`, `Procedure`, `AllergyIntolerance`, `Immunization`, `ServiceRequest`, `DiagnosticReport`, `DocumentReference`, `CarePlan`, `Goal`, `CareTeam`, and `Coverage`; richer local matching and additional tenant-specific domain needs are not complete.
 - The FHIR/QDM bridge now covers the scoped quality-measure path, but it is not a complete EDW normalization contract for every possible FHIR domain.
-- EHR resource crosswalks exist, initial SMART launch Patient import now populates Patient crosswalks, Bulk Patient hydration routes through EMPI before creating/linking local patient rows, FHIR/QDM source crosswalks exist for the bridge, and tenant sync status has bounded patient/resource rollups plus bounded conflict/stale drilldowns. Broader EDW patient-context normalization still needs provider attribution, stale-data runbooks, external alerting, and local matching policy.
+- EHR resource crosswalks exist, initial SMART launch Patient import now populates Patient crosswalks, Bulk Patient hydration routes through EMPI before creating/linking local patient rows, FHIR/QDM source crosswalks exist for the bridge, and tenant sync status has bounded patient/resource rollups plus bounded conflict/stale drilldowns. Broader EDW patient-context normalization still needs provider attribution, configured external alert delivery, live incident evidence, and local matching policy.
 - Data-quality issue rows for unmapped codes/units/statuses remain to be implemented.
 - Bounded patient-context staging beyond the launch Patient is wired after SMART launch, hydrated into EDW workspace rows for supported patient-context resource types, automatically replayed into QDM evidence, and extended by a backend-services queued refresh with continuation jobs. Remaining gaps are now less about the original core/document/report/medication-event families and more about durable sync visibility, local matching, delete semantics, and tenant-specific resource breadth.
 
@@ -385,7 +387,7 @@ Key implementation files:
 
 ### 9. Bulk Data Foundation
 
-A first Bulk Data foundation is implemented. It now includes the auditable kickoff/poll/manifest ledger, manual/admin kickoff, tenant-specific recurring schedules, vendor-safe BullMQ polling, automatic import enqueue after completion, manual completed-job import replay, failed-file-only resume, BullMQ retry/failed-job retention for incomplete imports, active-job cancellation, optional manifest checksum/size validation, PHI-safe audit entries for manual Bulk controls, PHI-safe automated worker lifecycle audit entries, completed-job NDJSON import worker, Bulk Patient EMPI/crosswalk seeding before downstream resource hydration, Bulk import/QDM replay status summaries, a linked QDM replay action for Bulk ingest runs, the Bulk replay/dead-letter runbook, and bounded patient/resource sync drilldowns. Deleted-output/tombstone handling, incident rehearsal for dead-letter workflows, stale-data runbooks, external alerting, and vendor sandbox proof remain open.
+A first Bulk Data foundation is implemented. It now includes the auditable kickoff/poll/manifest ledger, manual/admin kickoff, tenant-specific recurring schedules, vendor-safe BullMQ polling, automatic import enqueue after completion, manual completed-job import replay, failed-file-only resume, BullMQ retry/failed-job retention for incomplete imports, active-job cancellation, optional manifest checksum/size validation, PHI-safe audit entries for manual Bulk controls, PHI-safe automated worker lifecycle audit entries, completed-job NDJSON import worker, Bulk Patient EMPI/crosswalk seeding before downstream resource hydration, Bulk import/QDM replay status summaries, a linked QDM replay action for Bulk ingest runs, the Bulk replay/dead-letter runbook, PHI-safe sync alert snapshots, the stale-data/Bulk incident runbook, and bounded patient/resource sync drilldowns. Deleted-output/tombstone handling, incident rehearsal for dead-letter workflows, configured external alert delivery, and vendor sandbox proof remain open.
 
 Implemented:
 
@@ -456,7 +458,7 @@ Known remaining gaps:
 
 - The replay/dead-letter runbook has not yet been exercised against a real vendor sandbox incident or production failed-file incident.
 - No Bulk `deleted` tombstone handling.
-- Bounded patient/resource rollups and stale-resource drilldowns exist; stale-data runbooks and external alerting remain open.
+- Bounded patient/resource rollups, stale-resource drilldowns, stale-data runbook, and PHI-safe alert snapshot routing exist; configured external delivery and live incident evidence remain open.
 - No real Epic/Cerner Bulk Data sandbox job has been run.
 
 Key implementation files:
@@ -494,11 +496,12 @@ Implemented UI features:
 - Recent tenant ingest-run status panel with selectable PHI-light run details.
 - Tenant sync-status panel with crosswalk, ingest, Bulk import, Bulk schedule, worker failure, overdue-poll, bounded patient/resource rollup metrics, bounded conflict/stale drilldowns, and structured sync issue actions.
 - Bulk job status panel with manual export kickoff, schedule save, manual completed-job import replay, active-job cancel, file counts, staged row counts, failures, next poll/request timestamps, schedule next-run/last-success state, import/QDM replay summaries, linked QDM replay controls, and redacted per-file import status.
+- System Health EHR Sync Alerts panel with endpoint-host display, configured/nightly status, last dispatch status/counts, and explicit audited manual dispatch.
 
 Known UI gaps:
 
 - No dedicated UI test yet for admin-only EHR visibility or secret redaction.
-- Last sync display now includes bounded patient/resource rollups, conflict/stale drilldowns, and issue recommended actions; external alert routing is not implemented.
+- Last sync display now includes bounded patient/resource rollups, conflict/stale drilldowns, issue recommended actions, and PHI-safe external alert dispatch readiness; production still needs a configured webhook and live incident evidence.
 - Failed-import resume controls, Bulk-linked QDM replay controls, and broader ingest-run detail visibility exist for completed jobs with staged resources.
 - Data-quality/unmapped-code review UI is not implemented.
 
@@ -766,6 +769,20 @@ Focused readiness token diagnostics validation on 2026-06-25:
 - A read-only production service probe against EHR tenant 2 returned readiness issue codes for missing backend token endpoint, missing discovery, missing Bulk resource capability coverage, expired backend token, and launch not exercised. The same probe returned one enabled backend-services client with ready credentials, `readyForTokenExchange: false`, no token requests in the last 24 hours, an existing latest token timestamp, no active Bulk jobs, no failed Bulk jobs in the last 24 hours, and no enabled Bulk schedules.
 - Commit `1c560e0` was pushed to `origin/main`; `./scripts/deploy-production.sh` passed; `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active; production migration dry-run reported 90 applied migrations and no pending migrations; and `https://medgnosis.acumenus.net/health` returned healthy.
 
+Focused EHR sync alert dispatch validation on 2026-06-25:
+
+- `npm run test --workspace=apps/api -- syncAlerts.test.ts systemHealth.test.ts index.test.ts` passed 8 files and 56 tests.
+- `npm run test --workspace=apps/web -- SystemHealthTab.test.tsx` passed 1 file and 2 tests.
+- `npm run test` passed across API, web, shared, and Solr: API 107 files passed with 804 tests passed and 1 smoke test skipped; web 25 files passed with 43 tests; shared 43 tests; Solr 18 tests.
+- `npm run typecheck --workspace=apps/api` passed.
+- `npm run typecheck --workspace=apps/web` passed.
+- `npm run lint --workspace=apps/api` passed with one existing warning in `apps/api/src/routes/admin/identityReview.test.ts`.
+- `npm run lint --workspace=apps/web` passed.
+- `npm run build --workspace=apps/api` passed.
+- `npm run build --workspace=apps/web` passed.
+- `git diff --check` passed.
+- Commit `1eba305` added PHI-safe aggregate sync alert snapshots, disabled-by-default webhook dispatch, optional nightly dispatch, webhook signing, System Health alert state, explicit audited manual dispatch, `.env.example` knobs, and the stale-data/Bulk incident runbook.
+
 Focused EHR tests covered during the EHR foundation tranche:
 
 - `apps/api/src/routes/ehr/admin.test.ts`
@@ -805,6 +822,7 @@ Production assessment rechecks for the medication-event release on 2026-06-25:
 - Bulk replay drilldown application release commit `9ba7246` was pushed to `origin/main` before deployment.
 - Ingest-run drilldown application release commit `95af0de` was pushed to `origin/main` before deployment.
 - Readiness token diagnostics application release commit `1c560e0` was pushed to `origin/main` before deployment.
+- EHR sync alert dispatch application release commit `1eba305` was pushed to `origin/main` before deployment.
 - `set -a; . ./.env.production; set +a; npm run db:migrate:dry-run` reported 90 applied migrations and no pending migrations.
 - `https://medgnosis.acumenus.net/health` returned healthy with database up.
 - `http://127.0.0.1:3081/health` returned healthy with database up during deploy verification.
@@ -816,7 +834,7 @@ Production API:
 - Public health endpoint: `https://medgnosis.acumenus.net/health`.
 - Local systemd/reverse-proxy target health endpoint: `http://127.0.0.1:3081/health`.
 - Both health endpoints returned `{"status":"healthy","version":"1.0.0","services":{"database":"up"}}` during the 2026-06-25 deployment verification.
-- `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active after the readiness token diagnostics deployment.
+- `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active after the EHR sync alert dispatch deployment.
 
 Production web/admin:
 
@@ -862,7 +880,7 @@ Still needed:
 
 - Expand tenant-specific display needs beyond the currently hydrated resource families where pilot workflows require them.
 - Normalize any additional staged resource families that become product-critical and do not yet have durable EDW tables.
-- Extend beyond bounded conflict/stale drilldowns into stale-data runbooks and external alert routing.
+- Exercise the stale-data/Bulk incident runbook against a live failed-file, stale-data, or sandbox incident and configure an external alert destination.
 
 ### Bulk Data Import
 
@@ -870,7 +888,7 @@ Still needed:
 
 - Exercise the replay/dead-letter runbook against a failed-file or sandbox replay incident and add deeper dead-letter dashboard controls.
 - Bulk `deleted` tombstone handling.
-- External alert routing and stale-data runbooks for sync issues.
+- Configure external alert delivery and capture live stale-data/Bulk incident evidence.
 - Small approved group export against sandbox/vendor tenant.
 
 ### Observability and Audit
@@ -882,7 +900,7 @@ Still needed:
 - Add deeper EHR tenant and SMART launch health drilldowns beyond the current readiness evidence panel.
 - FHIR API health dashboard.
 - Add deeper Bulk ingestion dashboard drilldowns beyond current job/file/schedule/sync metrics.
-- External alerting for token failures, FHIR 401/403/429 spikes, stuck Bulk jobs, and stale tenant sync.
+- Extend PHI-safe external alert snapshots beyond current EHR readiness/sync/Bulk signals into FHIR 401/403/429 spike detection.
 
 Now partially covered outside the EHR-specific path:
 
@@ -916,17 +934,17 @@ Mitigation:
 
 ### Risk: SMART launch patient workspace is not fully hydrated after bounded callback staging
 
-Launch/callback/token mechanics, authenticated handoff binding, initial Patient import/crosswalk, bounded staging of patient-context resources, first-pass EDW hydration, automatic QDM replay, queued backend-services refresh with next-link continuation for supported resource pages, bounded patient/resource sync rollups, and bounded conflict/stale drilldowns now work in code. The remaining risk is that newly imported launch patients still lack tenant-specific provider attribution, stale-data runbooks, external alert routing, local matching policy, and vendor sandbox proof.
+Launch/callback/token mechanics, authenticated handoff binding, initial Patient import/crosswalk, bounded staging of patient-context resources, first-pass EDW hydration, automatic QDM replay, queued backend-services refresh with next-link continuation for supported resource pages, bounded patient/resource sync rollups, bounded conflict/stale drilldowns, and PHI-safe sync alert snapshots now work in code. The remaining risk is that newly imported launch patients still lack tenant-specific provider attribution, configured external alert delivery, local matching policy, and vendor sandbox proof.
 
 Mitigation:
 
-- Prioritize stale-data runbooks, external alerting, local matching, and patient access policy next.
+- Prioritize configured external alert delivery, incident rehearsal, local matching, and patient access policy next.
 - Add end-to-end vendor/sandbox launch evidence that opens patient detail.
 - Keep Patient import/crosswalk regression tests in the SMART launch suite before production launch work.
 
 ### Risk: Bulk Data incomplete after manifest
 
-Bulk kickoff/poll/manifest persistence, NDJSON downloader/importer, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, EDW hydration, QDM replay, recurring schedule enqueueing, admin job/file/schedule status visibility, completed-job import replay, failed-file-only resume, BullMQ retry/dead-letter retention, PHI-safe manual-control audit, PHI-safe automated worker audit, active-job cancellation, bounded patient/resource rollups, and bounded conflict/stale drilldowns now exist, but the path still lacks deleted-output handling, deeper replay runbooks, stale-data runbooks, external alert routing, and vendor sandbox proof.
+Bulk kickoff/poll/manifest persistence, NDJSON downloader/importer, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, EDW hydration, QDM replay, recurring schedule enqueueing, admin job/file/schedule status visibility, completed-job import replay, failed-file-only resume, BullMQ retry/dead-letter retention, PHI-safe manual-control audit, PHI-safe automated worker audit, active-job cancellation, bounded patient/resource rollups, bounded conflict/stale drilldowns, PHI-safe sync alert snapshots, and stale-data/Bulk incident runbook now exist, but the path still lacks deleted-output handling, configured external alert delivery, live incident rehearsal, and vendor sandbox proof.
 
 Mitigation:
 
@@ -959,7 +977,7 @@ Mitigation:
 1. **Patient-context normalization breadth and visibility**
    - Extend the bounded callback staging, EDW hydration, QDM replay, and backend-services queue path to any remaining patient-detail resource families required by tenant workflows.
    - Add richer local matching where patient detail needs it, especially provider attribution, medication-event lineage, document/report display grouping, and encounter association.
-   - Add stale-data runbooks, external alert routing, and admin/clinician-safe error reporting.
+   - Configure external alert delivery and add admin/clinician-safe error reporting.
 
 2. **EHR patient crosswalk and EDW normalization**
    - Keep launch and Bulk Patient crosswalks as routing sources of truth.
@@ -977,7 +995,7 @@ Mitigation:
 
 5. **Admin UI completion**
    - Add UI test for secret redaction/admin-only access.
-   - Add incident-tested Bulk replay/dead-letter drilldowns and stale-data runbooks beyond the current tenant readiness, patient rollup, conflict/stale drilldown, Bulk-linked QDM replay, ingest-run detail, and worker failure/overdue-poll metrics.
+   - Add incident-tested Bulk replay/dead-letter drilldowns beyond the current tenant readiness, patient rollup, conflict/stale drilldown, Bulk-linked QDM replay, ingest-run detail, EHR sync alerts, and worker failure/overdue-poll metrics.
 
 6. **EHR observability and runbooks**
    - Add token/FHIR-read audit coverage.
@@ -1082,9 +1100,9 @@ Scripts:
 | --- | --- | --- |
 | Tenant registry | Mostly complete | Tenant upsert and diagnostics audit exist; production secret-manager policy and remaining route/worker-adjacent audit gaps need review |
 | Admin onboarding API | Mostly complete | CRUD/upsert/detail/diagnostics/capabilities/test-connection present |
-| Admin EHR UI | Partial | Tenant onboarding/readiness evidence, previous-snapshot capability drift, backend credential/token readiness, explicit audited backend token-check action, aggregate Bulk diagnostics, recent ingest-run sync status, selectable PHI-light ingest-run details, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, completed-job import replay, failed-import resume, and active-job cancel present; external alert routing and incident-tested dead-letter workflows remain |
+| Admin EHR UI | Partial | Tenant onboarding/readiness evidence, previous-snapshot capability drift, backend credential/token readiness, explicit audited backend token-check action, aggregate Bulk diagnostics, recent ingest-run sync status, selectable PHI-light ingest-run details, worker failure/overdue-poll sync metrics, Bulk job/file/schedule status, Bulk import/QDM replay summaries, linked Bulk QDM replay controls, bounded patient/resource sync rollups, bounded conflict/stale-resource drilldowns, structured sync issue actions, completed-job import replay, failed-import resume, active-job cancel, and System Health EHR sync alert dispatch present; incident-tested dead-letter workflows remain |
 | SMART discovery | Partial | Works locally with previous-snapshot capability drift evidence; needs HTTPS enforcement and vendor evidence |
-| EHR launch | Partial | Launch/callback, lifecycle audit/rate limits, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, readiness evidence, sync rollups, conflict/stale drilldowns, and refresh continuation work; user linking, access attribution, local matching, external alerting, and vendor evidence remain |
+| EHR launch | Partial | Launch/callback, lifecycle audit/rate limits, initial Patient import/crosswalk, bounded context staging, first-pass EDW hydration, automatic QDM replay, queued supported patient-context refresh, readiness evidence, sync rollups, conflict/stale drilldowns, alert snapshots, and refresh continuation work; user linking, access attribution, local matching, configured external delivery, and vendor evidence remain |
 | Standalone launch | Partial | Route and scope behavior present; end-to-end patient selection evidence pending |
 | Token metadata | Mostly complete | Hash-only persistence and readiness-age surfacing present; refresh/reacquisition remains |
 | Backend Services | Partial | Token flow and explicit audited token-check endpoint implemented; no real vendor validation |
@@ -1093,9 +1111,9 @@ Scripts:
 | FHIR/QDM bridge | Mostly complete for scoped milestone | QDM spine, FHIR crosswalk, CQL shadow, reconciliation, semantic drift, and ops ledger present |
 | Measure governance | Partial | Admin tab and audited evidence drilldown present; CMS122 promotion remains governance-blocked |
 | CDS Hooks auth | Partial | JWT/JWKS validation present; production governance incomplete |
-| Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, readiness diagnostics, bounded patient/resource rollups, bounded conflict/stale drilldowns, replay/dead-letter runbook, and admin status UI present; tombstones, stale-data runbooks, external alerting, incident rehearsal, and vendor sandbox evidence remain |
+| Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, readiness diagnostics, bounded patient/resource rollups, bounded conflict/stale drilldowns, replay/dead-letter runbook, EHR sync alert runbook, and admin status UI present; tombstones, configured external delivery, incident rehearsal, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Partial | QDM bridge runbook, EHR Bulk replay/dead-letter runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, tenant readiness capability/backend/Bulk diagnostics, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, stale-data runbooks, incident rehearsal evidence, and external alerts remain |
+| Observability/runbooks | Partial | QDM bridge runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, configured external alert delivery, and incident rehearsal evidence remain |
 
 Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.
