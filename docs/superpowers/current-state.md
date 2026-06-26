@@ -166,6 +166,14 @@ devlogs do not override the current codebase state.
   ports and a catch-all mocked authenticated protected-route smoke that walks
   every top-level protected route in `apps/web/src/App.tsx` without production
   credentials or API proxy leakage.
+- Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
+  local login failures, MFA verification and disable failures, refresh-token
+  rotation/replay/expiry/MFA-gate/user-missing branches, rejected password
+  changes, public registration creation, session revoke misses, and preference
+  updates now emit route-level audit rows with aggregate or internal-id details
+  only. Anti-enumeration and untrusted-token branches carry explicit no-audit
+  rationale comments, and OIDC callback success audit details no longer store raw
+  email claims.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
@@ -178,7 +186,7 @@ devlogs do not override the current codebase state.
 
 1. Keep README, env docs, and validation runbooks truthful.
 2. Expand role-based Playwright workflow coverage beyond the current login, MFA, password-reset, invite, settings, admin smoke, and protected-route smoke paths.
-3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
+3. Keep MFA/session audit lifecycle coverage current as auth provider and session behavior evolves.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
 6. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.

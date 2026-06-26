@@ -19,6 +19,7 @@ import {
 type SqlRow = Record<string, unknown>;
 const mockSql = vi.fn<(strings: TemplateStringsArray, ...values: unknown[]) => Promise<SqlRow[]>>();
 const mockUnsafe = vi.fn().mockResolvedValue([]);
+const mockAuditLog = vi.fn();
 const mockBegin = vi.fn(
   async (callback: (tx: { unsafe: typeof mockUnsafe }) => Promise<unknown>) => (
     callback({ unsafe: mockUnsafe })
@@ -113,8 +114,8 @@ beforeAll(async () => {
     },
   );
 
-  // Decorate auditLog as no-op
-  app.decorateRequest('auditLog', async () => {});
+  // Decorate auditLog with a mock so auth security events stay testable.
+  app.decorateRequest('auditLog', mockAuditLog);
 
   // Register auth routes
   const authRoutes = await import('../index.js');
@@ -129,6 +130,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockAuditLog.mockReset();
   mockSql.mockResolvedValue([]);
   mockUnsafe.mockResolvedValue([]);
   mockConfig.publicRegistrationEnabled = true;
@@ -265,6 +267,7 @@ describe('POST /auth/login', () => {
     expect(response.statusCode).toBe(401);
     const body = response.json();
     expect(body.error.code).toBe('INVALID_CREDENTIALS');
+    expect(mockAuditLog).not.toHaveBeenCalled();
   });
 
   it('returns 401 when user is inactive', async () => {
@@ -275,6 +278,7 @@ describe('POST /auth/login', () => {
       payload: { email: 'test@example.com', password: 'correct-password' },
     });
     expect(response.statusCode).toBe(401);
+    expect(mockAuditLog).not.toHaveBeenCalled();
   });
 
   it('returns 401 for wrong password', async () => {
@@ -287,6 +291,12 @@ describe('POST /auth/login', () => {
     expect(response.statusCode).toBe(401);
     const body = response.json();
     expect(body.error.code).toBe('INVALID_CREDENTIALS');
+    expect(mockAuditLog).toHaveBeenCalledWith('login_failed', 'auth', MOCK_USER.id, {
+      reason: 'invalid_password',
+    });
+    const auditPayload = JSON.stringify(mockAuditLog.mock.calls);
+    expect(auditPayload).not.toContain('wrong-password');
+    expect(auditPayload).not.toContain('test@example.com');
   });
 
   it('returns tokens on successful login', async () => {
@@ -303,6 +313,7 @@ describe('POST /auth/login', () => {
     expect(body.data.tokens.access_token).toBeDefined();
     expect(body.data.tokens.refresh_token).toBeDefined();
     expect(body.data.tokens.expires_in).toBe(900);
+    expect(mockAuditLog).toHaveBeenCalledWith('login', 'auth', MOCK_USER.id);
   });
 
   it('returns user info on successful login', async () => {
@@ -575,6 +586,11 @@ describe('MFA routes', () => {
     expect(response.statusCode).toBe(401);
     expect(response.json().error.code).toBe('MFA_INVALID');
     expect(queries.some((query) => query.includes('INSERT INTO refresh_tokens'))).toBe(false);
+    expect(mockAuditLog).toHaveBeenCalledWith('login_mfa_verify_failed', 'auth', MOCK_USER.id, {
+      reason: 'invalid_code',
+      method: 'totp',
+    });
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('000000');
   });
 
   it('rejects replayed TOTP codes at or before the last accepted time step', async () => {
@@ -763,6 +779,7 @@ describe('POST /auth/register', () => {
     const body = response.json();
     expect(body.success).toBe(true);
     expect(body.data.message).toContain('account instructions');
+    expect(mockAuditLog).not.toHaveBeenCalled();
   });
 
   it('returns success for new user registration', async () => {
@@ -772,7 +789,12 @@ describe('POST /auth/register', () => {
         return Promise.resolve([]); // user not found
       }
       if (query.includes('INSERT INTO app_users')) {
-        return Promise.resolve([]);
+        return Promise.resolve([{
+          id: '33333333-3333-4333-8333-333333333333',
+          role: 'analyst',
+          is_active: false,
+          must_change_password: true,
+        }]);
       }
       return Promise.resolve([]);
     }) as typeof mockSql);
@@ -785,6 +807,21 @@ describe('POST /auth/register', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.success).toBe(true);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'public_registration_create',
+      'app_user',
+      '33333333-3333-4333-8333-333333333333',
+      {
+        role: 'analyst',
+        active: false,
+        must_change_password: true,
+        welcome_email_sent: false,
+      },
+    );
+    const auditPayload = JSON.stringify(mockAuditLog.mock.calls);
+    expect(auditPayload).not.toContain('new@example.com');
+    expect(auditPayload).not.toContain('Jane');
+    expect(auditPayload).not.toContain('Doe');
   });
 });
 
@@ -1079,6 +1116,54 @@ describe('POST /auth/change-password', () => {
     const body = response.json();
     expect(body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('audits failed password changes for an invalid current password', async () => {
+    const token = app.jwt.sign({
+      sub: MOCK_USER.id,
+      email: MOCK_USER.email,
+      role: 'analyst',
+      org_id: '',
+    });
+    mockSql.mockResolvedValueOnce([{ password_hash: '$2b$12$mockhash' }]);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/change-password',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: 'wrong-current', newPassword: 'new-password-1' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('INVALID_PASSWORD');
+    expect(mockAuditLog).toHaveBeenCalledWith('password_change_failed', 'auth', MOCK_USER.id, {
+      reason: 'invalid_current_password',
+    });
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('wrong-current');
+  });
+
+  it('audits rejected password changes when the new password matches the current password', async () => {
+    const token = app.jwt.sign({
+      sub: MOCK_USER.id,
+      email: MOCK_USER.email,
+      role: 'analyst',
+      org_id: '',
+    });
+    mockSql.mockResolvedValueOnce([{ password_hash: '$2b$12$mockhash' }]);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/change-password',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: 'correct-password', newPassword: 'correct-password' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('SAME_PASSWORD');
+    expect(mockAuditLog).toHaveBeenCalledWith('password_change_failed', 'auth', MOCK_USER.id, {
+      reason: 'same_password',
+    });
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('correct-password');
+  });
 });
 
 describe('GET /auth/sessions', () => {
@@ -1182,6 +1267,36 @@ describe('DELETE /auth/sessions/:id', () => {
 
     expect(response.statusCode).toBe(400);
     expect(mockSql).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('audits valid session revoke requests that do not match an active session', async () => {
+    const token = app.jwt.sign({
+      sub: MOCK_USER.id,
+      email: MOCK_USER.email,
+      role: 'analyst',
+      org_id: '',
+      session_id: '11111111-1111-4111-8111-111111111111',
+    });
+    mockSql.mockResolvedValueOnce([]);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/sessions/22222222-2222-4222-8222-222222222222',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error.code).toBe('SESSION_NOT_FOUND');
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'session_revoke_failed',
+      'auth_session',
+      '22222222-2222-4222-8222-222222222222',
+      {
+        reason: 'not_found_or_already_revoked',
+        current: false,
+      },
+    );
   });
 });
 
@@ -1208,6 +1323,7 @@ describe('POST /auth/refresh', () => {
     expect(response.statusCode).toBe(401);
     const body = response.json();
     expect(body.error.code).toBe('INVALID_TOKEN');
+    expect(mockAuditLog).not.toHaveBeenCalled();
   });
 
   it('rotates valid refresh tokens and returns a new session-bound access token', async () => {
@@ -1259,6 +1375,66 @@ describe('POST /auth/refresh', () => {
     expect(body.data.tokens.refresh_token).toBeDefined();
     const decoded = app.jwt.decode<{ session_id?: string }>(body.data.tokens.access_token);
     expect(decoded?.session_id).toBe('22222222-2222-4222-8222-222222222222');
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'refresh_token_rotate',
+      'auth_session',
+      '22222222-2222-4222-8222-222222222222',
+      {
+        previous_session_id: '11111111-1111-4111-8111-111111111111',
+        mfa_verified: false,
+        provider_resolved: false,
+      },
+    );
+    const auditPayload = JSON.stringify(mockAuditLog.mock.calls);
+    expect(auditPayload).not.toContain(refreshToken);
+    expect(auditPayload).not.toContain(refreshHash);
+  });
+
+  it('audits refresh token replay and revokes the user sessions', async () => {
+    const refreshToken = 'revoked-refresh-token';
+    const refreshHash = hashForTest(refreshToken);
+    const queries: string[] = [];
+
+    mockUnsafe.mockImplementation((async (query: string, values: unknown[]) => {
+      queries.push(query);
+      if (query.includes('SELECT id, user_id, expires_at, revoked, mfa_verified_at')) {
+        expect(values[0]).toBe(refreshHash);
+        return [{
+          id: '11111111-1111-4111-8111-111111111111',
+          user_id: MOCK_USER.id,
+          expires_at: '2099-01-01T00:00:00Z',
+          revoked: true,
+          mfa_verified_at: null,
+        }];
+      }
+      if (query.includes('UPDATE refresh_tokens')) {
+        expect(values[0]).toBe(MOCK_USER.id);
+        return [];
+      }
+      return [];
+    }) as typeof mockUnsafe);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      payload: { refresh_token: refreshToken },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error.code).toBe('TOKEN_REUSE');
+    expect(queries.some((query) => query.includes('WHERE user_id = $1::UUID'))).toBe(true);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'refresh_token_reuse',
+      'auth_session',
+      '11111111-1111-4111-8111-111111111111',
+      {
+        affected_user_id: MOCK_USER.id,
+        all_sessions_revoked: true,
+      },
+    );
+    const auditPayload = JSON.stringify(mockAuditLog.mock.calls);
+    expect(auditPayload).not.toContain(refreshToken);
+    expect(auditPayload).not.toContain(refreshHash);
   });
 
   it('revokes pre-MFA refresh tokens once the user has MFA enabled', async () => {
@@ -1304,6 +1480,12 @@ describe('POST /auth/refresh', () => {
     expect(response.statusCode).toBe(401);
     expect(response.json().error.code).toBe('MFA_REQUIRED');
     expect(queries.some((query) => query.includes('INSERT INTO refresh_tokens'))).toBe(false);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'refresh_token_mfa_required',
+      'auth_session',
+      '11111111-1111-4111-8111-111111111111',
+      { affected_user_id: MOCK_USER.id },
+    );
   });
 
   it('preserves MFA verification on refresh-token rotation for MFA sessions', async () => {
@@ -1392,6 +1574,53 @@ describe('GET /auth/me', () => {
     const body = response.json();
     expect(body.success).toBe(true);
     expect(body.data.email).toBe('test@example.com');
+  });
+});
+
+describe('PATCH /auth/me/preferences', () => {
+  it('audits preference key changes without storing preference values', async () => {
+    const token = app.jwt.sign({
+      sub: MOCK_USER.id,
+      email: MOCK_USER.email,
+      role: 'analyst',
+      org_id: '',
+    });
+
+    mockSql.mockResolvedValueOnce([{
+      preferences: {
+        theme: 'dark',
+        dashboard: { hidden: ['risk'] },
+      },
+    }]);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/auth/me/preferences',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        theme: 'dark',
+        dashboard: { hidden: ['risk'] },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      theme: 'dark',
+      dashboard: { hidden: ['risk'] },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'preferences_update',
+      'auth_preferences',
+      MOCK_USER.id,
+      {
+        preference_keys: ['dashboard', 'theme'],
+        preference_key_count: 2,
+      },
+    );
+    const auditPayload = JSON.stringify(mockAuditLog.mock.calls);
+    expect(auditPayload).not.toContain('hidden');
+    expect(auditPayload).not.toContain('risk');
+    expect(auditPayload).not.toContain('dark');
   });
 });
 

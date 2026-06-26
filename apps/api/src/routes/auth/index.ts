@@ -96,6 +96,13 @@ interface MfaUserRow {
   must_change_password: boolean;
 }
 
+interface AuthRouteAuditEvent {
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  details?: Record<string, unknown>;
+}
+
 async function issueMfaChallenge(
   fastify: FastifyInstance,
   user: {
@@ -269,6 +276,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       const consumed = await consumePasswordReset(parseResult.data.token, passwordHash);
 
       if (!consumed) {
+        // No audit event here: an invalid reset token has no trusted user or resource.
         return reply.status(400).send({
           success: false,
           error: { code: 'RESET_TOKEN_INVALID', message: 'Reset link is invalid or expired' },
@@ -301,6 +309,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
     const invite = await getPendingInviteByToken(token);
     if (!invite) {
+      // No audit event here: an invalid invite token has no trusted invite or user.
       return reply.status(400).send({
         success: false,
         error: { code: 'INVITE_INVALID', message: 'Invitation is invalid or expired' },
@@ -342,6 +351,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     const activated = await activateInviteWithPassword(token, passwordHash);
 
     if (!activated) {
+      // No audit event here: an invalid activation token has no trusted invite or user.
       return reply.status(400).send({
         success: false,
         error: { code: 'INVITE_INVALID', message: 'Invitation is invalid or expired' },
@@ -423,10 +433,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       };
 
       if (query.error) {
+        // No user-specific audit event is possible before an OIDC subject is reconciled.
         return reply.redirect(`${config.webAppUrl}/login?oidc_error=${encodeURIComponent(query.error)}`);
       }
 
       if (!query.code || !query.state) {
+        // No user-specific audit event is possible without a verified OIDC handshake.
         return reply.status(400).send({
           success: false,
           error: { code: 'OIDC_BAD_CALLBACK', message: 'OIDC callback is missing code or state' },
@@ -443,6 +455,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         typeof statePayload.nonce !== 'string' ||
         typeof statePayload.codeVerifier !== 'string'
       ) {
+        // No user-specific audit event is possible for an invalid or expired state handle.
         return reply.status(400).send({
           success: false,
           error: { code: 'OIDC_STATE_INVALID', message: 'OIDC state is invalid or expired' },
@@ -451,6 +464,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       const provider = await getOidcProviderConfig();
       if (!isOidcPubliclyAvailable(provider)) {
+        // No user-specific audit event is possible before an OIDC subject is reconciled.
         return reply.status(404).send({
           success: false,
           error: { code: 'OIDC_DISABLED', message: 'OIDC sign-in is not enabled' },
@@ -477,11 +491,13 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       if (!tokenResponse.ok) {
         fastify.log.warn({ status: tokenResponse.status }, 'OIDC token exchange failed');
+        // No user-specific audit event is possible because token exchange produced no verified claims.
         return reply.redirect(`${config.webAppUrl}/login?oidc_error=token_exchange_failed`);
       }
 
       const tokenBody = await tokenResponse.json() as { id_token?: string };
       if (!tokenBody.id_token) {
+        // No user-specific audit event is possible without a verified ID token.
         return reply.redirect(`${config.webAppUrl}/login?oidc_error=missing_id_token`);
       }
 
@@ -497,13 +513,14 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
         await request.auditLog('oidc_callback_success', 'auth', user.id, {
           provider: 'authentik',
-          email: claims.email,
+          email_claim_present: Boolean(claims.email),
         });
 
         return reply.redirect(`${config.webAppUrl}/auth/callback?code=${encodeURIComponent(exchangeCode)}`);
       } catch (err) {
         const code = err instanceof OidcAccessDeniedError ? 'access_denied' : 'validation_failed';
         fastify.log.warn({ err }, 'OIDC callback validation failed');
+        // Validation and access-denied failures occur before a trusted app user is selected.
         return reply.redirect(`${config.webAppUrl}/login?oidc_error=${code}`);
       }
     },
@@ -520,6 +537,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     async (request, reply) => {
       const body = request.body as { code?: string };
       if (!body.code) {
+        // No audit event here: there is no verified exchange payload or user.
         return reply.status(400).send({
           success: false,
           error: { code: 'MISSING_CODE', message: 'code is required' },
@@ -528,6 +546,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       const payload = await consumeHandshake<{ userId: string }>(body.code, 'exchange');
       if (!payload || typeof payload.userId !== 'string') {
+        // No audit event here: an invalid exchange code has no trusted user binding.
         return reply.status(400).send({
           success: false,
           error: { code: 'CODE_INVALID', message: 'OIDC exchange code is invalid or expired' },
@@ -551,6 +570,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       `;
 
       if (!user) {
+        await request.auditLog('oidc_exchange_failed', 'auth', payload.userId, {
+          provider: 'authentik',
+          reason: 'user_not_found_or_disabled',
+        });
         return reply.status(404).send({
           success: false,
           error: { code: 'USER_NOT_FOUND', message: 'User account not found or disabled' },
@@ -560,6 +583,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       if (user.mfa_enabled) {
         if (!user.mfa_secret) {
           fastify.log.warn({ userId: user.id }, 'MFA-enabled OIDC user has no TOTP secret');
+          await request.auditLog('oidc_exchange_failed', 'auth', user.id, {
+            provider: 'authentik',
+            reason: 'mfa_not_configured',
+          });
           return reply.status(403).send({
             success: false,
             error: { code: 'MFA_NOT_CONFIGURED', message: 'MFA is not configured correctly for this account' },
@@ -622,6 +649,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     `;
 
     if (!user || !user.is_active) {
+      // Do not audit inactive or unknown local sign-in attempts; this branch intentionally prevents enumeration.
       return reply.status(401).send({
         success: false,
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
@@ -632,6 +660,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     // For development, also accept plain 'password' match
     const passwordValid = await verifyPassword(password, user.password_hash);
     if (!passwordValid) {
+      await request.auditLog('login_failed', 'auth', user.id, { reason: 'invalid_password' });
       return reply.status(401).send({
         success: false,
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
@@ -643,6 +672,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     if (user.mfa_enabled) {
       if (!user.mfa_secret) {
         fastify.log.warn({ userId: user.id }, 'MFA-enabled user has no TOTP secret');
+        await request.auditLog('login_failed', 'auth', user.id, { reason: 'mfa_not_configured' });
         return reply.status(403).send({
           success: false,
           error: { code: 'MFA_NOT_CONFIGURED', message: 'MFA is not configured correctly for this account' },
@@ -897,6 +927,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
           mfa_pending?: boolean;
         }>(parseResult.data.mfa_token);
       } catch {
+        // No audit event here: an invalid MFA token cannot be trusted for user attribution.
         return reply.status(401).send({
           success: false,
           error: { code: 'MFA_TOKEN_INVALID', message: 'MFA challenge is invalid or expired' },
@@ -904,6 +935,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       }
 
       if (!pending.mfa_pending) {
+        // No audit event here: a non-pending token is not a valid MFA challenge.
         return reply.status(401).send({
           success: false,
           error: { code: 'MFA_TOKEN_INVALID', message: 'MFA challenge is invalid or expired' },
@@ -926,7 +958,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         const [user] = rows;
 
         if (!user || !user.mfa_enabled || !user.mfa_secret) {
-          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+          return {
+            status: 401,
+            error: { code: 'MFA_INVALID', message: 'MFA verification failed' },
+            userId: user?.id,
+            reason: 'mfa_not_configured',
+          };
         }
 
         const code = parseResult.data.code.trim();
@@ -955,7 +992,13 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         }
 
         if (!valid) {
-          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+          return {
+            status: 401,
+            error: { code: 'MFA_INVALID', message: 'MFA verification failed' },
+            userId: user.id,
+            method,
+            reason: 'invalid_code',
+          };
         }
 
         await tx.unsafe(
@@ -977,6 +1020,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       });
 
       if (result.status !== 200 || !('user' in result) || !result.user) {
+        if ('userId' in result && typeof result.userId === 'string') {
+          await request.auditLog('login_mfa_verify_failed', 'auth', result.userId, {
+            reason: 'reason' in result ? result.reason : 'verification_failed',
+            ...('method' in result && result.method ? { method: result.method } : {}),
+          });
+        }
         return reply.status(result.status).send({ success: false, error: result.error });
       }
 
@@ -1045,7 +1094,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         }
 
         if (!valid) {
-          return { status: 401, error: { code: 'MFA_INVALID', message: 'MFA verification failed' } };
+          return {
+            status: 401,
+            error: { code: 'MFA_INVALID', message: 'MFA verification failed' },
+            userId: user.id,
+            reason: 'invalid_code',
+          };
         }
 
         const updatedRows = await tx.unsafe(
@@ -1071,6 +1125,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       });
 
       if (result.status !== 200 || !('user' in result) || !result.user) {
+        if ('userId' in result && typeof result.userId === 'string') {
+          await request.auditLog('mfa_disable_failed', 'auth_mfa', result.userId, {
+            reason: 'reason' in result ? result.reason : 'verification_failed',
+          });
+        }
         return reply.status(result.status).send({ success: false, error: result.error });
       }
 
@@ -1162,6 +1221,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       `;
 
       if (!session) {
+        await request.auditLog('session_revoke_failed', 'auth_session', id, {
+          reason: 'not_found_or_already_revoked',
+          current: Boolean(request.user.session_id && id === request.user.session_id),
+        });
         return reply.status(404).send({
           success: false,
           error: { code: 'SESSION_NOT_FOUND', message: 'Session not found or already revoked' },
@@ -1192,7 +1255,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       .update(body.refresh_token)
       .digest('hex');
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx): Promise<{
+      status: number;
+      body: Record<string, unknown>;
+      audit?: AuthRouteAuditEvent;
+    }> => {
       const tokenRows = await tx.unsafe(
         `
         SELECT id, user_id, expires_at, revoked, mfa_verified_at
@@ -1211,6 +1278,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       const [token] = tokenRows;
 
       if (!token) {
+        // No audit event here: the raw refresh token does not map to a trusted session.
         return {
           status: 401,
           body: {
@@ -1235,6 +1303,15 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         fastify.log.warn({ userId: token.user_id }, 'Refresh token replay detected - all tokens revoked');
         return {
           status: 401,
+          audit: {
+            action: 'refresh_token_reuse',
+            resourceType: 'auth_session',
+            resourceId: token.id,
+            details: {
+              affected_user_id: token.user_id,
+              all_sessions_revoked: true,
+            },
+          },
           body: {
             success: false,
             error: { code: 'TOKEN_REUSE', message: 'Token reuse detected. All sessions have been revoked.' },
@@ -1255,6 +1332,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         );
         return {
           status: 401,
+          audit: {
+            action: 'refresh_token_expired',
+            resourceType: 'auth_session',
+            resourceId: token.id,
+            details: { affected_user_id: token.user_id },
+          },
           body: {
             success: false,
             error: { code: 'TOKEN_EXPIRED', message: 'Refresh token has expired' },
@@ -1283,6 +1366,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       if (!user) {
         return {
           status: 401,
+          audit: {
+            action: 'refresh_token_user_missing',
+            resourceType: 'auth_session',
+            resourceId: token.id,
+            details: { affected_user_id: token.user_id },
+          },
           body: {
             success: false,
             error: { code: 'USER_NOT_FOUND', message: 'User account not found or disabled' },
@@ -1303,6 +1392,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         );
         return {
           status: 401,
+          audit: {
+            action: 'refresh_token_mfa_required',
+            resourceType: 'auth_session',
+            resourceId: token.id,
+            details: { affected_user_id: token.user_id },
+          },
           body: {
             success: false,
             error: { code: 'MFA_REQUIRED', message: 'MFA verification is required for this session' },
@@ -1375,6 +1470,16 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       return {
         status: 200,
+        audit: {
+          action: 'refresh_token_rotate',
+          resourceType: 'auth_session',
+          resourceId: session?.id,
+          details: {
+            previous_session_id: token.id,
+            mfa_verified: Boolean(user.mfa_enabled && token.mfa_verified_at),
+            provider_resolved: refreshProviderId !== undefined,
+          },
+        },
         body: {
           success: true,
           data: {
@@ -1387,6 +1492,15 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         },
       };
     });
+
+    if (result.audit) {
+      await request.auditLog(
+        result.audit.action,
+        result.audit.resourceType,
+        result.audit.resourceId,
+        result.audit.details,
+      );
+    }
 
     return reply.status(result.status).send(result.body);
   });
@@ -1402,6 +1516,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     async (request, reply) => {
       const exposurePolicy = buildAuthExposurePolicy(config);
       if (!exposurePolicy.publicRegistrationEnabled) {
+        // No audit event here: registration is globally unavailable and no user is selected.
         return reply.status(403).send({
           success: false,
           error: {
@@ -1433,6 +1548,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       if (existing) {
         // Return success to prevent email enumeration
+        // No audit event here: the response intentionally avoids confirming whether the account exists.
         return reply.send({
           success: true,
           data: { message: 'If this email is eligible for access, account instructions have been sent to your inbox.' },
@@ -1445,16 +1561,28 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       // Insert inactive pending user with 'analyst' as default role. Admin
       // activation is required before the account can access PHI.
-      await sql`
+      const [createdUser] = await sql<{ id: string; role: string; is_active: boolean; must_change_password: boolean }[]>`
         INSERT INTO app_users (email, password_hash, first_name, last_name, role, must_change_password, is_active)
         VALUES (${normalizedEmail}, ${passwordHash}, ${firstName.trim()}, ${lastName.trim()}, 'analyst', TRUE, FALSE)
+        RETURNING id, role, is_active, must_change_password
       `;
 
       // Send temp password via Resend API
+      let welcomeEmailSent = false;
       try {
         await sendWelcomeEmail(normalizedEmail, firstName.trim(), tempPassword);
+        welcomeEmailSent = true;
       } catch (err) {
         fastify.log.error({ err, email: normalizedEmail }, 'Failed to send welcome email via Resend');
+      }
+
+      if (createdUser) {
+        await request.auditLog('public_registration_create', 'app_user', createdUser.id, {
+          role: createdUser.role,
+          active: createdUser.is_active,
+          must_change_password: createdUser.must_change_password,
+          welcome_email_sent: welcomeEmailSent,
+        });
       }
 
       return reply.send({
@@ -1499,6 +1627,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       // Verify current password
       const currentValid = await verifyPassword(currentPassword, user.password_hash);
       if (!currentValid) {
+        await request.auditLog('password_change_failed', 'auth', request.user.sub, {
+          reason: 'invalid_current_password',
+        });
         return reply.status(400).send({
           success: false,
           error: { code: 'INVALID_PASSWORD', message: 'Current password is incorrect' },
@@ -1508,6 +1639,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       // Ensure new password is different from current
       const samePassword = await verifyPassword(newPassword, user.password_hash);
       if (samePassword) {
+        await request.auditLog('password_change_failed', 'auth', request.user.sub, {
+          reason: 'same_password',
+        });
         return reply.status(400).send({
           success: false,
           error: { code: 'SAME_PASSWORD', message: 'New password must be different from current password' },
@@ -1669,6 +1803,11 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         WHERE id = ${request.user.sub}::UUID AND is_active = TRUE
         RETURNING preferences
       `;
+
+      await request.auditLog('preferences_update', 'auth_preferences', request.user.sub, {
+        preference_keys: Object.keys(body).sort(),
+        preference_key_count: Object.keys(body).length,
+      });
 
       return reply.send({ success: true, data: updated?.preferences ?? {} });
     },
