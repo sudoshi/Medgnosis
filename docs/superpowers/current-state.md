@@ -20,6 +20,9 @@ devlogs do not override the current codebase state.
 - [EHR sync alerts and stale-data incident runbook](runbooks/ehr-sync-alerts-stale-data.md) - PHI-safe external alert routing, stale-data triage, and Bulk incident rehearsal checklist.
 - [Role and permission matrix](runbooks/role-permission-matrix.md) - current route-family RBAC expectations and backend regression evidence.
 - [Validation gates runbook](runbooks/validation-gates.md) - current command matrix for local/release validation.
+- [Deployment runbooks](runbooks/deployment-runbooks.md) - normal deploy, rollback, DB migration failure recovery, worker restart, Solr core rebuild, CQL sidecar restart, EHR tenant incident, and Bulk replay command sequences.
+- [Release checklist](runbooks/release-checklist.md) - ordered gate sequence (code gates, migration dry-run, standards validators, E2E, health, public smoke, rollback-readiness).
+- [Environment separation](runbooks/environment-separation.md) - local/demo/staging/production env-file safety, EHR secret-reference strategy, and the no-demo-credentials-in-production rule.
 
 ## Active Implementation Plans
 
@@ -29,6 +32,32 @@ devlogs do not override the current codebase state.
 - [Phase 2 FHIR dQM plan](plans/2026-06-13-phase-2-fhir-dqm.md)
 - [Phase 3 SMART/CDS Hooks/alert burden plan](plans/2026-06-14-phase-3-smart-cdshooks-alertburden.md)
 - [UX/UI improvement plan](plans/2026-06-15-ux-ui-improvement-plan.md)
+
+## Superseded / Historical Plans
+
+These plans are kept for history but are not the active task list. Start from the
+[application completion plan](plans/2026-06-18-medgnosis-application-completion-plan.md)
+instead of reopening them.
+
+- COMPLETED / shipped milestones (do not re-execute): the 2026-06-12 Geisinger
+  CDS parity plan and its phase-1 through phase-8 plans, the 2026-06-12 VSAC
+  value-sets integration plan, the 2026-06-12 clinical-fidelity hardening plan,
+  and the 2026-06-13 phase-0 standards-foundation plan. Their outcomes are
+  reflected in the current README and code; the completion plan tracks any
+  residual work.
+- SUPERSEDED design/UX plans: the 2026-03-12 Docker deployment plan (replaced by
+  the current host-systemd deployment and the
+  [deployment runbooks](runbooks/deployment-runbooks.md)), the 2026-03-12 Solr
+  query-acceleration plan (shipped; operations now live in the
+  [deployment runbooks](runbooks/deployment-runbooks.md) Solr section), the
+  2026-03-13 measure-calculator-v2 plan (superseded by the QDM/CQL bridge track),
+  and the 2026-06-13 shadcn-adoption migration plan. The original
+  [DESIGNLOG](../DESIGNLOG.md) is a historical UI redesign log; its
+  audit-reconciliation section (2026-06-26) marks its findings resolved or
+  superseded.
+- The 2026-06-19 EMPI/HIE connectivity architecture and the 2026-06-20 FHIR/EDW
+  ingestion-expansion plan belong to the **parallel EMPI/identity track**, not the
+  EHR completion track. Keep identity-merge policy decisions on that track.
 
 ## Current Authority Model
 

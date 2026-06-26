@@ -1619,3 +1619,78 @@ interface AuthTokens {
 
 *This document is the authoritative source for the Medgnosis Clinical Obsidian redesign.
 Update the Progress Log and check off todos as implementation proceeds.*
+
+---
+
+## 9. Audit Reconciliation — 2026-06-26
+
+This section reconciles the older design audits in this log (Section 1 "Design
+Audit — Current State", the Phase 11 audit checklist in Section 6, and
+Section 8.11 "What Still Needs Doing") against the current codebase and the
+active completion plan. Original entries above are **annotated, not deleted** —
+this section is the authoritative status overlay as of 2026-06-26.
+
+Scope note: this is a UI/UX redesign log. It predates and is **superseded by**
+the active product completion track for everything outside the SPA visual system.
+For current application state, deployment, EHR/QDM/CQL/DEQM/auth/admin status, and
+the active phased todo list, start at
+[`docs/superpowers/current-state.md`](superpowers/current-state.md) and
+[`docs/superpowers/plans/2026-06-18-medgnosis-application-completion-plan.md`](superpowers/plans/2026-06-18-medgnosis-application-completion-plan.md),
+not this log.
+
+### 9.1 Section 1 "Design Audit — Current State" — RESOLVED (historical)
+
+The Section 1.1–1.4 issue tables describe the **pre-redesign** baseline (raw
+`gray-*` classes, no clinical color hierarchy, no custom typography, no data viz,
+duplicated stat cards, primitive pagination/timeline/gauge). The Progress Log
+(Section 7, Phases 1–18) records these as fixed: the token system, Lexend/Fira
+Code (later Crimson Pro / Source Serif 4 / Source Sans 3 / IBM Plex Mono),
+SVG charts and gauges, extracted shared components, numbered pagination, and the
+timeline spine all landed. **Status: RESOLVED.** Treat Section 1 as a historical
+baseline snapshot, not an open backlog.
+
+### 9.2 Phase 11 audit checklist (Section 6) — RESOLVED, with two superseded items
+
+- 11.1 PatientAvatar, 11.2 RiskGauge, 11.3 RelativeTime util, 11.4 StatsStrip,
+  11.5 numbered Pagination — **RESOLVED.** Section 7 "Phase 11 ✓" records the
+  extractions (`PatientAvatar.tsx`, `Pagination.tsx`, `utils/time.ts`); RiskGauge
+  is realized as the inline ArcGauge SVG used across Patient/Measures/Bundles.
+- 11.6 remove remaining raw `gray-*` classes — **RESOLVED.** A 2026-06-26 sweep
+  of `apps/web/src` found 0 files using `(bg|text|border)-gray-[0-9]` utilities.
+- 11.7 remove `dark:*` conditional classes — **SUPERSEDED.** The original
+  dark-only intent was deliberately reversed by the
+  [2026-06-13 light-mode/UX-density plan](superpowers/plans/2026-06-13-light-mode-ux-density.md),
+  which introduced a light theme on top of the channel-format RGB token system.
+  Two `apps/web/src` files still reference `dark:` by current design, not as
+  legacy debt. Do not "finish" 11.7 by stripping `dark:`.
+- 11.8 replace `text-light-*` / `text-dark-*` legacy tokens — **RESOLVED** for the
+  named NotFoundPage tokens (Section 7 "Phase 11 ✓"); any remaining work is folded
+  into the active UX plans, not this checklist.
+- 11.9–11.12 viewport, hover-expand, tabular-nums, focus-ring checks — **STILL
+  OPEN as manual QA**, now owned by
+  [2026-06-15 UX/UI improvement plan](superpowers/plans/2026-06-15-ux-ui-improvement-plan.md)
+  rather than this log.
+- 11.13 `prefers-reduced-motion` audit — **RESOLVED at the system level.**
+  `apps/web/src/styles/globals.css` includes a reduced-motion media query;
+  per-component verification remains part of the UX plan QA, not a blocker here.
+- 11.14 update `docs/DEVLOG.md` — **RESOLVED.** Design-system notes live in this
+  log and the DEVLOG; ongoing notes now flow through the superpowers devlogs.
+
+### 9.3 Section 8.11 "What Still Needs Doing" — SUPERSEDED
+
+The "Phase 11 — What Still Needs Doing" list (legacy-class sweeps, shared-component
+extraction, accessibility passes) is **SUPERSEDED** by the active UX plans and the
+Phase 7 "Frontend Product And Operator UX Completion" section of the completion
+plan. The legacy-class sweeps are effectively complete (9.1, 9.2); residual
+accessibility/QA items are tracked in the UX plans. Do not reopen 8.11 as an
+independent task list.
+
+### 9.4 Net status
+
+- Visual redesign (Phases 1–18) and shared-component extraction (Phase 11):
+  **RESOLVED.**
+- Dark-only assumption: **SUPERSEDED** by light-mode theming.
+- Residual viewport/focus/tabular-nums/accessibility QA: **STILL OPEN**, owned by
+  the active UX plans, not this log.
+- Everything non-visual (app/data/EHR/QDM/CQL/DEQM/auth/admin/deployment):
+  out of scope here — see the current-state index.
