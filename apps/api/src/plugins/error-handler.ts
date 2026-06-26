@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyError } from 'fastify';
 import fp from 'fastify-plugin';
+import { captureException } from '../observability/sentry.js';
 
 async function errorHandlerPlugin(fastify: FastifyInstance): Promise<void> {
   fastify.setErrorHandler((error: FastifyError, request, reply) => {
@@ -13,6 +14,12 @@ async function errorHandlerPlugin(fastify: FastifyInstance): Promise<void> {
     // Log server errors at error level; client errors at warn
     if (statusCode >= 500) {
       request.log.error({ err: error }, 'Server error');
+      captureException(error, {
+        requestId: request.id,
+        method: request.method,
+        route: request.routeOptions.url ?? request.url,
+        statusCode,
+      });
     } else {
       request.log.warn({ err: error }, 'Client error');
     }

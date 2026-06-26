@@ -2,8 +2,17 @@
 // Unit tests — Error handler plugin
 // =============================================================================
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+
+const { mockCaptureException } = vi.hoisted(() => ({
+  mockCaptureException: vi.fn(),
+}));
+
+vi.mock('../../observability/sentry.js', () => ({
+  captureException: mockCaptureException,
+}));
+
 import errorHandlerPlugin from '../error-handler.js';
 
 let app: FastifyInstance;
@@ -45,6 +54,10 @@ afterAll(async () => {
   await app.close();
 });
 
+beforeEach(() => {
+  mockCaptureException.mockClear();
+});
+
 describe('error handler plugin', () => {
   // -------------------------------------------------------------------------
   // 500 errors
@@ -67,6 +80,18 @@ describe('error handler plugin', () => {
       const response = await app.inject({ method: 'GET', url: '/throw-500' });
       const body = response.json();
       expect(body.error.code).toBeDefined();
+    });
+
+    it('captures server errors for Sentry with safe request context', async () => {
+      await app.inject({ method: 'GET', url: '/throw-500' });
+
+      expect(mockCaptureException).toHaveBeenCalledTimes(1);
+      expect(mockCaptureException).toHaveBeenCalledWith(expect.any(Error), {
+        requestId: expect.any(String),
+        method: 'GET',
+        route: '/throw-500',
+        statusCode: 500,
+      });
     });
   });
 
@@ -100,6 +125,12 @@ describe('error handler plugin', () => {
       expect(body.success).toBe(false);
       expect(body.error.code).toBe('FST_ERR_VALIDATION');
       expect(body.error.message).toBe('Validation failed');
+    });
+
+    it('does not capture expected client errors for Sentry', async () => {
+      await app.inject({ method: 'GET', url: '/throw-400' });
+
+      expect(mockCaptureException).not.toHaveBeenCalled();
     });
   });
 

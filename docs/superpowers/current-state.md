@@ -118,6 +118,11 @@ devlogs do not override the current codebase state.
   transitions. Audit details record tenant/org/vendor, action flags, ids,
   statuses, and aggregate counts only; they do not store secrets, tokens, raw
   FHIR/NDJSON payloads, patient identifiers, group identifiers, or engine URLs.
+- Follow-up continuation added API PHI redaction hardening for production Pino
+  structured logs and Sentry error telemetry. Shared redaction configuration now
+  covers common auth/secrets/patient identifiers, request query/params/body
+  fields, settings secrets, and server-error message/stack paths, while Sentry
+  `beforeSend` and captured exception context are sanitized before delivery.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

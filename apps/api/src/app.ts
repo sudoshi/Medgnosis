@@ -17,8 +17,12 @@ import errorHandlerPlugin from './plugins/error-handler.js';
 import websocketPlugin from './plugins/websocket.js';
 import solrPlugin from './plugins/solr.js';
 import { registerRoutes } from './routes/index.js';
+import { logRedactionOptions } from './observability/redaction.js';
+import { initSentry } from './observability/sentry.js';
 
 export async function buildApp() {
+  initSentry({ dsn: config.sentryDsn, environment: config.nodeEnv });
+
   const fastify = Fastify({
     logger: {
       level: config.isDev ? 'debug' : 'info',
@@ -32,19 +36,7 @@ export async function buildApp() {
           }
         : {
             // Production: redact PHI fields from structured logs
-            redact: {
-              paths: [
-                'req.headers.authorization',
-                'req.headers.cookie',
-                'req.body.password',
-                'req.body.access_token',
-                'req.body.refresh_token',
-                'req.body.email',
-                'req.body.ssn',
-                'req.body.phone',
-              ],
-              censor: '[Redacted]',
-            },
+            redact: logRedactionOptions,
           }),
     },
     // Trust X-Forwarded-For in production (behind load balancer)

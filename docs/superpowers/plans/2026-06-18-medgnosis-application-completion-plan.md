@@ -170,7 +170,7 @@ Objective: make authentication and admin controls production-honest.
   - [x] Confirm EHR tenant mutation routes and worker-adjacent EHR controls emit PHI-safe audit rows.
   - [x] Add PHI-safe audit coverage for EHR QDM/CQL load actions and redaction proof for diagnostics/test-connection and patient-level Bulk controls.
   - [x] Add audit entries or coverage proof for auth provider changes.
-  - [ ] Add PHI redaction tests for Pino and Sentry paths.
+  - [x] Add focused API PHI redaction regression tests for Pino structured logging and Sentry error telemetry paths.
 - [ ] Tighten production headers and CSP.
   - [ ] Review `apps/api/src/app.ts` CSP settings.
   - [ ] Add explicit script/connect/img/font policies for production.
@@ -481,8 +481,8 @@ Acceptance gate:
 Objective: close the non-code work required for real clinical/customer use.
 
 - [ ] Complete PHI handling review.
-  - [ ] Logging.
-  - [ ] Sentry.
+  - [x] Logging: API Pino structured logs redact configured PHI/secrets/error paths.
+  - [x] Sentry: API error telemetry uses sanitized `beforeSend` events and sanitized capture context.
   - [ ] AI prompts/responses.
   - [ ] Bulk files.
   - [ ] Export artifacts.
@@ -574,7 +574,7 @@ Recommended second sprint:
 - EHR integration risk: SMART launch can appear complete while still lacking vendor sandbox evidence, configured external alert delivery, access-policy attribution, and tenant-specific EDW/local-matching breadth.
 - Data risk: Bulk Data kickoff/poll/import/scheduling can create a false sense of production readiness until vendor sandbox evidence, incident-tested replay/dead-letter workflows, tombstone behavior, configured external alert delivery, and operator use of the new run-detail surface are proven.
 - Measurement risk: SQL and CQL semantics can diverge; per-measure promotion must stay evidence-gated.
-- Compliance risk: remaining audit, PHI logging, and AI claims must continue to match implemented controls as auth and EHR surfaces expand.
+- Compliance risk: remaining audit-log storage/caller discipline, AI claims, Bulk files, and export artifacts must continue to match implemented controls as auth and EHR surfaces expand.
 - Test risk: current E2E no longer passes with known API proxy errors, but it still needs broader authenticated provider, analyst, super-admin, EHR, and Measure Governance workflows.
 - Documentation risk: stale README/design/phase docs can send future implementation work in the wrong direction.
 

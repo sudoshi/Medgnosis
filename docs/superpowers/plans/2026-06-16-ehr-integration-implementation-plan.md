@@ -903,7 +903,7 @@ Config rules:
   - Legacy interface engine feed
 - [ ] Document token risks and mitigations.
 - [ ] Document launch CSRF/session fixation defenses.
-- [ ] Document PHI logging controls.
+- [x] Document API PHI logging controls for production Pino and Sentry paths.
 
 ### Task 9.2 - Audit logging
 - [ ] Audit every SMART launch.
@@ -1177,7 +1177,7 @@ Rationale:
 ### Compliance readiness
 - [ ] BAA/customer agreement covers PHI flows.
 - [ ] Security review complete.
-- [ ] PHI logging redaction verified.
+- [x] API PHI logging redaction verified for production Pino and Sentry paths.
 - [ ] Audit logging verified.
 - [ ] Data retention configured.
 - [ ] Incident contact path documented.
