@@ -238,4 +238,79 @@ describe('getTenantReadinessEvidence', () => {
       ]),
     );
   });
+
+  it('reports a clean production-hardening policy block for an HTTPS known-vendor tenant', async () => {
+    mockSql.mockResolvedValue([]);
+
+    const evidence = await getTenantReadinessEvidence(tenant);
+
+    expect(evidence.policy).toEqual({
+      isProductionEnvironment: false,
+      httpsRequired: false,
+      insecureEndpointFields: [],
+      transportSecure: true,
+      vendor: 'epic',
+      vendorKnown: true,
+    });
+    expect(evidence.issues.some((issue) => issue.code === 'tenant_endpoint_insecure_transport')).toBe(false);
+    expect(evidence.issues.some((issue) => issue.code === 'tenant_vendor_unsupported')).toBe(false);
+  });
+
+  it('flags non-HTTPS production endpoints and unknown vendors as readiness issues', async () => {
+    mockSql.mockResolvedValue([]);
+
+    const insecureUnknownTenant: EhrTenant = {
+      ...tenant,
+      environment: 'production',
+      vendor: 'athena',
+      fhirBaseUrl: 'http://ehr.example.org/fhir/R4',
+      issuer: 'http://issuer.example.org',
+      audience: 'https://ehr.example.org/fhir/R4',
+    };
+
+    const evidence = await getTenantReadinessEvidence(insecureUnknownTenant);
+
+    expect(evidence.policy).toMatchObject({
+      isProductionEnvironment: true,
+      httpsRequired: true,
+      insecureEndpointFields: ['fhirBaseUrl', 'issuer'],
+      transportSecure: false,
+      vendor: 'athena',
+      vendorKnown: false,
+    });
+
+    const transportIssue = evidence.issues.find((issue) => issue.code === 'tenant_endpoint_insecure_transport');
+    expect(transportIssue).toMatchObject({ severity: 'critical', code: 'tenant_endpoint_insecure_transport' });
+    expect(transportIssue?.message).toContain('fhirBaseUrl');
+
+    const vendorIssue = evidence.issues.find((issue) => issue.code === 'tenant_vendor_unsupported');
+    expect(vendorIssue).toMatchObject({ severity: 'warning', code: 'tenant_vendor_unsupported' });
+    expect(vendorIssue?.message).toContain('athena');
+
+    // Issue shape matches existing readiness issues: { severity, code, message }.
+    for (const issue of evidence.issues) {
+      expect(Object.keys(issue).sort()).toEqual(['code', 'message', 'severity']);
+    }
+  });
+
+  it('permits http://localhost on a sandbox tenant without a transport issue', async () => {
+    mockSql.mockResolvedValue([]);
+
+    const localSandbox: EhrTenant = {
+      ...tenant,
+      environment: 'sandbox',
+      vendor: 'smart_generic',
+      fhirBaseUrl: 'http://localhost:8080/fhir',
+      smartConfigUrl: null,
+      issuer: null,
+      audience: null,
+    };
+
+    const evidence = await getTenantReadinessEvidence(localSandbox);
+
+    expect(evidence.policy.transportSecure).toBe(true);
+    expect(evidence.policy.insecureEndpointFields).toEqual([]);
+    expect(evidence.issues.some((issue) => issue.code === 'tenant_endpoint_insecure_transport')).toBe(false);
+    expect(evidence.policy.vendorKnown).toBe(true);
+  });
 });

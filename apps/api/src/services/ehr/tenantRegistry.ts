@@ -5,6 +5,10 @@
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
+import {
+  evaluateTenantPolicy,
+  type TenantPolicyFinding,
+} from './tenantPolicy.js';
 
 export type EhrVendor = 'epic' | 'oracle_cerner' | 'smart_generic' | 'hapi' | 'other';
 export type EhrEnvironment = 'sandbox' | 'staging' | 'production';
@@ -55,6 +59,42 @@ export interface CreateEhrTenantInput {
 
 export interface UpsertEhrTenantInput extends CreateEhrTenantInput {
   id?: number;
+}
+
+/**
+ * Raised when a tenant create/upsert violates a hard production-hardening
+ * policy (e.g. a non-HTTPS endpoint on a production tenant). Non-critical
+ * findings (e.g. unknown vendor) are NOT thrown here — they are surfaced as
+ * readiness issues so existing generic-SMART tenants keep working.
+ */
+export class EhrTenantPolicyError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly findings: TenantPolicyFinding[];
+
+  constructor(findings: TenantPolicyFinding[]) {
+    const messages = findings.map((finding) => finding.message).join(' ');
+    super(messages || 'EHR tenant violates production-hardening policy');
+    this.name = 'EhrTenantPolicyError';
+    this.code = 'ehr_tenant_policy_violation';
+    this.status = 422;
+    this.findings = findings;
+  }
+}
+
+/**
+ * Reject hard production-hardening violations at registration/upsert. Only
+ * `critical` findings block (transport security); `warning` findings — such as
+ * an unknown vendor — pass through and are surfaced downstream as readiness
+ * issues. Returns the non-blocking findings so callers may log/flag them.
+ */
+export function assertTenantPolicy(input: CreateEhrTenantInput): TenantPolicyFinding[] {
+  const findings = evaluateTenantPolicy(input);
+  const blocking = findings.filter((finding) => finding.severity === 'critical');
+  if (blocking.length > 0) {
+    throw new EhrTenantPolicyError(blocking);
+  }
+  return findings;
 }
 
 export interface ListEhrTenantsFilter {
@@ -261,6 +301,7 @@ export function sanitizeClientRegistration(
 }
 
 export async function createTenant(input: CreateEhrTenantInput): Promise<EhrTenant> {
+  assertTenantPolicy(input);
   const rows = await sql<EhrTenantRow[]>`
     INSERT INTO phm_edw.ehr_tenant
       (org_id, vendor, name, environment, fhir_base_url, smart_config_url, issuer, audience, status)
@@ -283,6 +324,7 @@ export async function createTenant(input: CreateEhrTenantInput): Promise<EhrTena
 }
 
 export async function upsertTenant(input: UpsertEhrTenantInput): Promise<EhrTenant> {
+  assertTenantPolicy(input);
   const existingId = input.id ?? await findTenantId(input.vendor, input.environment, input.fhirBaseUrl);
 
   if (existingId) {

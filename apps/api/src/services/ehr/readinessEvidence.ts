@@ -5,6 +5,13 @@
 
 import { sql } from '@medgnosis/db';
 import { getLatestCapabilitySnapshot, type EhrTenant } from './tenantRegistry.js';
+import {
+  evaluateTenantPolicy,
+  insecureTenantEndpointFields,
+  isKnownEhrVendor,
+  isProductionTenantEnvironment,
+  type TenantEndpointField,
+} from './tenantPolicy.js';
 
 export type EhrReadinessIssueSeverity = 'info' | 'warning' | 'critical';
 
@@ -99,6 +106,20 @@ export interface EhrReadinessIssue {
   message: string;
 }
 
+/**
+ * Production-hardening posture evidence: HTTPS-only transport on production
+ * tenants and known-vendor/adapter enforcement. Additive evidence block — the
+ * derived issues are also folded into `issues`.
+ */
+export interface EhrTenantPolicyEvidence {
+  isProductionEnvironment: boolean;
+  httpsRequired: boolean;
+  insecureEndpointFields: TenantEndpointField[];
+  transportSecure: boolean;
+  vendor: string;
+  vendorKnown: boolean;
+}
+
 export interface EhrTenantReadinessEvidence {
   ehrTenantId: number;
   generatedAt: string;
@@ -107,6 +128,7 @@ export interface EhrTenantReadinessEvidence {
   backendServices: EhrBackendServicesEvidence;
   launch: EhrLaunchEvidence;
   bulkDiagnostics: EhrBulkDiagnosticEvidence;
+  policy: EhrTenantPolicyEvidence;
   issues: EhrReadinessIssue[];
 }
 
@@ -192,7 +214,8 @@ export async function getTenantReadinessEvidence(tenant: EhrTenant): Promise<Ehr
   const backendServices = buildBackendServicesEvidence(backendRows, tokenRows[0], discovery);
   const launch = buildLaunchEvidence(sessionRows[0], auditRows[0]);
   const bulkDiagnostics = buildBulkDiagnosticEvidence(bulkJobRows[0], bulkScheduleRows[0], backendServices, capability);
-  const issues = buildReadinessIssues(discovery, capability, backendServices, launch, bulkDiagnostics);
+  const policy = buildTenantPolicyEvidence(tenant);
+  const issues = buildReadinessIssues(discovery, capability, backendServices, launch, bulkDiagnostics, tenant);
 
   return {
     ehrTenantId: tenant.id,
@@ -202,7 +225,21 @@ export async function getTenantReadinessEvidence(tenant: EhrTenant): Promise<Ehr
     backendServices,
     launch,
     bulkDiagnostics,
+    policy,
     issues,
+  };
+}
+
+function buildTenantPolicyEvidence(tenant: EhrTenant): EhrTenantPolicyEvidence {
+  const httpsRequired = isProductionTenantEnvironment(tenant.environment);
+  const insecureEndpointFields = insecureTenantEndpointFields(tenant);
+  return {
+    isProductionEnvironment: httpsRequired,
+    httpsRequired,
+    insecureEndpointFields,
+    transportSecure: insecureEndpointFields.length === 0,
+    vendor: tenant.vendor,
+    vendorKnown: isKnownEhrVendor(tenant.vendor),
   };
 }
 
@@ -560,8 +597,12 @@ function buildReadinessIssues(
   backend: EhrBackendServicesEvidence,
   launch: EhrLaunchEvidence,
   bulk: EhrBulkDiagnosticEvidence,
+  tenant: EhrTenant,
 ): EhrReadinessIssue[] {
   const issues: EhrReadinessIssue[] = discovery.drift.map((issue) => ({ ...issue }));
+  for (const finding of evaluateTenantPolicy(tenant)) {
+    issues.push({ severity: finding.severity, code: finding.code, message: finding.message });
+  }
   if (capability.missingRequiredBulkResourceTypes.length > 0) {
     issues.push({
       severity: 'warning',

@@ -13,7 +13,9 @@ const { mockSql } = vi.hoisted(() => {
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 
 import {
+  assertTenantPolicy,
   createTenant,
+  EhrTenantPolicyError,
   getTenant,
   listTenants,
   sanitizeClientRegistration,
@@ -309,5 +311,92 @@ describe('saveCapabilitySnapshot', () => {
     expect(values).toContainEqual({ issuer: 'https://issuer.example.test' });
     expect(values).toContainEqual({ resourceType: 'CapabilityStatement', status: 'active' });
     expect(values).toContainEqual({ Patient: { read: true, search: true } });
+  });
+});
+
+describe('production-hardening policy enforcement', () => {
+  it('rejects a non-HTTPS production tenant at createTenant before any DB write', async () => {
+    await expect(
+      createTenant({
+        vendor: 'epic',
+        name: 'Insecure Prod',
+        environment: 'production',
+        fhirBaseUrl: 'http://ehr.example.org/fhir/R4',
+      }),
+    ).rejects.toBeInstanceOf(EhrTenantPolicyError);
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-HTTPS production tenant at upsertTenant with a typed 422 error', async () => {
+    let captured: EhrTenantPolicyError | null = null;
+    try {
+      await upsertTenant({
+        vendor: 'epic',
+        name: 'Insecure Prod',
+        environment: 'production',
+        fhirBaseUrl: 'http://ehr.example.org/fhir/R4',
+        issuer: 'http://issuer.example.org',
+      });
+    } catch (error) {
+      captured = error as EhrTenantPolicyError;
+    }
+    expect(captured).toBeInstanceOf(EhrTenantPolicyError);
+    expect(captured?.status).toBe(422);
+    expect(captured?.code).toBe('ehr_tenant_policy_violation');
+    expect(captured?.findings[0]?.message).toContain('fhirBaseUrl');
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('permits an http://localhost FHIR base for a sandbox tenant', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        ...tenantRow,
+        environment: 'sandbox',
+        vendor: 'smart_generic',
+        fhir_base_url: 'http://localhost:8080/fhir',
+      },
+    ]);
+
+    const tenant = await createTenant({
+      vendor: 'smart_generic',
+      name: 'Local Sandbox',
+      environment: 'sandbox',
+      fhirBaseUrl: 'http://localhost:8080/fhir',
+    });
+
+    expect(tenant.environment).toBe('sandbox');
+    expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits a known/generic-SMART production tenant and surfaces no blocking findings', async () => {
+    mockSql.mockResolvedValueOnce([{ ...tenantRow, environment: 'production', vendor: 'smart_generic' }]);
+
+    const findings = assertTenantPolicy({
+      vendor: 'smart_generic',
+      name: 'Generic Prod',
+      environment: 'production',
+      fhirBaseUrl: 'https://ehr.example.org/fhir/R4',
+    });
+    expect(findings).toEqual([]);
+
+    await expect(
+      createTenant({
+        vendor: 'smart_generic',
+        name: 'Generic Prod',
+        environment: 'production',
+        fhirBaseUrl: 'https://ehr.example.org/fhir/R4',
+      }),
+    ).resolves.toMatchObject({ vendor: 'smart_generic', environment: 'production' });
+  });
+
+  it('does not block an unknown vendor (warning-only) — returns the non-blocking finding', () => {
+    const findings = assertTenantPolicy({
+      vendor: 'athena',
+      name: 'Unknown Vendor',
+      environment: 'production',
+      fhirBaseUrl: 'https://ehr.example.org/fhir/R4',
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: 'warning', code: 'tenant_vendor_unsupported' });
   });
 });
