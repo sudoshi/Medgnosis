@@ -105,6 +105,18 @@ export default async function insightsRoutes(fastify: FastifyInstance): Promise<
         temperature: 0.3,
       });
 
+      // PHI egress to an LLM is audit-worthy on its own (the app already audits
+      // read-only PHI views, e.g. GET /patients/:id). Record the access with
+      // bound/aggregate flags only — never the message, prompt, or response text.
+      await request.auditLog('ai_chat', 'ai_insight', undefined, {
+        patient_bound: body.patient_id !== undefined,
+        history_turns: trimmedHistory.length,
+        provider: result.provider,
+        model: result.modelId,
+        input_tokens: result.inputTokens,
+        output_tokens: result.outputTokens,
+      });
+
       return reply.send({
         success: true,
         data: {
@@ -229,6 +241,20 @@ Keep it concise and actionable. Use clinical language appropriate for a physicia
         const result = await generateCompletion(prompt, {
           maxTokens: 512,
           temperature: 0.4,
+        });
+
+        // Aggregate panel PHI is summarized into the LLM prompt — audit the
+        // access with counts and scope flags only, never patient identifiers
+        // or the generated briefing text.
+        await request.auditLog('ai_morning_briefing', 'ai_insight', undefined, {
+          provider_scoped: scoped,
+          high_risk_count: patients.length,
+          schedule_count: scheduleCount,
+          critical_alerts: criticalAlerts,
+          provider: result.provider,
+          model: result.modelId,
+          input_tokens: result.inputTokens,
+          output_tokens: result.outputTokens,
         });
 
         return reply.send({

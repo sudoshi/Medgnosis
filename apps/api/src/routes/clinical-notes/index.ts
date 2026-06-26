@@ -436,6 +436,21 @@ Do NOT include any text outside the JSON object.`;
         parsedSections = { [sections[0]]: `<p>${result.text}</p>` };
       }
 
+      // AI Scribe sends the patient's clinical context to an LLM and returns
+      // generated note text. Audit the PHI-bearing AI invocation with bound
+      // flags + non-PHI section keys only — never the prompt, context, or
+      // generated section content.
+      await request.auditLog('ai_scribe', 'clinical_note', undefined, {
+        patient_bound: true,
+        visit_type,
+        sections,
+        existing_content_present: existingCtx.length > 0,
+        provider: result.provider,
+        model: result.modelId,
+        input_tokens: result.inputTokens,
+        output_tokens: result.outputTokens,
+      });
+
       return reply.send({
         success: true,
         data: {

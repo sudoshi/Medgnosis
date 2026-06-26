@@ -14,6 +14,7 @@ vi.mock('../../services/patientContext.js', () => ({ getPatientClinicalContext: 
 import clinicalNoteRoutes from './index.js';
 import type { JwtPayload } from '../../plugins/auth.js';
 import { getPatientClinicalContext } from '../../services/patientContext.js';
+import { generateCompletion } from '../../services/llmClient.js';
 
 const PROVIDER_USER: JwtPayload = {
   sub: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -38,6 +39,7 @@ beforeEach(() => {
   mockAuditLog.mockReset();
   mockSql.mockReset();
   vi.mocked(getPatientClinicalContext).mockReset();
+  vi.mocked(generateCompletion).mockReset();
 });
 
 describe('clinical note authorization and authorship', () => {
@@ -142,6 +144,65 @@ describe('clinical note authorization and authorship', () => {
 
     expect(res.statusCode).toBe(403);
     expect(getPatientClinicalContext).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('audits AI Scribe PHI access with section keys + token counts, never note content', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM app_users')) {
+        return Promise.resolve([{ ai_consent_given_at: new Date().toISOString() }]);
+      }
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      return Promise.resolve([]);
+    });
+    vi.mocked(getPatientClinicalContext).mockResolvedValue({
+      conditions: 'CKD SECRET-PHI',
+      medications: 'lisinopril',
+      vitals: 'BP 130/80',
+      allergies: 'NKDA',
+      careGaps: 'A1c overdue',
+      encounters: 'office visit',
+    } as never);
+    vi.mocked(generateCompletion).mockResolvedValue({
+      text: JSON.stringify({ assessment: 'generated note body' }),
+      inputTokens: 300,
+      outputTokens: 150,
+      modelId: 'test-model',
+      provider: 'ollama',
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/scribe',
+      payload: {
+        patient_id: 42,
+        visit_type: 'followup',
+        sections: ['assessment'],
+        chief_complaint: 'fatigue SECRET-PHI',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ai_scribe',
+      'clinical_note',
+      undefined,
+      expect.objectContaining({
+        patient_bound: true,
+        visit_type: 'followup',
+        sections: ['assessment'],
+        provider: 'ollama',
+        model: 'test-model',
+        input_tokens: 300,
+        output_tokens: 150,
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('SECRET-PHI');
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('generated note body');
     await app.close();
   });
 
