@@ -9,6 +9,13 @@ import { config } from '../config.js';
 import { connection } from './rules-engine.js';
 import { generateCompletion, computeCostCents } from '../services/llmClient.js';
 import { computeRiskScore, persistRiskScore } from '../services/riskScoring.js';
+import {
+  buildPopulationSummary,
+  POPULATION_SUMMARY_INSIGHT_TYPE,
+  POPULATION_SCOPE_PATIENT_ID,
+  type PopulationSummaryScope,
+  type SqlTag,
+} from '../services/populationSummary.js';
 
 export const AI_INSIGHTS_QUEUE_NAME = 'medgnosis-ai-insights';
 
@@ -30,6 +37,9 @@ export type InsightJobType =
 export interface InsightJobData {
   patientId: string;
   type: InsightJobType;
+  // Population-level scope for 'population_summary' jobs. Ignored by the
+  // patient-scoped job types. When absent the summary covers the whole panel.
+  scope?: PopulationSummaryScope;
 }
 
 async function processInsightJob(job: { data: InsightJobData }): Promise<void> {
@@ -38,6 +48,13 @@ async function processInsightJob(job: { data: InsightJobData }): Promise<void> {
   if (type === 'risk_stratification') {
     const result = await computeRiskScore(patientId);
     await persistRiskScore(patientId, result);
+    return;
+  }
+
+  // Deterministic, PHI-safe population aggregate. Runs UNCONDITIONALLY — it does
+  // not call an LLM, so it must not be gated behind the BAA/provider checks below.
+  if (type === 'population_summary') {
+    await runPopulationSummary(job.data);
     return;
   }
 
@@ -70,6 +87,37 @@ Respond with JSON: { "priority_actions": [...], "summary": "..." }`;
       VALUES (${patientId}::int, 'care_recommendation', ${result.text}, ${result.modelId}, ${result.provider}, ${result.inputTokens}, ${result.outputTokens}, ${cost})
     `;
   }
+}
+
+/**
+ * Compute and persist a deterministic population summary for the job's scope.
+ * Exported for unit testing; the live worker calls it via processInsightJob.
+ */
+export async function runPopulationSummary(data: InsightJobData): Promise<void> {
+  const summary = await buildPopulationSummary(data.scope ?? {}, {
+    sql: sql as unknown as SqlTag,
+  });
+  await persistPopulationSummary(summary);
+}
+
+async function persistPopulationSummary(
+  summary: Awaited<ReturnType<typeof buildPopulationSummary>>,
+): Promise<void> {
+  // Population summaries are aggregate (non-PHI) and require no LLM, so they
+  // persist as a local-provider row keyed on the population sentinel patient_id.
+  await sql`
+    INSERT INTO ai_insights (patient_id, insight_type, content, model_id, provider, input_tokens, output_tokens, cost_cents)
+    VALUES (
+      ${POPULATION_SCOPE_PATIENT_ID}::int,
+      ${POPULATION_SUMMARY_INSIGHT_TYPE},
+      ${JSON.stringify(summary)},
+      'deterministic-aggregate',
+      'ollama',
+      0,
+      0,
+      0
+    )
+  `;
 }
 
 export function startAiInsightsWorker(): Worker<InsightJobData> {
