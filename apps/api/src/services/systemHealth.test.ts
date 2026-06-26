@@ -40,12 +40,15 @@ vi.mock('./auth/providerHealth.js', () => ({
 import {
   getAuthHealth,
   getEhrBulkReadiness,
+  getStandardsReadiness,
   getWorkerQueueHealth,
 } from './systemHealth.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env['EHR_BULK_IMPORT_QUEUE_ENABLED'];
+  delete process.env['CQL_ENGINE_URL'];
+  process.env['VALIDATOR_JAR'] = 'package.json';
   mockConfig.localAuthEnabled = true;
   mockGetOidcProviderConfig.mockResolvedValue({ enabled: false });
   mockListAuthProviderHealth.mockResolvedValue([
@@ -68,6 +71,60 @@ beforeEach(() => {
       issues: [],
     },
   ]);
+});
+
+describe('getStandardsReadiness', () => {
+  it('reports local CQL, FHIR, and DEQM validation readiness artifacts', async () => {
+    const readiness = await getStandardsReadiness();
+
+    expect(readiness).toMatchObject({
+      status: 'ok',
+      issues: [],
+    });
+    expect(readiness.checks).toEqual([
+      expect.objectContaining({
+        key: 'cql',
+        label: 'CQL Engine',
+        status: 'disabled',
+        runtime_configured: false,
+        artifacts: expect.objectContaining({ present: 4, total: 4, missing: [] }),
+      }),
+      expect.objectContaining({
+        key: 'fhir',
+        label: 'FHIR US Core / QI-Core',
+        status: 'ok',
+        runtime_configured: true,
+        artifacts: expect.objectContaining({ present: 5, total: 5, missing: [] }),
+      }),
+      expect.objectContaining({
+        key: 'deqm',
+        label: 'Da Vinci DEQM',
+        status: 'ok',
+        runtime_configured: true,
+        artifacts: expect.objectContaining({ present: 3, total: 3, missing: [] }),
+      }),
+    ]);
+  });
+
+  it('degrades FHIR and DEQM readiness when the configured validator jar is missing', async () => {
+    process.env['VALIDATOR_JAR'] = '/tmp/medgnosis-missing-validator.jar';
+
+    const readiness = await getStandardsReadiness();
+
+    expect(readiness.status).toBe('degraded');
+    expect(readiness.checks.find((check) => check.key === 'fhir')).toMatchObject({
+      status: 'degraded',
+      artifacts: { missing: ['/tmp/medgnosis-missing-validator.jar'] },
+    });
+    expect(readiness.checks.find((check) => check.key === 'deqm')).toMatchObject({
+      status: 'degraded',
+      artifacts: { missing: ['/tmp/medgnosis-missing-validator.jar'] },
+    });
+    expect(readiness.issues).toEqual([
+      'FHIR US Core / QI-Core missing /tmp/medgnosis-missing-validator.jar',
+      'Da Vinci DEQM missing /tmp/medgnosis-missing-validator.jar',
+    ]);
+  });
 });
 
 describe('getWorkerQueueHealth', () => {

@@ -278,6 +278,39 @@ function systemHealthPayload() {
       last_critical_issue_count: 1,
       last_warning_issue_count: 2,
     },
+    standards: {
+      status: 'ok',
+      checks: [
+        {
+          key: 'cql',
+          label: 'CQL Engine',
+          status: 'disabled',
+          runtime_configured: false,
+          detail: 'Smoke assets present; optional sidecar runtime URL is not configured',
+          commands: ['bash scripts/cql-engine-smoke.sh'],
+          artifacts: { present: 4, total: 4, missing: [] },
+        },
+        {
+          key: 'fhir',
+          label: 'FHIR US Core / QI-Core',
+          status: 'ok',
+          runtime_configured: true,
+          detail: 'FHIR validator and golden fixtures are available',
+          commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/fhir-validate.sh'],
+          artifacts: { present: 5, total: 5, missing: [] },
+        },
+        {
+          key: 'deqm',
+          label: 'Da Vinci DEQM',
+          status: 'ok',
+          runtime_configured: true,
+          detail: 'DEQM validator and Gaps-in-Care fixture are available',
+          commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/deqm-validate.sh'],
+          artifacts: { present: 3, total: 3, missing: [] },
+        },
+      ],
+      issues: [],
+    },
     duration_ms: 12,
   };
 }
@@ -304,6 +337,14 @@ describe('admin system health route', () => {
           tenants: { ready_for_bulk: 1 },
           schedules: { enabled: 1 },
           bulk_jobs: { completed_24h: 3 },
+        },
+        standards: {
+          status: 'ok',
+          checks: [
+            { key: 'cql', status: 'disabled' },
+            { key: 'fhir', status: 'ok' },
+            { key: 'deqm', status: 'ok' },
+          ],
         },
       },
     });

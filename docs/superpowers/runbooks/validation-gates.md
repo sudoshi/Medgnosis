@@ -59,6 +59,12 @@ npm run db:migrate:list
 
 ## Standards Validation
 
+The admin System Health tab includes a Standards Readiness section that reports
+whether the CQL smoke assets, FHIR validation assets, and DEQM validation assets
+are present/configured. Use the commands below for the actual release gate;
+System Health intentionally does not run these expensive validators on every
+poll.
+
 FHIR fixtures:
 
 ```bash
@@ -203,6 +209,7 @@ Before a release or handoff, record:
 - [ ] `npm run db:migrate:dry-run` with explicit env
 - [ ] `./scripts/fhir-validate.sh`
 - [ ] `./scripts/deqm-validate.sh`
+- [ ] Admin System Health shows Standards Readiness for CQL/FHIR/DEQM assets.
 - [ ] `npm run test:e2e --workspace=apps/web`
 - [ ] Local `/health`
 - [ ] Public `/health`

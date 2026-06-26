@@ -134,6 +134,39 @@ const health: SystemHealth = {
     last_critical_issue_count: 1,
     last_warning_issue_count: 2,
   },
+  standards: {
+    status: 'ok',
+    checks: [
+      {
+        key: 'cql',
+        label: 'CQL Engine',
+        status: 'disabled',
+        runtime_configured: false,
+        detail: 'Smoke assets present; optional sidecar runtime URL is not configured',
+        commands: ['bash scripts/cql-engine-smoke.sh'],
+        artifacts: { present: 4, total: 4, missing: [] },
+      },
+      {
+        key: 'fhir',
+        label: 'FHIR US Core / QI-Core',
+        status: 'ok',
+        runtime_configured: true,
+        detail: 'FHIR validator and golden fixtures are available',
+        commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/fhir-validate.sh'],
+        artifacts: { present: 5, total: 5, missing: [] },
+      },
+      {
+        key: 'deqm',
+        label: 'Da Vinci DEQM',
+        status: 'ok',
+        runtime_configured: true,
+        detail: 'DEQM validator and Gaps-in-Care fixture are available',
+        commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/deqm-validate.sh'],
+        artifacts: { present: 3, total: 3, missing: [] },
+      },
+    ],
+    issues: [],
+  },
   duration_ms: 12,
 };
 
@@ -172,6 +205,13 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('1/1 active tenants ready')).toBeInTheDocument();
     expect(screen.getByText('2 enabled / 0 due')).toBeInTheDocument();
     expect(screen.getByText('3 active / 0 failed')).toBeInTheDocument();
+    expect(screen.getByText('Standards Readiness')).toBeInTheDocument();
+    expect(screen.getByText('2/3 checks ready')).toBeInTheDocument();
+    expect(screen.getByText('CQL Engine')).toBeInTheDocument();
+    expect(screen.getByText('FHIR US Core / QI-Core')).toBeInTheDocument();
+    expect(screen.getByText('Da Vinci DEQM')).toBeInTheDocument();
+    expect(screen.getByText('Artifacts 4/4 / runtime optional')).toBeInTheDocument();
+    expect(screen.getByText('VALIDATOR_JAR=validator_cli.jar ./scripts/fhir-validate.sh')).toBeInTheDocument();
     expect(screen.getByText('EHR Sync Alerts')).toBeInTheDocument();
     expect(screen.getByText('ops.example')).toBeInTheDocument();
     expect(screen.getByText('Authentication Providers')).toBeInTheDocument();

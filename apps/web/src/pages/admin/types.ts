@@ -96,6 +96,23 @@ export interface SystemHealth {
     last_warning_issue_count: number | null;
     error?: string;
   };
+  standards: {
+    status: string;
+    checks: Array<{
+      key: 'cql' | 'fhir' | 'deqm';
+      label: string;
+      status: string;
+      runtime_configured: boolean;
+      detail: string;
+      commands: string[];
+      artifacts: {
+        present: number;
+        total: number;
+        missing: string[];
+      };
+    }>;
+    issues: string[];
+  };
   duration_ms: number;
 }
 

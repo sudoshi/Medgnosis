@@ -175,6 +175,12 @@ devlogs do not override the current codebase state.
   non-admin Admin nav suppression and `/admin` redirect, normal-admin operations
   without the super-admin-only Auth Providers tab, and super-admin Auth
   Providers visibility.
+- Follow-up continuation extended System Health with a Standards Readiness
+  section for CQL, FHIR, and DEQM. The API reports CQL smoke-asset presence and
+  optional runtime URL configuration, FHIR US Core/QI-Core validator script plus
+  fixture availability, and Da Vinci DEQM validator script plus Gaps-in-Care
+  fixture availability; the admin tab renders the readiness rows and operator
+  validation commands without running expensive validators on every health poll.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password
@@ -239,5 +245,5 @@ devlogs do not override the current codebase state.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
 6. Run official Cypress CVU+ and QPP sandbox validation once the external validator/runtime and credentials are available.
-7. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
+7. Extend the remaining System Health visibility with scheduler last-run, Redis pub/sub, Solr core detail, and deeper FHIR tenant readiness.
 8. Broaden role-based E2E into write-path and incident-path workflows for EHR, Measure Governance, alerts, and clinical worklists.

@@ -241,6 +241,54 @@ export function SystemHealthTab() {
 
             <div className="surface p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-bright">Standards Readiness</h3>
+                  <p className="mt-0.5 text-xs text-ghost">
+                    {health.standards.checks.filter((check) => check.status === 'ok').length}/{health.standards.checks.length} checks ready
+                  </p>
+                </div>
+                <StatusPill status={health.standards.status} />
+              </div>
+              <div className="divide-y divide-edge/20">
+                {health.standards.checks.map((check) => (
+                  <div key={check.key} className="py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-bright">{check.label}</p>
+                        <p className="truncate text-xs text-ghost">{check.detail}</p>
+                      </div>
+                      <StatusPill status={check.status} />
+                    </div>
+                    <div className="mt-2 grid gap-2 text-xs">
+                      <p className="font-data text-dim">
+                        Artifacts {check.artifacts.present}/{check.artifacts.total}
+                        {check.runtime_configured ? ' / runtime configured' : ' / runtime optional'}
+                      </p>
+                      <p className="truncate font-data text-ghost">{check.commands[0] ?? 'No command registered'}</p>
+                    </div>
+                    {check.artifacts.missing.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {check.artifacts.missing.slice(0, 2).map((artifact) => (
+                          <p key={artifact} className="truncate text-xs text-amber">Missing {artifact}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {health.standards.issues.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {health.standards.issues.slice(0, 3).map((issue) => (
+                    <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-bright">EHR Sync Alerts</h3>
                   <p className="mt-0.5 truncate text-xs text-ghost">

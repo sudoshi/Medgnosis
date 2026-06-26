@@ -5,6 +5,10 @@
 
 import { Queue, type JobType } from 'bullmq';
 import { Redis } from 'ioredis';
+import { constants } from 'node:fs';
+import { access } from 'node:fs/promises';
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sql } from '@medgnosis/db';
 import { config } from '../config.js';
 import { getSolrClient, isSolrAvailable } from '../plugins/solr.js';
@@ -26,6 +30,7 @@ export interface SystemHealth {
   workers: WorkerQueueHealth;
   ehr_bulk: EhrBulkReadiness;
   ehr_sync_alerts: EhrSyncAlertingStatus;
+  standards: StandardsReadiness;
   duration_ms: number;
 }
 
@@ -89,6 +94,26 @@ export interface AuthHealth {
   error?: string;
 }
 
+export interface StandardsReadiness {
+  status: HealthStatus;
+  checks: StandardsReadinessCheck[];
+  issues: string[];
+}
+
+export interface StandardsReadinessCheck {
+  key: 'cql' | 'fhir' | 'deqm';
+  label: string;
+  status: HealthStatus;
+  runtime_configured: boolean;
+  detail: string;
+  commands: string[];
+  artifacts: {
+    present: number;
+    total: number;
+    missing: string[];
+  };
+}
+
 export interface QueueDefinition {
   name: string;
   label: string;
@@ -141,9 +166,16 @@ const HEALTH_QUEUE_DEFINITIONS: QueueDefinition[] = [
   { name: 'medgnosis-nightly', label: 'Nightly scheduler', role: 'scheduler', repeatable: true },
 ];
 
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT_CANDIDATES = Array.from(new Set([
+  process.cwd(),
+  resolve(process.cwd(), '../..'),
+  resolve(MODULE_DIR, '../../../..'),
+]));
+
 export async function getSystemHealth(): Promise<SystemHealth> {
   const startedAt = Date.now();
-  const [database, redis, solr, auth, workers, ehrBulk, ehrSyncAlerts] = await Promise.all([
+  const [database, redis, solr, auth, workers, ehrBulk, ehrSyncAlerts, standards] = await Promise.all([
     getDatabaseHealth(),
     getRedisHealth(),
     getSolrHealth(),
@@ -151,6 +183,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     getWorkerQueueHealth(),
     getEhrBulkReadiness(),
     getEhrSyncAlertingStatus(),
+    getStandardsReadiness(),
   ]);
 
   return {
@@ -162,6 +195,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     workers,
     ehr_bulk: ehrBulk,
     ehr_sync_alerts: ehrSyncAlerts,
+    standards,
     duration_ms: Date.now() - startedAt,
   };
 }
@@ -351,6 +385,71 @@ export async function getAuthHealth(): Promise<SystemHealth['auth']> {
   }
 }
 
+export async function getStandardsReadiness(): Promise<StandardsReadiness> {
+  const validatorPath = process.env['VALIDATOR_JAR']?.trim() || 'validator_cli.jar';
+  const checks = await Promise.all([
+    buildStandardsCheck({
+      key: 'cql',
+      label: 'CQL Engine',
+      runtimeConfigured: Boolean(process.env['CQL_ENGINE_URL']?.trim()),
+      missingStatus: 'degraded',
+      unconfiguredStatus: 'disabled',
+      detailWhenReady: process.env['CQL_ENGINE_URL']?.trim()
+        ? `Runtime URL ${process.env['CQL_ENGINE_URL']!.trim()} configured`
+        : 'Smoke assets present; optional sidecar runtime URL is not configured',
+      commands: [
+        'bash scripts/cql-engine-smoke.sh',
+        'bash scripts/cql-realmeasure-smoke.sh',
+        'bash scripts/cql-qdm-smoke.sh',
+      ],
+      artifacts: [
+        'scripts/cql-engine-smoke.sh',
+        'scripts/cql-realmeasure-smoke.sh',
+        'scripts/cql-qdm-smoke.sh',
+        'docker/cql-engine/spike-bundle.json',
+      ],
+    }),
+    buildStandardsCheck({
+      key: 'fhir',
+      label: 'FHIR US Core / QI-Core',
+      runtimeConfigured: true,
+      missingStatus: 'degraded',
+      detailWhenReady: 'FHIR validator and golden fixtures are available',
+      commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/fhir-validate.sh'],
+      artifacts: [
+        'scripts/fhir-validate.sh',
+        'apps/api/test-fixtures/fhir/patient.json',
+        'apps/api/test-fixtures/fhir/condition.json',
+        'apps/api/test-fixtures/fhir/observation.json',
+        validatorPath,
+      ],
+    }),
+    buildStandardsCheck({
+      key: 'deqm',
+      label: 'Da Vinci DEQM',
+      runtimeConfigured: true,
+      missingStatus: 'degraded',
+      detailWhenReady: 'DEQM validator and Gaps-in-Care fixture are available',
+      commands: ['VALIDATOR_JAR=validator_cli.jar ./scripts/deqm-validate.sh'],
+      artifacts: [
+        'scripts/deqm-validate.sh',
+        'apps/api/test-fixtures/fhir/deqm/gaps-in-care-sample.json',
+        validatorPath,
+      ],
+    }),
+  ]);
+
+  const issues = checks.flatMap((check) => check.artifacts.missing.map(
+    (artifact) => `${check.label} missing ${artifact}`,
+  ));
+
+  return {
+    status: aggregateStandardsStatus(checks),
+    checks,
+    issues,
+  };
+}
+
 function aggregateAuthStatus(
   providers: AuthProviderHealth[],
   localEnabled: boolean,
@@ -360,6 +459,66 @@ function aggregateAuthStatus(
   if (providers.some((provider) => provider.status === 'error')) return 'error';
   if (providers.some((provider) => provider.status === 'degraded')) return 'degraded';
   return 'ok';
+}
+
+async function buildStandardsCheck(input: {
+  key: StandardsReadinessCheck['key'];
+  label: string;
+  runtimeConfigured: boolean;
+  missingStatus: HealthStatus;
+  unconfiguredStatus?: HealthStatus;
+  detailWhenReady: string;
+  commands: string[];
+  artifacts: string[];
+}): Promise<StandardsReadinessCheck> {
+  const presence = await Promise.all(input.artifacts.map(async (artifact) => ({
+    artifact,
+    present: await repoArtifactExists(artifact),
+  })));
+  const missing = presence
+    .filter((artifact) => !artifact.present)
+    .map((artifact) => artifact.artifact);
+  const status = missing.length > 0
+    ? input.missingStatus
+    : !input.runtimeConfigured && input.unconfiguredStatus
+      ? input.unconfiguredStatus
+      : 'ok';
+
+  return {
+    key: input.key,
+    label: input.label,
+    status,
+    runtime_configured: input.runtimeConfigured,
+    detail: missing.length > 0
+      ? `${missing.length} required artifact${missing.length === 1 ? '' : 's'} missing`
+      : input.detailWhenReady,
+    commands: input.commands,
+    artifacts: {
+      present: presence.length - missing.length,
+      total: presence.length,
+      missing,
+    },
+  };
+}
+
+function aggregateStandardsStatus(checks: StandardsReadinessCheck[]): HealthStatus {
+  if (checks.some((check) => check.status === 'error')) return 'error';
+  if (checks.some((check) => check.status === 'degraded')) return 'degraded';
+  if (checks.every((check) => check.status === 'disabled')) return 'disabled';
+  return 'ok';
+}
+
+async function repoArtifactExists(path: string): Promise<boolean> {
+  if (isAbsolute(path)) {
+    return access(path, constants.R_OK).then(() => true, () => false);
+  }
+
+  for (const root of REPO_ROOT_CANDIDATES) {
+    const candidate = resolve(root, path);
+    const exists = await access(candidate, constants.R_OK).then(() => true, () => false);
+    if (exists) return true;
+  }
+  return false;
 }
 
 async function inspectQueue(
