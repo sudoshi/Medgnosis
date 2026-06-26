@@ -21,6 +21,7 @@ import {
   sanitizeTokenResponseMetadata,
   type SmartTokenMetadata,
 } from './tokenStore.js';
+import { writeBackendTokenFailureAudit } from './fhirRequestAudit.js';
 import type {
   EhrTenantRef,
   FetchLike,
@@ -275,14 +276,37 @@ export async function requestBackendServiceToken(
   };
   await applyBackendTokenClientAuthentication(input, body, headers);
 
-  const response = await fetchImpl(input.config.tokenEndpoint, {
-    method: 'POST',
-    headers,
-    body,
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(input.config.tokenEndpoint, {
+      method: 'POST',
+      headers,
+      body,
+    });
+  } catch (err) {
+    await safeWriteBackendTokenFailureAudit({
+      tenant: input.config.tenant,
+      clientRegistrationId: input.config.clientRegistrationId,
+      authMethod: input.config.authMethod,
+      scope,
+      code: 'backend_token_network_failed',
+      retryable: true,
+    });
+    throw err;
+  }
   const responseBody = await parseJsonResponse(response);
 
   if (!response.ok) {
+    await safeWriteBackendTokenFailureAudit({
+      tenant: input.config.tenant,
+      clientRegistrationId: input.config.clientRegistrationId,
+      authMethod: input.config.authMethod,
+      scope,
+      status: response.status,
+      code: 'backend_token_request_failed',
+      retryable: isRetryableBackendTokenStatus(response.status),
+      oauthErrorCode: backendTokenOauthErrorCode(responseBody),
+    });
     throw new BackendServicesError(
       'backend_token_request_failed',
       tokenErrorMessage(responseBody, response.status),
@@ -750,4 +774,24 @@ function tokenErrorMessage(body: unknown, status: number): string {
     }
   }
   return `SMART Backend Services token request failed with HTTP ${status}`;
+}
+
+async function safeWriteBackendTokenFailureAudit(
+  input: Parameters<typeof writeBackendTokenFailureAudit>[0],
+): Promise<void> {
+  try {
+    await writeBackendTokenFailureAudit(input);
+  } catch (err) {
+    console.warn('[backend-services] failed to audit backend token failure:', err);
+  }
+}
+
+function isRetryableBackendTokenStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function backendTokenOauthErrorCode(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const error = (body as { error?: unknown }).error;
+  return typeof error === 'string' && error.trim().length > 0 ? error.trim() : null;
 }

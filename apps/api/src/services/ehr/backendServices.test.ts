@@ -362,6 +362,13 @@ describe('requestBackendServiceToken', () => {
       status: 401,
       message: 'bad assertion',
     } satisfies Partial<BackendServicesError>);
+    const auditPayload = JSON.stringify(mockSql.mock.calls);
+    expect(auditPayload).toContain('ehr_backend_token_failed');
+    expect(auditPayload).toContain('backend_token_request_failed');
+    expect(auditPayload).toContain('invalid_client');
+    expect(auditPayload).not.toContain('bad assertion');
+    expect(auditPayload).not.toContain('backend-client');
+    expect(auditPayload).not.toContain('oauth2/token');
   });
 
   it('rejects token responses missing required SMART Backend Services fields', async () => {

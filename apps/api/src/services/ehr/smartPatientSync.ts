@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto';
 import { sql } from '@medgnosis/db';
 import { FhirClient } from './fhirClient.js';
+import { writeFhirRequestFailureAudit } from './fhirRequestAudit.js';
 import {
   failIngestRun as failIngestRunDefault,
   finishIngestRunWithQdmBridge as finishIngestRunWithQdmBridgeDefault,
@@ -198,7 +199,10 @@ export async function syncSmartLaunchPatientContext(
 
     const startIngestRun = deps.startIngestRun ?? startIngestRunDefault;
     const stageFhirResource = deps.stageFhirResource ?? stageFhirResourceDefault;
-    const fhirClient = deps.fhirClient ?? new FhirClient({ fetchImpl: input.fetchImpl });
+    const fhirClient = deps.fhirClient ?? new FhirClient({
+      fetchImpl: input.fetchImpl,
+      failureAuditSink: writeFhirRequestFailureAudit,
+    });
     const orgId = input.tenant.orgId ?? input.session.orgId ?? null;
 
     ingestRun = await startIngestRun({
@@ -399,7 +403,10 @@ async function maybeSyncExistingPatientContextResources(input: {
 
   const startIngestRun = input.deps.startIngestRun ?? startIngestRunDefault;
   const stageFhirResource = input.deps.stageFhirResource ?? stageFhirResourceDefault;
-  const fhirClient = input.deps.fhirClient ?? new FhirClient({ fetchImpl: input.input.fetchImpl });
+  const fhirClient = input.deps.fhirClient ?? new FhirClient({
+    fetchImpl: input.input.fetchImpl,
+    failureAuditSink: writeFhirRequestFailureAudit,
+  });
   const orgId = input.input.tenant.orgId ?? input.input.session.orgId ?? null;
   const ingestRun = await startIngestRun({
     orgId,

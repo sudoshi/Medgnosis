@@ -9,6 +9,7 @@ import { config } from '../../config.js';
 import { listTenants, type EhrTenant } from './tenantRegistry.js';
 import { getTenantSyncStatus, type EhrSyncIssueSeverity } from './syncStatus.js';
 import { getTenantReadinessEvidence } from './readinessEvidence.js';
+import { getTenantFhirFailureEvidence } from './fhirRequestAudit.js';
 
 export type EhrSyncAlertSeverity = 'ok' | EhrSyncIssueSeverity;
 export type EhrSyncAlertDispatchStatus = 'sent' | 'skipped' | 'failed';
@@ -89,6 +90,21 @@ export interface EhrSyncAlertTenantSnapshot {
     activeBulkJobs: number;
     failedBulkJobs24h: number;
     overdueBulkSchedules: number;
+    issues: EhrSyncAlertTenantIssue[];
+  };
+  fhirApi: {
+    failedRequests24h: number;
+    authFailures24h: number;
+    rateLimitFailures24h: number;
+    rateLimitFailures1h: number;
+    networkFailures24h: number;
+    backendTokenFailures24h: number;
+    backendTokenAuthFailures24h: number;
+    backendTokenRateLimitFailures1h: number;
+    latestFailureAt: string | null;
+    statusCounts24h: Record<string, number>;
+    backendTokenStatusCounts24h: Record<string, number>;
+    affectedResourceTypes: string[];
     issues: EhrSyncAlertTenantIssue[];
   };
 }
@@ -306,9 +322,10 @@ export function isEhrSyncAlertNightlyEnabled(): boolean {
 }
 
 async function buildTenantSnapshot(tenant: EhrTenant): Promise<EhrSyncAlertTenantSnapshot> {
-  const [syncStatus, readiness] = await Promise.all([
+  const [syncStatus, readiness, fhirFailures] = await Promise.all([
     getTenantSyncStatus(tenant.id),
     getTenantReadinessEvidence(tenant),
+    getTenantFhirFailureEvidence(tenant.id),
   ]);
   const syncIssues: EhrSyncAlertTenantIssue[] = syncStatus.issues.map((issue) => ({
     severity: issue.severity,
@@ -328,7 +345,16 @@ async function buildTenantSnapshot(tenant: EhrTenant): Promise<EhrSyncAlertTenan
     lastSeenAt: null,
     recommendedAction: readinessRecommendedAction(issue.code),
   }));
-  const issueCounts = countIssues([...syncIssues, ...readinessIssues]);
+  const fhirIssues: EhrSyncAlertTenantIssue[] = fhirFailures.issues.map((issue) => ({
+    severity: issue.severity,
+    code: issue.code,
+    source: issue.source,
+    resourceType: issue.resourceType,
+    count: issue.count,
+    lastSeenAt: issue.lastSeenAt,
+    recommendedAction: issue.recommendedAction,
+  }));
+  const issueCounts = countIssues([...syncIssues, ...readinessIssues, ...fhirIssues]);
 
   return {
     ehrTenantId: tenant.id,
@@ -375,6 +401,21 @@ async function buildTenantSnapshot(tenant: EhrTenant): Promise<EhrSyncAlertTenan
       failedBulkJobs24h: readiness.bulkDiagnostics.failedJobs24h,
       overdueBulkSchedules: readiness.bulkDiagnostics.overdueScheduleCount,
       issues: readinessIssues,
+    },
+    fhirApi: {
+      failedRequests24h: fhirFailures.failedRequests24h,
+      authFailures24h: fhirFailures.authFailures24h,
+      rateLimitFailures24h: fhirFailures.rateLimitFailures24h,
+      rateLimitFailures1h: fhirFailures.rateLimitFailures1h,
+      networkFailures24h: fhirFailures.networkFailures24h,
+      backendTokenFailures24h: fhirFailures.backendTokenFailures24h,
+      backendTokenAuthFailures24h: fhirFailures.backendTokenAuthFailures24h,
+      backendTokenRateLimitFailures1h: fhirFailures.backendTokenRateLimitFailures1h,
+      latestFailureAt: fhirFailures.latestFailureAt,
+      statusCounts24h: fhirFailures.statusCounts24h,
+      backendTokenStatusCounts24h: fhirFailures.backendTokenStatusCounts24h,
+      affectedResourceTypes: fhirFailures.affectedResourceTypes,
+      issues: fhirIssues,
     },
   };
 }

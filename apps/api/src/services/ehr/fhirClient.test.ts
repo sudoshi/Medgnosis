@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const { mockSql } = vi.hoisted(() => ({ mockSql: vi.fn() }));
+
+vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
+
 import { FhirClient, FhirClientError, parseRetryAfter } from './fhirClient.js';
 import type { FetchLike } from './types.js';
 
@@ -13,6 +18,7 @@ const token = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  mockSql.mockReset();
 });
 
 describe('FhirClient.readResource', () => {
@@ -111,6 +117,37 @@ describe('FhirClient.readResource', () => {
         retryable: false,
         message: 'Access denied',
       },
+    });
+  });
+
+  it('emits a failure audit sink event for terminal FHIR errors', async () => {
+    const failureAuditSink = vi.fn(async () => undefined);
+    const fetchMock = vi.fn<FetchLike>().mockResolvedValue(
+      fhirResponse(
+        {
+          resourceType: 'OperationOutcome',
+          issue: [{ severity: 'error', code: 'forbidden', diagnostics: 'Access denied' }],
+        },
+        403,
+      ),
+    );
+    const client = new FhirClient({ fetchImpl: fetchMock, retryAttempts: 0, failureAuditSink });
+
+    await expect(client.readResource(tenant, token, 'Patient', 'pat-1')).rejects.toBeInstanceOf(FhirClientError);
+
+    expect(failureAuditSink).toHaveBeenCalledWith({
+      tenant,
+      audit: expect.objectContaining({
+        interaction: 'read',
+        resourceType: 'Patient',
+        status: 403,
+        attemptCount: 1,
+        retryCount: 0,
+      }),
+      outcome: expect.objectContaining({
+        classification: 'access_denied',
+        retryable: false,
+      }),
     });
   });
 });

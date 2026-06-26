@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { FhirClient } from './fhirClient.js';
+import { writeFhirRequestFailureAudit } from './fhirRequestAudit.js';
 import {
   loadBackendServicesConfig as loadBackendServicesConfigDefault,
   requestBackendServiceToken as requestBackendServiceTokenDefault,
@@ -155,7 +156,10 @@ export async function refreshSmartPatientContext(
   const failIngestRun = deps.failIngestRun ?? failIngestRunDefault;
   const stageFhirResource = deps.stageFhirResource ?? stageFhirResourceDefault;
   const hydrateStagedRunToEdw = deps.hydrateStagedRunToEdw ?? hydrateStagedRunToEdwDefault;
-  const fhirClient = deps.fhirClient ?? new FhirClient({ fetchImpl: input.fetchImpl });
+  const fhirClient = deps.fhirClient ?? new FhirClient({
+    fetchImpl: input.fetchImpl,
+    failureAuditSink: writeFhirRequestFailureAudit,
+  });
   let ingestRun: EhrIngestRun | null = null;
   let summary = emptySummary();
 

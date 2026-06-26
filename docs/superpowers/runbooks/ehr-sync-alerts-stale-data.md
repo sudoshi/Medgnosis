@@ -7,7 +7,8 @@ Last updated: 2026-06-25
 Use this runbook for EHR operational incidents raised by tenant readiness or
 sync-status evidence: stale patient resources, crosswalk collisions, Bulk worker
 failures, overdue Bulk polling, Bulk import file errors, backend-token readiness,
-and missing Bulk capability coverage.
+missing Bulk capability coverage, failed FHIR reads/searches, FHIR 401/403/429
+spikes, backend-token request failures, and repeated FHIR network failures.
 
 Do not use this runbook for EMPI identity merge policy decisions. Keep EMPI work
 on the parallel identity track.
@@ -29,10 +30,11 @@ Optional settings:
 
 The payload is an operational snapshot only. It includes tenant id, org id,
 vendor, environment, issue codes, severity counts, stale counts, worker counts,
-Bulk schedule counts, backend token age state, and recommended operator actions.
-It must not include patient ids, group ids, FHIR payloads, Bulk output URLs,
-status URLs, bearer tokens, token hashes, secret refs, or raw vendor error
-payloads.
+Bulk schedule counts, backend token age state, failed FHIR request counts, FHIR
+status-code counts, affected FHIR resource types, and recommended operator
+actions. It must not include patient ids, group ids, FHIR payloads, Bulk output
+URLs, status URLs, bearer tokens, token hashes, secret refs, raw vendor error
+messages, or raw vendor error payloads.
 
 ## Manual Dispatch
 
@@ -68,8 +70,41 @@ aggregate counts and endpoint host only.
    - Patient/resource stale counts
    - Crosswalk conflict targets
    - Bulk import/QDM replay summaries
-6. If the alert involves Bulk import files, follow
+6. If the alert involves FHIR auth/rate-limit/token issues, follow
+   [FHIR Auth And Rate-Limit Triage](#fhir-auth-and-rate-limit-triage).
+7. If the alert involves Bulk import files, follow
    [EHR Bulk replay and dead-letter runbook](ehr-bulk-replay-dead-letter.md).
+
+## FHIR Auth And Rate-Limit Triage
+
+Use this checklist when issue codes include `fhir_auth_failures_24h`,
+`fhir_rate_limit_spike_1h`, `backend_token_auth_failures_24h`,
+`backend_token_failures_24h`, `backend_token_rate_limit_spike_1h`, or
+`fhir_network_failures_24h`.
+
+- Open Admin -> EHR Integrations for the affected tenant.
+- Review readiness evidence for backend credential status, token endpoint, latest
+  token expiry, and token requests in the last 24 hours.
+- Run the explicit backend token-check action if backend-token issue codes are
+  present.
+- For FHIR 401/403 issues, verify granted launch/backend scopes and vendor
+  authorization for the affected resource types. Do not paste raw OperationOutcome
+  text into incident notes.
+- For FHIR 429 issues, pause manual retries, confirm worker queue pressure, and
+  wait for vendor `Retry-After` windows before replaying refresh work.
+- For repeated network failures, check service logs, DNS/network status, and
+  vendor availability before opening a replay.
+- Re-dispatch an EHR sync alert snapshot after mitigation if external alerting is
+  configured.
+
+Closure evidence should include aggregate counts only:
+
+- Issue code and severity
+- Affected tenant id and vendor
+- Affected FHIR resource types
+- FHIR status-code counts
+- Backend token status-code counts
+- Whether token-check, refresh replay, or queue backoff was performed
 
 ## Stale-Data Closure
 
@@ -121,6 +156,7 @@ Use this checklist when issue codes include `bulk_worker_failures_24h`,
 
 ```bash
 npm run test --workspace=apps/api -- syncAlerts.test.ts systemHealth.test.ts index.test.ts
+npm run test --workspace=apps/api -- fhirRequestAudit.test.ts fhirClient.test.ts backendServices.test.ts syncAlerts.test.ts
 npm run test --workspace=apps/web -- SystemHealthTab.test.tsx
 npm run typecheck --workspace=apps/api
 npm run typecheck --workspace=apps/web

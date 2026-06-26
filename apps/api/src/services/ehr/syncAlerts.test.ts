@@ -6,6 +6,7 @@ const {
   mockListTenants,
   mockGetTenantSyncStatus,
   mockGetTenantReadinessEvidence,
+  mockGetTenantFhirFailureEvidence,
 } = vi.hoisted(() => ({
   mockConfig: {
     ehrSyncAlertingEnabled: false,
@@ -18,6 +19,7 @@ const {
   mockListTenants: vi.fn(),
   mockGetTenantSyncStatus: vi.fn(),
   mockGetTenantReadinessEvidence: vi.fn(),
+  mockGetTenantFhirFailureEvidence: vi.fn(),
 }));
 
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
@@ -25,6 +27,7 @@ vi.mock('../../config.js', () => ({ config: mockConfig }));
 vi.mock('./tenantRegistry.js', () => ({ listTenants: mockListTenants }));
 vi.mock('./syncStatus.js', () => ({ getTenantSyncStatus: mockGetTenantSyncStatus }));
 vi.mock('./readinessEvidence.js', () => ({ getTenantReadinessEvidence: mockGetTenantReadinessEvidence }));
+vi.mock('./fhirRequestAudit.js', () => ({ getTenantFhirFailureEvidence: mockGetTenantFhirFailureEvidence }));
 
 import {
   buildEhrSyncAlertSnapshot,
@@ -39,6 +42,7 @@ beforeEach(() => {
   mockConfig.ehrSyncAlertWebhookSecret = '';
   mockConfig.ehrSyncAlertNightlyEnabled = false;
   mockConfig.ehrSyncAlertTimeoutMs = 5000;
+  mockGetTenantFhirFailureEvidence.mockResolvedValue(emptyFhirFailureFixture());
   vi.unstubAllGlobals();
 });
 
@@ -50,6 +54,7 @@ describe('buildEhrSyncAlertSnapshot', () => {
     ]);
     mockGetTenantSyncStatus.mockResolvedValue(syncStatusFixture());
     mockGetTenantReadinessEvidence.mockResolvedValue(readinessFixture());
+    mockGetTenantFhirFailureEvidence.mockResolvedValue(fhirFailureFixture());
 
     const snapshot = await buildEhrSyncAlertSnapshot(new Date('2026-06-25T22:00:00Z'));
 
@@ -59,7 +64,7 @@ describe('buildEhrSyncAlertSnapshot', () => {
       generatedAt: '2026-06-25T22:00:00.000Z',
       severity: 'critical',
       tenantCount: 1,
-      issueCounts: { critical: 1, warning: 2, info: 0, total: 3 },
+      issueCounts: { critical: 2, warning: 3, info: 0, total: 5 },
     });
     expect(snapshot.tenants[0]).toMatchObject({
       ehrTenantId: 2,
@@ -71,6 +76,13 @@ describe('buildEhrSyncAlertSnapshot', () => {
       readiness: {
         backendCredentialStatus: 'ready',
         missingRequiredBulkResourceTypes: ['Observation'],
+      },
+      fhirApi: {
+        failedRequests24h: 6,
+        authFailures24h: 3,
+        rateLimitFailures1h: 2,
+        backendTokenAuthFailures24h: 1,
+        affectedResourceTypes: ['Observation', 'Patient'],
       },
     });
     const serialized = JSON.stringify(snapshot);
@@ -324,6 +336,61 @@ function readinessFixture() {
         severity: 'warning',
         code: 'backend_token_expired',
         message: 'Backend metadata is expired but no raw token abc-secret is present.',
+      },
+    ],
+  };
+}
+
+function emptyFhirFailureFixture() {
+  return {
+    failedRequests24h: 0,
+    authFailures24h: 0,
+    rateLimitFailures24h: 0,
+    rateLimitFailures1h: 0,
+    networkFailures24h: 0,
+    backendTokenFailures24h: 0,
+    backendTokenAuthFailures24h: 0,
+    backendTokenRateLimitFailures1h: 0,
+    latestFailureAt: null,
+    statusCounts24h: {},
+    backendTokenStatusCounts24h: {},
+    affectedResourceTypes: [],
+    issues: [],
+  };
+}
+
+function fhirFailureFixture() {
+  return {
+    failedRequests24h: 6,
+    authFailures24h: 3,
+    rateLimitFailures24h: 2,
+    rateLimitFailures1h: 2,
+    networkFailures24h: 1,
+    backendTokenFailures24h: 1,
+    backendTokenAuthFailures24h: 1,
+    backendTokenRateLimitFailures1h: 0,
+    latestFailureAt: '2026-06-25T21:55:00Z',
+    statusCounts24h: { '401': 2, '403': 1, '429': 2, network: 1 },
+    backendTokenStatusCounts24h: { '401': 1 },
+    affectedResourceTypes: ['Observation', 'Patient'],
+    issues: [
+      {
+        severity: 'critical',
+        code: 'fhir_auth_failures_24h',
+        source: 'fhir_api',
+        resourceType: null,
+        count: 3,
+        lastSeenAt: '2026-06-25T21:50:00Z',
+        recommendedAction: 'Check SMART launch/backend scopes and vendor authorization for failing FHIR reads.',
+      },
+      {
+        severity: 'warning',
+        code: 'backend_token_auth_failures_24h',
+        source: 'backend_token',
+        resourceType: null,
+        count: 1,
+        lastSeenAt: '2026-06-25T21:55:00Z',
+        recommendedAction: 'Run the backend token-check action.',
       },
     ],
   };

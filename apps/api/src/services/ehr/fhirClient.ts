@@ -1,4 +1,8 @@
 import { normalizeOperationOutcome } from './operationOutcome.js';
+import {
+  writeFhirRequestFailureAudit,
+  type FhirRequestFailureAuditInput,
+} from './fhirRequestAudit.js';
 import type {
   EhrTenantRef,
   EhrVendorAdapter,
@@ -29,6 +33,7 @@ export interface FhirClientOptions {
   retryBaseDelayMs?: number;
   retryMaxDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  failureAuditSink?: FhirRequestFailureAuditSink | null;
 }
 
 export interface FhirRequestOptions {
@@ -53,6 +58,8 @@ interface RequestJsonResult {
   audit: FhirRequestAudit;
 }
 
+export type FhirRequestFailureAuditSink = (input: FhirRequestFailureAuditInput) => Promise<void>;
+
 export class FhirClientError extends Error {
   readonly status?: number;
   readonly outcome: NormalizedOperationOutcome;
@@ -74,6 +81,7 @@ export class FhirClient {
   private readonly retryBaseDelayMs: number;
   private readonly retryMaxDelayMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly failureAuditSink: FhirRequestFailureAuditSink | null;
 
   constructor(options: FhirClientOptions = {}) {
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -87,6 +95,7 @@ export class FhirClient {
     this.retryBaseDelayMs = options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
     this.retryMaxDelayMs = options.retryMaxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.failureAuditSink = options.failureAuditSink ?? null;
   }
 
   async readResource<TResource extends FhirResource = FhirResource>(
@@ -295,13 +304,12 @@ export class FhirClient {
 
         const body = await parseResponseBody(response);
         const audit = makeAudit(options, response.status, attemptCount, retryCount, startedAtMs, startedAt);
-        throw new FhirClientError(
-          adapter.handleOperationOutcome(body, {
-            status: response.status,
-            fallbackMessage: `FHIR request failed with HTTP ${response.status}`,
-          }),
-          audit,
-        );
+        const outcome = adapter.handleOperationOutcome(body, {
+          status: response.status,
+          fallbackMessage: `FHIR request failed with HTTP ${response.status}`,
+        });
+        await this.recordFailureAudit(tenant, audit, outcome);
+        throw new FhirClientError(outcome, audit);
       } catch (error) {
         if (timeout) clearTimeout(timeout);
         if (error instanceof FhirClientError) {
@@ -322,19 +330,32 @@ export class FhirClient {
             ? `FHIR request timed out after ${timeoutMs}ms`
             : errorMessage(error, 'FHIR network request failed'),
         });
+        await this.recordFailureAudit(tenant, audit, outcome);
         throw new FhirClientError(outcome, audit);
       }
     }
 
     const audit = makeAudit(options, undefined, attemptCount, retryCount, startedAtMs, startedAt);
-    throw new FhirClientError(
-      normalizeOperationOutcome(undefined, {
-        vendor: adapter.vendor,
-        classification: 'network',
-        fallbackMessage: 'FHIR request failed after retries',
-      }),
-      audit,
-    );
+    const outcome = normalizeOperationOutcome(undefined, {
+      vendor: adapter.vendor,
+      classification: 'network',
+      fallbackMessage: 'FHIR request failed after retries',
+    });
+    await this.recordFailureAudit(tenant, audit, outcome);
+    throw new FhirClientError(outcome, audit);
+  }
+
+  private async recordFailureAudit(
+    tenant: EhrTenantRef,
+    audit: FhirRequestAudit,
+    outcome: NormalizedOperationOutcome,
+  ): Promise<void> {
+    if (!this.failureAuditSink) return;
+    try {
+      await this.failureAuditSink({ tenant, audit, outcome });
+    } catch (err) {
+      console.warn('[fhir-client] failed to audit FHIR request failure:', errorMessage(err, 'audit failed'));
+    }
   }
 
   private invalidResponseError(
@@ -356,7 +377,7 @@ export class FhirClient {
   }
 }
 
-const defaultClient = new FhirClient();
+const defaultClient = new FhirClient({ failureAuditSink: writeFhirRequestFailureAudit });
 
 export function readResource<TResource extends FhirResource = FhirResource>(
   tenant: EhrTenantRef,
