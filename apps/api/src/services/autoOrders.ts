@@ -7,6 +7,8 @@
 // =============================================================================
 
 import { sql } from '@medgnosis/db';
+import { writeSystemAuditLog } from './auditLog.js';
+import { DEFAULT_FULFILLMENT_MODE } from '../routes/orders/writeback.js';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -94,6 +96,20 @@ export async function generateForEnrollments(): Promise<GenerateResult> {
     `;
     generated += 1;
   }
+
+  // PHI-safe aggregate audit. Generated orders are INTERNAL recommendations:
+  // future-dated decision support, never written back to an EHR and never
+  // clinically reviewed at generation time. Details carry counts and bound
+  // flags only — no patient_id, order_id, diagnosis, or order-set identifiers.
+  await writeSystemAuditLog('generate', 'clinical_order', `autoorders-${generated}`, {
+    cohort_bound: true,
+    enrollment_bound: true,
+    enrollment_count: enrollments,
+    order_count: generated,
+    fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
+    writeback_attempted: false,
+    clinical_review_required: true,
+  });
 
   return { enrollments, generated };
 }

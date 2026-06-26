@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { placeOrderSchema, placeOrderBatchSchema } from '@medgnosis/shared';
 import { getActorScope, requirePatientAccess } from '../../utils/authz.js';
+import { DEFAULT_FULFILLMENT_MODE, evaluateWritebackGate } from './writeback.js';
 
 // ─── FHIR ServiceRequest builder ─────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
       return reply.send({
         success: true,
         data: [],
-        meta: { page, per_page: perPage, total: 0, total_pages: 0 },
+        meta: { page, per_page: perPage, total: 0, total_pages: 0, fulfillment_mode: DEFAULT_FULFILLMENT_MODE },
       });
     }
 
@@ -261,7 +262,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     return reply.send({
       success: true,
       data,
-      meta: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) },
+      meta: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage), fulfillment_mode: DEFAULT_FULFILLMENT_MODE },
     });
   });
 
@@ -396,6 +397,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
         data: {
           patient_id: patient.patient_id,
           patient_name: `${patient.first_name} ${patient.last_name}`,
+          fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
           bundles,
         },
       });
@@ -490,16 +492,27 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
       instructions: instructions ?? null,
     });
 
+    // A placed order is an INTERNAL recommendation only — it is never written
+    // back to an external EHR. Capture whether any writeback path would even be
+    // reachable for this actor (default: closed) so the response and audit make
+    // the boundary explicit.
+    const writeback = evaluateWritebackGate({ org_id: request.user.org_id, role: request.user.role });
+
     await request.auditLog('create', 'clinical_order', String(order.order_id), {
       patient_bound: true,
       care_gap_bound: true,
       order_set_item_bound: true,
       priority,
+      fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
+      writeback_attempted: false,
+      writeback_gate: writeback.reason,
     });
 
     return reply.status(201).send({
       success: true,
       data: {
+        fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
+        ehr_writeback_enabled: writeback.allowed,
         order: {
           order_id: order.order_id,
           patient_id,
@@ -510,6 +523,7 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
           priority: priority ?? 'routine',
           order_status: 'Ordered',
           order_datetime: order.order_datetime,
+          fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
         },
         fhir_service_request: fhirServiceRequest,
         care_gap_updated: { care_gap_id, new_status: 'in_progress' },
@@ -644,10 +658,15 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
       }
     });
 
+    const writeback = evaluateWritebackGate({ org_id: request.user.org_id, role: request.user.role });
+
     await request.auditLog('create', 'clinical_order', `batch-${results.length}`, {
       patient_bound: true,
       order_count: results.length,
       priority,
+      fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
+      writeback_attempted: false,
+      writeback_gate: writeback.reason,
     });
 
     return reply.status(201).send({
@@ -657,7 +676,9 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
         patient_name: patientName,
         order_count: results.length,
         priority: priority ?? 'routine',
-        orders: results,
+        fulfillment_mode: DEFAULT_FULFILLMENT_MODE,
+        ehr_writeback_enabled: writeback.allowed,
+        orders: results.map((r) => ({ ...r, fulfillment_mode: DEFAULT_FULFILLMENT_MODE })),
       },
     });
   });

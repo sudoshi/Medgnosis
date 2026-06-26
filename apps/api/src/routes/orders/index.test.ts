@@ -182,12 +182,27 @@ describe('order route authorization', () => {
       care_gap_bound: true,
       order_set_item_bound: true,
       priority: 'stat',
+      fulfillment_mode: 'internal_recommendation',
+      writeback_attempted: false,
+      writeback_gate: 'writeback_disabled',
     });
     const details = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
     expect(JSON.stringify(details)).not.toContain('42');
     expect(JSON.stringify(details)).not.toContain('1001');
     expect(JSON.stringify(details)).not.toContain('99');
     expect(JSON.stringify(details)).not.toContain('Call patient');
+
+    // Placed orders are internal recommendations; writeback is off by default.
+    const body = res.json() as {
+      data: {
+        fulfillment_mode: string;
+        ehr_writeback_enabled: boolean;
+        order: { fulfillment_mode: string };
+      };
+    };
+    expect(body.data.fulfillment_mode).toBe('internal_recommendation');
+    expect(body.data.ehr_writeback_enabled).toBe(false);
+    expect(body.data.order.fulfillment_mode).toBe('internal_recommendation');
     await app.close();
   });
 
@@ -265,11 +280,104 @@ describe('order route authorization', () => {
       patient_bound: true,
       order_count: 2,
       priority: 'routine',
+      fulfillment_mode: 'internal_recommendation',
+      writeback_attempted: false,
+      writeback_gate: 'writeback_disabled',
     });
     const details = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
     expect(JSON.stringify(details)).not.toContain('42');
     expect(JSON.stringify(details)).not.toContain('1001');
     expect(JSON.stringify(details)).not.toContain('99');
+
+    const body = res.json() as {
+      data: {
+        fulfillment_mode: string;
+        ehr_writeback_enabled: boolean;
+        orders: { fulfillment_mode: string }[];
+      };
+    };
+    expect(body.data.fulfillment_mode).toBe('internal_recommendation');
+    expect(body.data.ehr_writeback_enabled).toBe(false);
+    expect(body.data.orders.every((o) => o.fulfillment_mode === 'internal_recommendation')).toBe(true);
+    await app.close();
+  });
+});
+
+describe('order writeback boundary', () => {
+  it('never opens an EHR-writeback path on a placed order while the gate is off', async () => {
+    // No ORDERS_EHR_WRITEBACK_* env set → gate closed.
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes('FROM phm_edw.patient')) {
+        return Promise.resolve([{ patient_id: 42, first_name: 'Ada', last_name: 'Lovelace' }]);
+      }
+      if (text.includes('FROM phm_edw.care_gap')) {
+        return Promise.resolve([{ care_gap_id: 1001, gap_status: 'open' }]);
+      }
+      if (text.includes('FROM phm_edw.order_set_item')) {
+        return Promise.resolve([{
+          item_id: 99,
+          order_set_id: 1,
+          item_name: 'A1c',
+          item_type: 'lab',
+          loinc_code: null,
+          loinc_description: null,
+          cpt_code: null,
+          cpt_description: null,
+          icd10_indication: null,
+        }]);
+      }
+      if (text.includes('INSERT INTO phm_edw.clinical_order')) {
+        return Promise.resolve([{ order_id: 777, order_datetime: '2026-06-26T10:00:00Z' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/place',
+      payload: { patient_id: 42, care_gap_id: 1001, order_set_item_id: 99, priority: 'routine' },
+    });
+
+    expect(res.statusCode).toBe(201);
+
+    // The order is created in the internal recommendation store only — no SQL
+    // statement should target an EHR-writeback / external dispatch table.
+    const touchedWriteback = mockSql.mock.calls.some(([strings]) => {
+      const text = (strings as TemplateStringsArray).join('').toLowerCase();
+      return text.includes('ehr_writeback') || text.includes('writeback_queue') || text.includes('outbound');
+    });
+    expect(touchedWriteback).toBe(false);
+
+    const auditDetails = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(auditDetails.writeback_attempted).toBe(false);
+    expect(auditDetails.writeback_gate).toBe('writeback_disabled');
+    expect(auditDetails.fulfillment_mode).toBe('internal_recommendation');
+    await app.close();
+  });
+
+  it('classifies recommendations as internal recommendations', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes('FROM phm_edw.patient')) {
+        return Promise.resolve([{ patient_id: 42, first_name: 'Ada', last_name: 'Lovelace' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/recommendations/42' });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: { fulfillment_mode: string } };
+    expect(body.data.fulfillment_mode).toBe('internal_recommendation');
     await app.close();
   });
 });
