@@ -1,24 +1,35 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
-import { Activity, Database, KeyRound, RefreshCw, Search, Server, Send, Wifi } from 'lucide-react';
+import { Activity, Database, HeartPulse, KeyRound, RefreshCw, Search, Server, Send, Wifi } from 'lucide-react';
 import { api, apiErrorMessage } from '../../services/api.js';
 import type { EhrSyncAlertDispatchResult, SystemHealth } from './types.js';
 import { fmtDateTime } from './helpers.js';
 import { Button } from '@/components/ui/button';
 
 function StatusPill({ status }: { status: string }) {
-  const cls =
-    status === 'ok'
-      ? 'text-emerald border-emerald/25 bg-emerald/10'
-      : status === 'disabled'
-        ? 'text-ghost border-edge/35 bg-s2'
-        : 'text-amber border-amber/25 bg-amber/10';
+  const normalized = normalizeStatus(status);
 
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>
-      {status}
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${normalized.className}`}>
+      {normalized.label}
     </span>
   );
+}
+
+function normalizeStatus(status: string): { label: string; className: string } {
+  if (status === 'ok' || status === 'healthy' || status === 'ready') {
+    return { label: 'Healthy', className: 'text-emerald border-emerald/25 bg-emerald/10' };
+  }
+  if (status === 'disabled' || status === 'skipped') {
+    return { label: 'Disabled', className: 'text-ghost border-edge/35 bg-s2' };
+  }
+  if (status === 'blocked' || status === 'critical' || status === 'failed') {
+    return { label: 'Blocked', className: 'text-crimson border-crimson/25 bg-crimson/10' };
+  }
+  if (status === 'error') {
+    return { label: 'Error', className: 'text-crimson border-crimson/25 bg-crimson/10' };
+  }
+  return { label: 'Degraded', className: 'text-amber border-amber/25 bg-amber/10' };
 }
 
 function HealthRow({
@@ -70,6 +81,15 @@ function queueTiming(queue: SystemHealth['workers']['queues'][number]): string |
   if (queue.next_run_at) parts.push(`Next ${fmtDateTime(queue.next_run_at)}`);
   if (queue.latest_completed_at) parts.push(`Last complete ${fmtDateTime(queue.latest_completed_at)}`);
   return parts.length > 0 ? parts.join(' / ') : null;
+}
+
+function percent(value: number | null): string {
+  if (value === null) return 'None';
+  return `${Math.round(value * 100)}%`;
+}
+
+function latestOrNone(value: string | null): string {
+  return value ? fmtDateTime(value) : 'None';
 }
 
 type AuthProviderHealth = SystemHealth['auth']['providers'][number];
@@ -138,6 +158,12 @@ export function SystemHealthTab() {
               status={health.auth.status}
               detail={`Local ${health.auth.local_enabled ? 'on' : 'off'} / OIDC ${health.auth.oidc_enabled ? 'on' : 'off'}`}
             />
+            <HealthRow
+              icon={HeartPulse}
+              label="EHR/FHIR Tenants"
+              status={health.ehr_tenants.status}
+              detail={`${health.ehr_tenants.tenants.healthy}/${health.ehr_tenants.tenants.active} active tenants healthy`}
+            />
             <HealthRow icon={Activity} label="Probe" status="ok" detail={`${health.duration_ms} ms`} />
           </>
         )}
@@ -203,6 +229,122 @@ export function SystemHealthTab() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-bright">EHR/FHIR Tenant Readiness</h3>
+                  <p className="mt-0.5 text-xs text-ghost">
+                    {health.ehr_tenants.tenants.healthy}/{health.ehr_tenants.tenants.active} active tenants healthy
+                  </p>
+                </div>
+                <StatusPill status={health.ehr_tenants.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Tenant states</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.tenants.healthy} healthy / {health.ehr_tenants.tenants.degraded} degraded
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.tenants.blocked} blocked / {health.ehr_tenants.tenants.disabled} disabled
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">SMART/FHIR</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.discovery.smart_ok}/{health.ehr_tenants.tenants.active} SMART
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.discovery.capability_ok}/{health.ehr_tenants.tenants.active} capability
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Backend services</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.backend_services.ready_for_token_exchange}/{health.ehr_tenants.tenants.active} token-ready
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.backend_services.token_requests_24h} token checks 24h
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Bulk coverage</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.resource_coverage.tenants_with_required_bulk_coverage}/{health.ehr_tenants.tenants.active} complete
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {percent(health.ehr_tenants.resource_coverage.average_required_bulk_coverage)} average
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Latest evidence</p>
+                <p className="mt-1 font-data text-bright">
+                  Discovery {latestOrNone(health.ehr_tenants.discovery.latest_snapshot_at)}
+                </p>
+                <p className="mt-1 font-data text-bright">
+                  Backend token {latestOrNone(health.ehr_tenants.backend_services.latest_token_issued_at)}
+                </p>
+                <p className="mt-1 font-data text-bright">
+                  Launch success {latestOrNone(health.ehr_tenants.smart_launch.latest_success_at)}
+                </p>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Launch 24h</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.smart_launch.launches_started_24h} starts / {health.ehr_tenants.smart_launch.callbacks_succeeded_24h} callbacks
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Launch issues</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.smart_launch.launches_denied_24h} denied / {health.ehr_tenants.smart_launch.callbacks_failed_24h} failed
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">FHIR API 24h</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.fhir_api.failed_requests_24h} failed / {health.ehr_tenants.fhir_api.auth_failures_24h} auth
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.fhir_api.rate_limit_failures_24h} rate / {health.ehr_tenants.fhir_api.network_failures_24h} network
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Backend token failures</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.ehr_tenants.fhir_api.backend_token_failures_24h} total / {health.ehr_tenants.fhir_api.backend_token_auth_failures_24h} auth
+                  </p>
+                  <p className="mt-1 truncate font-data text-bright">
+                    {health.ehr_tenants.fhir_api.affected_resource_types.join(', ') || 'No resource types'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Latest FHIR/backend failure</p>
+                <p className="mt-1 font-data text-bright">
+                  {latestOrNone(health.ehr_tenants.fhir_api.latest_failure_at)}
+                </p>
+              </div>
+              {health.ehr_tenants.issues.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {health.ehr_tenants.issues.slice(0, 5).map((issue) => (
+                    <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {health.ehr_tenants.error && (
+                <p className="mt-3 rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                  {health.ehr_tenants.error}
+                </p>
+              )}
             </div>
 
             <div className="surface p-5">

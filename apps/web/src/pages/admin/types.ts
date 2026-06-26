@@ -39,11 +39,13 @@ export interface AuthProviderSetting {
   updated_at: string;
 }
 
+export type HealthStatusWire = 'ok' | 'degraded' | 'blocked' | 'error' | 'disabled';
+
 export interface SystemHealth {
-  api: { status: string; node_env: string };
-  database: { status: string; error?: string };
+  api: { status: HealthStatusWire; node_env: string };
+  database: { status: HealthStatusWire; error?: string };
   redis: {
-    status: string;
+    status: HealthStatusWire;
     endpoint: string;
     pubsub?: {
       alert_pattern: string;
@@ -53,7 +55,7 @@ export interface SystemHealth {
     error?: string;
   };
   solr: {
-    status: string;
+    status: HealthStatusWire;
     enabled: boolean;
     url: string;
     cores: Array<{
@@ -65,20 +67,81 @@ export interface SystemHealth {
     error?: string;
   };
   auth: {
-    status: string;
+    status: HealthStatusWire;
     local_enabled: boolean;
     oidc_enabled: boolean;
     providers: AuthProviderHealth[];
     error?: string;
   };
   workers: {
-    status: string;
+    status: HealthStatusWire;
     total_workers: number;
     counts: QueueCounts;
     queues: WorkerQueueStatus[];
   };
+  ehr_tenants: {
+    status: HealthStatusWire;
+    tenants: {
+      total: number;
+      active: number;
+      disabled: number;
+      healthy: number;
+      degraded: number;
+      blocked: number;
+      production: number;
+      sandbox: number;
+      staging: number;
+    };
+    discovery: {
+      with_snapshots: number;
+      smart_ok: number;
+      capability_ok: number;
+      with_resource_support: number;
+      issuer_mismatches: number;
+      missing_authorization_endpoint: number;
+      missing_token_endpoint: number;
+      latest_snapshot_at: string | null;
+    };
+    backend_services: {
+      tenants_with_enabled_clients: number;
+      enabled_clients: number;
+      ready_for_token_exchange: number;
+      credentials_incomplete: number;
+      scopes_missing: number;
+      token_requests_24h: number;
+      latest_token_issued_at: string | null;
+      latest_token_expired: number;
+    };
+    smart_launch: {
+      launches_started_24h: number;
+      launches_denied_24h: number;
+      callbacks_succeeded_24h: number;
+      callbacks_failed_24h: number;
+      handoffs_completed_24h: number;
+      expired_pending_launches: number;
+      latest_success_at: string | null;
+    };
+    fhir_api: {
+      failed_requests_24h: number;
+      auth_failures_24h: number;
+      rate_limit_failures_24h: number;
+      network_failures_24h: number;
+      backend_token_failures_24h: number;
+      backend_token_auth_failures_24h: number;
+      latest_failure_at: string | null;
+      affected_resource_types: string[];
+    };
+    resource_coverage: {
+      required_resource_types: string[];
+      tenants_with_required_bulk_coverage: number;
+      tenants_missing_required_bulk_coverage: number;
+      average_required_bulk_coverage: number | null;
+    };
+    issues: string[];
+    error?: string;
+  };
   ehr_bulk: {
-    status: string;
+    status: HealthStatusWire;
     queue_enabled: boolean;
     tenants: {
       total: number;
@@ -103,7 +166,7 @@ export interface SystemHealth {
     error?: string;
   };
   ehr_sync_alerts: {
-    status: string;
+    status: HealthStatusWire;
     enabled: boolean;
     configured: boolean;
     nightly_enabled: boolean;
@@ -117,11 +180,11 @@ export interface SystemHealth {
     error?: string;
   };
   standards: {
-    status: string;
+    status: HealthStatusWire;
     checks: Array<{
       key: 'cql' | 'fhir' | 'deqm';
       label: string;
-      status: string;
+      status: HealthStatusWire;
       runtime_configured: boolean;
       detail: string;
       commands: string[];
@@ -140,7 +203,7 @@ export interface AuthProviderHealth {
   provider_type: 'local' | 'oidc';
   display_name: string;
   enabled: boolean;
-  status: string;
+  status: HealthStatusWire;
   updated_at: string | null;
   last_test: {
     status: 'ok' | 'error';
@@ -180,7 +243,7 @@ export interface WorkerQueueStatus {
   name: string;
   label: string;
   role: string;
-  status: string;
+  status: HealthStatusWire;
   workers: number;
   paused: boolean;
   counts: QueueCounts;

@@ -19,7 +19,7 @@ import {
 } from './auth/providerHealth.js';
 import { getEhrSyncAlertingStatus, type EhrSyncAlertingStatus } from './ehr/syncAlerts.js';
 
-export type HealthStatus = 'ok' | 'degraded' | 'error' | 'disabled';
+export type HealthStatus = 'ok' | 'degraded' | 'blocked' | 'error' | 'disabled';
 
 export interface SystemHealth {
   api: { status: HealthStatus; node_env: string };
@@ -28,6 +28,7 @@ export interface SystemHealth {
   solr: SolrHealth;
   auth: AuthHealth;
   workers: WorkerQueueHealth;
+  ehr_tenants: EhrTenantReadiness;
   ehr_bulk: EhrBulkReadiness;
   ehr_sync_alerts: EhrSyncAlertingStatus;
   standards: StandardsReadiness;
@@ -83,6 +84,68 @@ export interface EhrBulkReadiness {
     failed_24h: number;
     completed_24h: number;
     latest_completed_at: string | null;
+  };
+  issues: string[];
+  error?: string;
+}
+
+export interface EhrTenantReadiness {
+  status: HealthStatus;
+  tenants: {
+    total: number;
+    active: number;
+    disabled: number;
+    healthy: number;
+    degraded: number;
+    blocked: number;
+    production: number;
+    sandbox: number;
+    staging: number;
+  };
+  discovery: {
+    with_snapshots: number;
+    smart_ok: number;
+    capability_ok: number;
+    with_resource_support: number;
+    issuer_mismatches: number;
+    missing_authorization_endpoint: number;
+    missing_token_endpoint: number;
+    latest_snapshot_at: string | null;
+  };
+  backend_services: {
+    tenants_with_enabled_clients: number;
+    enabled_clients: number;
+    ready_for_token_exchange: number;
+    credentials_incomplete: number;
+    scopes_missing: number;
+    token_requests_24h: number;
+    latest_token_issued_at: string | null;
+    latest_token_expired: number;
+  };
+  smart_launch: {
+    launches_started_24h: number;
+    launches_denied_24h: number;
+    callbacks_succeeded_24h: number;
+    callbacks_failed_24h: number;
+    handoffs_completed_24h: number;
+    expired_pending_launches: number;
+    latest_success_at: string | null;
+  };
+  fhir_api: {
+    failed_requests_24h: number;
+    auth_failures_24h: number;
+    rate_limit_failures_24h: number;
+    network_failures_24h: number;
+    backend_token_failures_24h: number;
+    backend_token_auth_failures_24h: number;
+    latest_failure_at: string | null;
+    affected_resource_types: string[];
+  };
+  resource_coverage: {
+    required_resource_types: string[];
+    tenants_with_required_bulk_coverage: number;
+    tenants_missing_required_bulk_coverage: number;
+    average_required_bulk_coverage: number | null;
   };
   issues: string[];
   error?: string;
@@ -182,6 +245,53 @@ interface EhrBulkReadinessRow {
   latest_completed_at: string | null;
 }
 
+interface EhrTenantReadinessRow {
+  total_tenants: number | string | null;
+  active_tenants: number | string | null;
+  disabled_tenants: number | string | null;
+  healthy_tenants: number | string | null;
+  degraded_tenants: number | string | null;
+  blocked_tenants: number | string | null;
+  production_tenants: number | string | null;
+  sandbox_tenants: number | string | null;
+  staging_tenants: number | string | null;
+  tenants_with_snapshots: number | string | null;
+  tenants_smart_ok: number | string | null;
+  tenants_capability_ok: number | string | null;
+  tenants_with_resource_support: number | string | null;
+  issuer_mismatches: number | string | null;
+  missing_authorization_endpoint: number | string | null;
+  missing_token_endpoint: number | string | null;
+  latest_snapshot_at: string | null;
+  tenants_with_enabled_backend_clients: number | string | null;
+  enabled_backend_clients: number | string | null;
+  tenants_ready_for_token_exchange: number | string | null;
+  backend_credentials_incomplete: number | string | null;
+  backend_scopes_missing: number | string | null;
+  backend_token_requests_24h: number | string | null;
+  latest_backend_token_issued_at: string | null;
+  latest_backend_token_expired: number | string | null;
+  launches_started_24h: number | string | null;
+  launches_denied_24h: number | string | null;
+  callbacks_succeeded_24h: number | string | null;
+  callbacks_failed_24h: number | string | null;
+  handoffs_completed_24h: number | string | null;
+  expired_pending_launches: number | string | null;
+  latest_launch_success_at: string | null;
+  fhir_failed_requests_24h: number | string | null;
+  fhir_auth_failures_24h: number | string | null;
+  fhir_rate_limit_failures_24h: number | string | null;
+  fhir_network_failures_24h: number | string | null;
+  backend_token_failures_24h: number | string | null;
+  backend_token_auth_failures_24h: number | string | null;
+  latest_fhir_failure_at: string | null;
+  affected_fhir_resource_types: string[] | null;
+  required_bulk_resource_types: string[] | null;
+  tenants_with_required_bulk_coverage: number | string | null;
+  tenants_missing_required_bulk_coverage: number | string | null;
+  average_required_bulk_coverage: number | string | null;
+}
+
 const QUEUE_JOB_TYPES: JobType[] = ['waiting', 'active', 'delayed', 'failed'];
 
 const HEALTH_QUEUE_DEFINITIONS: QueueDefinition[] = [
@@ -211,12 +321,13 @@ const REPO_ROOT_CANDIDATES = Array.from(new Set([
 
 export async function getSystemHealth(): Promise<SystemHealth> {
   const startedAt = Date.now();
-  const [database, redis, solr, auth, workers, ehrBulk, ehrSyncAlerts, standards] = await Promise.all([
+  const [database, redis, solr, auth, workers, ehrTenants, ehrBulk, ehrSyncAlerts, standards] = await Promise.all([
     getDatabaseHealth(),
     getRedisHealth(),
     getSolrHealth(),
     getAuthHealth(),
     getWorkerQueueHealth(),
+    getEhrTenantReadiness(),
     getEhrBulkReadiness(),
     getEhrSyncAlertingStatus(),
     getStandardsReadiness(),
@@ -229,6 +340,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     solr,
     auth,
     workers,
+    ehr_tenants: ehrTenants,
     ehr_bulk: ehrBulk,
     ehr_sync_alerts: ehrSyncAlerts,
     standards,
@@ -258,6 +370,358 @@ export async function getWorkerQueueHealth(
     ),
     queues,
   };
+}
+
+export async function getEhrTenantReadiness(): Promise<EhrTenantReadiness> {
+  try {
+    const [row] = await sql<EhrTenantReadinessRow[]>`
+      WITH required_bulk_resources(resource_type) AS (
+        VALUES ('Patient'), ('Observation'), ('Condition'), ('Encounter')
+      ),
+      latest_capability AS (
+        SELECT DISTINCT ON (ehr_tenant_id)
+          ehr_tenant_id,
+          smart_configuration,
+          capability_statement,
+          resource_support,
+          captured_at,
+          ((smart_configuration ->> 'ok') = 'true') AS smart_ok,
+          ((capability_statement ->> 'ok') = 'true') AS capability_ok,
+          NULLIF(smart_configuration #>> '{summary,issuer}', '') AS discovered_issuer,
+          NULLIF(smart_configuration #>> '{summary,authorizationEndpoint}', '') AS authorization_endpoint,
+          NULLIF(smart_configuration #>> '{summary,tokenEndpoint}', '') AS token_endpoint,
+          (
+            SELECT COUNT(*)::int
+            FROM jsonb_object_keys(COALESCE(resource_support, '{}'::jsonb))
+          ) AS resource_count
+        FROM phm_edw.ehr_capability_snapshot
+        ORDER BY ehr_tenant_id, captured_at DESC, id DESC
+      ),
+      capability_required AS (
+        SELECT
+          lc.ehr_tenant_id,
+          COUNT(r.resource_type)::int AS required_count,
+          COUNT(r.resource_type) FILTER (
+            WHERE COALESCE(lc.resource_support, '{}'::jsonb) ? r.resource_type
+          )::int AS supported_required_count
+        FROM latest_capability lc
+        CROSS JOIN required_bulk_resources r
+        GROUP BY lc.ehr_tenant_id
+      ),
+      backend_services AS (
+        SELECT
+          ehr_tenant_id,
+          COUNT(*) FILTER (
+            WHERE client_type = 'backend_services'
+              AND enabled = TRUE
+          )::int AS enabled_clients,
+          COUNT(*) FILTER (
+            WHERE client_type = 'backend_services'
+              AND enabled = TRUE
+              AND length(trim(client_id)) > 0
+              AND length(trim(scopes_requested)) > 0
+              AND (
+                (auth_method = 'private_key_jwt' AND private_key_ref IS NOT NULL)
+                OR (auth_method IN ('client_secret_post', 'client_secret_basic') AND client_secret_ref IS NOT NULL)
+                OR auth_method NOT IN ('private_key_jwt', 'client_secret_post', 'client_secret_basic')
+              )
+          )::int AS ready_clients,
+          COUNT(*) FILTER (
+            WHERE client_type = 'backend_services'
+              AND enabled = TRUE
+              AND NOT (
+                (auth_method = 'private_key_jwt' AND private_key_ref IS NOT NULL)
+                OR (auth_method IN ('client_secret_post', 'client_secret_basic') AND client_secret_ref IS NOT NULL)
+                OR auth_method NOT IN ('private_key_jwt', 'client_secret_post', 'client_secret_basic')
+              )
+          )::int AS credentials_incomplete,
+          COUNT(*) FILTER (
+            WHERE client_type = 'backend_services'
+              AND enabled = TRUE
+              AND length(trim(scopes_requested)) = 0
+          )::int AS scopes_missing
+        FROM phm_edw.ehr_client_registration
+        GROUP BY ehr_tenant_id
+      ),
+      latest_backend_token AS (
+        SELECT DISTINCT ON (ehr_tenant_id)
+          ehr_tenant_id,
+          issued_at,
+          expires_at
+        FROM phm_edw.smart_token_metadata
+        WHERE smart_launch_session_id IS NULL
+          AND scope LIKE '%system/%'
+        ORDER BY ehr_tenant_id, issued_at DESC NULLS LAST, id DESC
+      ),
+      backend_token_counts AS (
+        SELECT
+          ehr_tenant_id,
+          COUNT(*) FILTER (
+            WHERE smart_launch_session_id IS NULL
+              AND scope LIKE '%system/%'
+              AND issued_at >= NOW() - INTERVAL '24 hours'
+          )::int AS token_requests_24h
+        FROM phm_edw.smart_token_metadata
+        GROUP BY ehr_tenant_id
+      ),
+      launch_sessions AS (
+        SELECT
+          ehr_tenant_id,
+          COUNT(*) FILTER (
+            WHERE status = 'pending'
+              AND expires_at <= NOW()
+          )::int AS expired_pending_launches
+        FROM phm_edw.smart_launch_session
+        GROUP BY ehr_tenant_id
+      ),
+      launch_audit AS (
+        SELECT
+          COALESCE(NULLIF(details->>'ehrTenantId', ''), NULLIF(resource_id, '')) AS ehr_tenant_id_text,
+          MAX(created_at) FILTER (
+            WHERE action IN ('ehr_smart_callback_success', 'ehr_smart_handoff_complete')
+          )::text AS latest_success_at,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_smart_launch_start'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+          )::int AS launches_started_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_smart_launch_denied'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+          )::int AS launches_denied_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_smart_callback_success'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+          )::int AS callbacks_succeeded_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_smart_callback_failed'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+          )::int AS callbacks_failed_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_smart_handoff_complete'
+              AND created_at >= NOW() - INTERVAL '24 hours'
+          )::int AS handoffs_completed_24h
+        FROM audit_log
+        WHERE action IN (
+          'ehr_smart_launch_start',
+          'ehr_smart_launch_denied',
+          'ehr_smart_callback_success',
+          'ehr_smart_callback_failed',
+          'ehr_smart_handoff_complete'
+        )
+        GROUP BY 1
+      ),
+      fhir_failure_events AS (
+        SELECT
+          COALESCE(NULLIF(a.details->>'ehrTenantId', ''), NULLIF(a.resource_id, '')) AS ehr_tenant_id_text,
+          a.action,
+          a.created_at,
+          NULLIF(a.details->>'resourceType', '') AS resource_type,
+          NULLIF(a.details->>'classification', '') AS classification,
+          CASE
+            WHEN (a.details->>'status') ~ '^[0-9]+$'
+              THEN (a.details->>'status')::int
+            ELSE NULL
+          END AS status
+        FROM audit_log a
+        JOIN phm_edw.ehr_tenant t
+          ON t.id::text = COALESCE(NULLIF(a.details->>'ehrTenantId', ''), NULLIF(a.resource_id, ''))
+        WHERE a.resource_type = 'ehr_tenant'
+          AND a.action IN ('ehr_fhir_request_failed', 'ehr_backend_token_failed')
+          AND a.created_at >= NOW() - INTERVAL '24 hours'
+          AND t.status IN ('active', 'testing')
+      ),
+      fhir_failure_by_tenant AS (
+        SELECT
+          ehr_tenant_id_text,
+          COUNT(*) FILTER (WHERE action = 'ehr_fhir_request_failed')::int AS failed_requests_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_fhir_request_failed'
+              AND status IN (401, 403)
+          )::int AS auth_failures_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_fhir_request_failed'
+              AND status = 429
+          )::int AS rate_limit_failures_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_fhir_request_failed'
+              AND status IS NULL
+              AND classification IN ('network', 'timeout')
+          )::int AS network_failures_24h,
+          COUNT(*) FILTER (WHERE action = 'ehr_backend_token_failed')::int AS backend_token_failures_24h,
+          COUNT(*) FILTER (
+            WHERE action = 'ehr_backend_token_failed'
+              AND status IN (401, 403)
+          )::int AS backend_token_auth_failures_24h,
+          MAX(created_at)::text AS latest_failure_at
+        FROM fhir_failure_events
+        GROUP BY ehr_tenant_id_text
+      ),
+      tenant_flags AS (
+        SELECT
+          t.id,
+          t.status,
+          t.environment,
+          (t.status IN ('active', 'testing')) AS active_tenant,
+          (lc.ehr_tenant_id IS NOT NULL) AS has_snapshot,
+          COALESCE(lc.smart_ok, FALSE) AS smart_ok,
+          COALESCE(lc.capability_ok, FALSE) AS capability_ok,
+          COALESCE(lc.resource_count, 0) AS resource_count,
+          lc.captured_at,
+          (
+            lc.discovered_issuer IS NOT NULL
+            AND lower(regexp_replace(lc.discovered_issuer, '/+$', '')) NOT IN (
+              lower(regexp_replace(COALESCE(t.issuer, ''), '/+$', '')),
+              lower(regexp_replace(COALESCE(t.audience, ''), '/+$', '')),
+              lower(regexp_replace(COALESCE(t.fhir_base_url, ''), '/+$', ''))
+            )
+          ) AS issuer_mismatch,
+          (lc.ehr_tenant_id IS NOT NULL AND lc.authorization_endpoint IS NULL) AS missing_authorization_endpoint,
+          (lc.ehr_tenant_id IS NOT NULL AND lc.token_endpoint IS NULL) AS missing_token_endpoint,
+          COALESCE(bs.enabled_clients, 0) AS enabled_backend_clients,
+          COALESCE(bs.ready_clients, 0) AS ready_backend_clients,
+          COALESCE(bs.credentials_incomplete, 0) AS backend_credentials_incomplete,
+          COALESCE(bs.scopes_missing, 0) AS backend_scopes_missing,
+          COALESCE(btc.token_requests_24h, 0) AS backend_token_requests_24h,
+          lbt.issued_at AS latest_backend_token_issued_at,
+          (lbt.expires_at IS NOT NULL AND lbt.expires_at <= NOW()) AS latest_backend_token_expired,
+          COALESCE(la.launches_started_24h, 0) AS launches_started_24h,
+          COALESCE(la.launches_denied_24h, 0) AS launches_denied_24h,
+          COALESCE(la.callbacks_succeeded_24h, 0) AS callbacks_succeeded_24h,
+          COALESCE(la.callbacks_failed_24h, 0) AS callbacks_failed_24h,
+          COALESCE(la.handoffs_completed_24h, 0) AS handoffs_completed_24h,
+          COALESCE(ls.expired_pending_launches, 0) AS expired_pending_launches,
+          la.latest_success_at,
+          COALESCE(ff.failed_requests_24h, 0) AS fhir_failed_requests_24h,
+          COALESCE(ff.auth_failures_24h, 0) AS fhir_auth_failures_24h,
+          COALESCE(ff.rate_limit_failures_24h, 0) AS fhir_rate_limit_failures_24h,
+          COALESCE(ff.network_failures_24h, 0) AS fhir_network_failures_24h,
+          COALESCE(ff.backend_token_failures_24h, 0) AS backend_token_failures_24h,
+          COALESCE(ff.backend_token_auth_failures_24h, 0) AS backend_token_auth_failures_24h,
+          ff.latest_failure_at AS latest_fhir_failure_at,
+          COALESCE(cr.required_count, 0) AS required_count,
+          COALESCE(cr.supported_required_count, 0) AS supported_required_count
+        FROM phm_edw.ehr_tenant t
+        LEFT JOIN latest_capability lc ON lc.ehr_tenant_id = t.id
+        LEFT JOIN capability_required cr ON cr.ehr_tenant_id = t.id
+        LEFT JOIN backend_services bs ON bs.ehr_tenant_id = t.id
+        LEFT JOIN latest_backend_token lbt ON lbt.ehr_tenant_id = t.id
+        LEFT JOIN backend_token_counts btc ON btc.ehr_tenant_id = t.id
+        LEFT JOIN launch_sessions ls ON ls.ehr_tenant_id = t.id
+        LEFT JOIN launch_audit la ON la.ehr_tenant_id_text = t.id::text
+        LEFT JOIN fhir_failure_by_tenant ff ON ff.ehr_tenant_id_text = t.id::text
+      ),
+      classified AS (
+        SELECT
+          *,
+          (
+            active_tenant
+            AND (
+              issuer_mismatch
+              OR missing_authorization_endpoint
+              OR missing_token_endpoint
+              OR backend_credentials_incomplete > 0
+              OR backend_scopes_missing > 0
+            )
+          ) AS blocked,
+          (
+            active_tenant
+            AND NOT (
+              issuer_mismatch
+              OR missing_authorization_endpoint
+              OR missing_token_endpoint
+              OR backend_credentials_incomplete > 0
+              OR backend_scopes_missing > 0
+            )
+            AND (
+              NOT has_snapshot
+              OR NOT smart_ok
+              OR NOT capability_ok
+              OR resource_count = 0
+              OR supported_required_count < required_count
+              OR enabled_backend_clients = 0
+              OR latest_backend_token_expired
+              OR launches_denied_24h > 0
+              OR callbacks_failed_24h > 0
+              OR expired_pending_launches > 0
+              OR fhir_failed_requests_24h > 0
+              OR backend_token_failures_24h > 0
+            )
+          ) AS degraded
+        FROM tenant_flags
+      )
+      SELECT
+        COUNT(*)::int AS total_tenants,
+        COUNT(*) FILTER (WHERE active_tenant)::int AS active_tenants,
+        COUNT(*) FILTER (WHERE NOT active_tenant)::int AS disabled_tenants,
+        COUNT(*) FILTER (WHERE active_tenant AND NOT blocked AND NOT degraded)::int AS healthy_tenants,
+        COUNT(*) FILTER (WHERE degraded)::int AS degraded_tenants,
+        COUNT(*) FILTER (WHERE blocked)::int AS blocked_tenants,
+        COUNT(*) FILTER (WHERE environment = 'production')::int AS production_tenants,
+        COUNT(*) FILTER (WHERE environment = 'sandbox')::int AS sandbox_tenants,
+        COUNT(*) FILTER (WHERE environment = 'staging')::int AS staging_tenants,
+        COUNT(*) FILTER (WHERE active_tenant AND has_snapshot)::int AS tenants_with_snapshots,
+        COUNT(*) FILTER (WHERE active_tenant AND smart_ok)::int AS tenants_smart_ok,
+        COUNT(*) FILTER (WHERE active_tenant AND capability_ok)::int AS tenants_capability_ok,
+        COUNT(*) FILTER (WHERE active_tenant AND resource_count > 0)::int AS tenants_with_resource_support,
+        COUNT(*) FILTER (WHERE active_tenant AND issuer_mismatch)::int AS issuer_mismatches,
+        COUNT(*) FILTER (WHERE active_tenant AND missing_authorization_endpoint)::int AS missing_authorization_endpoint,
+        COUNT(*) FILTER (WHERE active_tenant AND missing_token_endpoint)::int AS missing_token_endpoint,
+        MAX(captured_at)::text AS latest_snapshot_at,
+        COUNT(*) FILTER (WHERE active_tenant AND enabled_backend_clients > 0)::int AS tenants_with_enabled_backend_clients,
+        SUM(enabled_backend_clients)::int AS enabled_backend_clients,
+        COUNT(*) FILTER (WHERE active_tenant AND ready_backend_clients > 0)::int AS tenants_ready_for_token_exchange,
+        SUM(backend_credentials_incomplete)::int AS backend_credentials_incomplete,
+        SUM(backend_scopes_missing)::int AS backend_scopes_missing,
+        SUM(backend_token_requests_24h)::int AS backend_token_requests_24h,
+        MAX(latest_backend_token_issued_at)::text AS latest_backend_token_issued_at,
+        COUNT(*) FILTER (WHERE active_tenant AND latest_backend_token_expired)::int AS latest_backend_token_expired,
+        SUM(launches_started_24h)::int AS launches_started_24h,
+        SUM(launches_denied_24h)::int AS launches_denied_24h,
+        SUM(callbacks_succeeded_24h)::int AS callbacks_succeeded_24h,
+        SUM(callbacks_failed_24h)::int AS callbacks_failed_24h,
+        SUM(handoffs_completed_24h)::int AS handoffs_completed_24h,
+        SUM(expired_pending_launches)::int AS expired_pending_launches,
+        MAX(latest_success_at)::text AS latest_launch_success_at,
+        SUM(fhir_failed_requests_24h)::int AS fhir_failed_requests_24h,
+        SUM(fhir_auth_failures_24h)::int AS fhir_auth_failures_24h,
+        SUM(fhir_rate_limit_failures_24h)::int AS fhir_rate_limit_failures_24h,
+        SUM(fhir_network_failures_24h)::int AS fhir_network_failures_24h,
+        SUM(backend_token_failures_24h)::int AS backend_token_failures_24h,
+        SUM(backend_token_auth_failures_24h)::int AS backend_token_auth_failures_24h,
+        MAX(latest_fhir_failure_at)::text AS latest_fhir_failure_at,
+        (
+          SELECT array_agg(resource_type ORDER BY resource_type)
+          FROM (
+            SELECT DISTINCT resource_type
+            FROM fhir_failure_events
+            WHERE resource_type IS NOT NULL
+          ) fhir_resource_types
+        ) AS affected_fhir_resource_types,
+        (SELECT array_agg(resource_type ORDER BY resource_type) FROM required_bulk_resources) AS required_bulk_resource_types,
+        COUNT(*) FILTER (
+          WHERE active_tenant
+            AND required_count > 0
+            AND supported_required_count = required_count
+        )::int AS tenants_with_required_bulk_coverage,
+        COUNT(*) FILTER (
+          WHERE active_tenant
+            AND required_count > 0
+            AND supported_required_count < required_count
+        )::int AS tenants_missing_required_bulk_coverage,
+        ROUND(AVG(
+          CASE
+            WHEN active_tenant AND required_count > 0
+              THEN supported_required_count::numeric / required_count::numeric
+            ELSE NULL
+          END
+        ), 4)::text AS average_required_bulk_coverage
+      FROM classified
+    `;
+
+    return mapEhrTenantReadiness(row);
+  } catch (err) {
+    return emptyEhrTenantReadiness('error', errorMessage(err));
+  }
 }
 
 export async function getEhrBulkReadiness(): Promise<EhrBulkReadiness> {
@@ -664,6 +1128,176 @@ function aggregateQueueStatus(queues: WorkerQueueStatus[]): HealthStatus {
   return 'ok';
 }
 
+function mapEhrTenantReadiness(row: EhrTenantReadinessRow | undefined): EhrTenantReadiness {
+  const readiness: EhrTenantReadiness = {
+    status: 'ok',
+    tenants: {
+      total: toNumber(row?.total_tenants),
+      active: toNumber(row?.active_tenants),
+      disabled: toNumber(row?.disabled_tenants),
+      healthy: toNumber(row?.healthy_tenants),
+      degraded: toNumber(row?.degraded_tenants),
+      blocked: toNumber(row?.blocked_tenants),
+      production: toNumber(row?.production_tenants),
+      sandbox: toNumber(row?.sandbox_tenants),
+      staging: toNumber(row?.staging_tenants),
+    },
+    discovery: {
+      with_snapshots: toNumber(row?.tenants_with_snapshots),
+      smart_ok: toNumber(row?.tenants_smart_ok),
+      capability_ok: toNumber(row?.tenants_capability_ok),
+      with_resource_support: toNumber(row?.tenants_with_resource_support),
+      issuer_mismatches: toNumber(row?.issuer_mismatches),
+      missing_authorization_endpoint: toNumber(row?.missing_authorization_endpoint),
+      missing_token_endpoint: toNumber(row?.missing_token_endpoint),
+      latest_snapshot_at: row?.latest_snapshot_at ?? null,
+    },
+    backend_services: {
+      tenants_with_enabled_clients: toNumber(row?.tenants_with_enabled_backend_clients),
+      enabled_clients: toNumber(row?.enabled_backend_clients),
+      ready_for_token_exchange: toNumber(row?.tenants_ready_for_token_exchange),
+      credentials_incomplete: toNumber(row?.backend_credentials_incomplete),
+      scopes_missing: toNumber(row?.backend_scopes_missing),
+      token_requests_24h: toNumber(row?.backend_token_requests_24h),
+      latest_token_issued_at: row?.latest_backend_token_issued_at ?? null,
+      latest_token_expired: toNumber(row?.latest_backend_token_expired),
+    },
+    smart_launch: {
+      launches_started_24h: toNumber(row?.launches_started_24h),
+      launches_denied_24h: toNumber(row?.launches_denied_24h),
+      callbacks_succeeded_24h: toNumber(row?.callbacks_succeeded_24h),
+      callbacks_failed_24h: toNumber(row?.callbacks_failed_24h),
+      handoffs_completed_24h: toNumber(row?.handoffs_completed_24h),
+      expired_pending_launches: toNumber(row?.expired_pending_launches),
+      latest_success_at: row?.latest_launch_success_at ?? null,
+    },
+    fhir_api: {
+      failed_requests_24h: toNumber(row?.fhir_failed_requests_24h),
+      auth_failures_24h: toNumber(row?.fhir_auth_failures_24h),
+      rate_limit_failures_24h: toNumber(row?.fhir_rate_limit_failures_24h),
+      network_failures_24h: toNumber(row?.fhir_network_failures_24h),
+      backend_token_failures_24h: toNumber(row?.backend_token_failures_24h),
+      backend_token_auth_failures_24h: toNumber(row?.backend_token_auth_failures_24h),
+      latest_failure_at: row?.latest_fhir_failure_at ?? null,
+      affected_resource_types: row?.affected_fhir_resource_types ?? [],
+    },
+    resource_coverage: {
+      required_resource_types: row?.required_bulk_resource_types ?? [],
+      tenants_with_required_bulk_coverage: toNumber(row?.tenants_with_required_bulk_coverage),
+      tenants_missing_required_bulk_coverage: toNumber(row?.tenants_missing_required_bulk_coverage),
+      average_required_bulk_coverage: toNullableNumber(row?.average_required_bulk_coverage),
+    },
+    issues: [],
+  };
+
+  if (readiness.tenants.total === 0 || readiness.tenants.active === 0) {
+    readiness.status = 'disabled';
+    if (readiness.tenants.total === 0) {
+      readiness.issues.push('No EHR tenants are registered');
+    } else {
+      readiness.issues.push('No EHR tenants are active or testing');
+    }
+    return readiness;
+  }
+
+  addCountIssue(readiness.issues, readiness.discovery.issuer_mismatches, 'active EHR tenant(s) have SMART issuer drift');
+  addCountIssue(readiness.issues, readiness.discovery.missing_authorization_endpoint, 'active EHR tenant(s) are missing SMART authorization endpoints');
+  addCountIssue(readiness.issues, readiness.discovery.missing_token_endpoint, 'active EHR tenant(s) are missing SMART token endpoints');
+  addCountIssue(readiness.issues, readiness.backend_services.credentials_incomplete, 'enabled Backend Services client(s) have incomplete credentials');
+  addCountIssue(readiness.issues, readiness.backend_services.scopes_missing, 'enabled Backend Services client(s) have no requested system scopes');
+  addCountIssue(readiness.issues, readiness.tenants.active - readiness.discovery.with_snapshots, 'active EHR tenant(s) have no stored SMART/FHIR discovery snapshot');
+  addCountIssue(readiness.issues, readiness.tenants.active - readiness.discovery.smart_ok, 'active EHR tenant(s) lack successful SMART configuration evidence');
+  addCountIssue(readiness.issues, readiness.tenants.active - readiness.discovery.capability_ok, 'active EHR tenant(s) lack successful CapabilityStatement evidence');
+  addCountIssue(readiness.issues, readiness.resource_coverage.tenants_missing_required_bulk_coverage, 'active EHR tenant(s) are missing required Bulk resource coverage');
+  addCountIssue(readiness.issues, readiness.tenants.active - readiness.backend_services.tenants_with_enabled_clients, 'active EHR tenant(s) have no enabled Backend Services client');
+  addCountIssue(readiness.issues, readiness.backend_services.latest_token_expired, 'active EHR tenant(s) have expired latest Backend Services token evidence');
+  addCountIssue(readiness.issues, readiness.smart_launch.launches_denied_24h, 'SMART launch denial(s) were recorded in the last 24 hours');
+  addCountIssue(readiness.issues, readiness.smart_launch.callbacks_failed_24h, 'SMART callback failure(s) were recorded in the last 24 hours');
+  addCountIssue(readiness.issues, readiness.smart_launch.expired_pending_launches, 'pending SMART launch session(s) expired without callback completion');
+  addCountIssue(readiness.issues, readiness.fhir_api.auth_failures_24h, 'FHIR API authorization/authentication failure(s) were recorded in the last 24 hours');
+  addCountIssue(readiness.issues, readiness.fhir_api.rate_limit_failures_24h, 'FHIR API rate-limit failure(s) were recorded in the last 24 hours');
+  addCountIssue(readiness.issues, readiness.fhir_api.network_failures_24h, 'FHIR API network/timeout failure(s) were recorded in the last 24 hours');
+  addCountIssue(readiness.issues, readiness.fhir_api.backend_token_failures_24h, 'Backend Services token request failure(s) were recorded in the last 24 hours');
+
+  readiness.status = readiness.tenants.blocked > 0
+    ? 'blocked'
+    : readiness.tenants.degraded > 0
+      ? 'degraded'
+      : 'ok';
+
+  return readiness;
+}
+
+function emptyEhrTenantReadiness(status: HealthStatus, error?: string): EhrTenantReadiness {
+  return {
+    status,
+    tenants: {
+      total: 0,
+      active: 0,
+      disabled: 0,
+      healthy: 0,
+      degraded: 0,
+      blocked: 0,
+      production: 0,
+      sandbox: 0,
+      staging: 0,
+    },
+    discovery: {
+      with_snapshots: 0,
+      smart_ok: 0,
+      capability_ok: 0,
+      with_resource_support: 0,
+      issuer_mismatches: 0,
+      missing_authorization_endpoint: 0,
+      missing_token_endpoint: 0,
+      latest_snapshot_at: null,
+    },
+    backend_services: {
+      tenants_with_enabled_clients: 0,
+      enabled_clients: 0,
+      ready_for_token_exchange: 0,
+      credentials_incomplete: 0,
+      scopes_missing: 0,
+      token_requests_24h: 0,
+      latest_token_issued_at: null,
+      latest_token_expired: 0,
+    },
+    smart_launch: {
+      launches_started_24h: 0,
+      launches_denied_24h: 0,
+      callbacks_succeeded_24h: 0,
+      callbacks_failed_24h: 0,
+      handoffs_completed_24h: 0,
+      expired_pending_launches: 0,
+      latest_success_at: null,
+    },
+    fhir_api: {
+      failed_requests_24h: 0,
+      auth_failures_24h: 0,
+      rate_limit_failures_24h: 0,
+      network_failures_24h: 0,
+      backend_token_failures_24h: 0,
+      backend_token_auth_failures_24h: 0,
+      latest_failure_at: null,
+      affected_resource_types: [],
+    },
+    resource_coverage: {
+      required_resource_types: [],
+      tenants_with_required_bulk_coverage: 0,
+      tenants_missing_required_bulk_coverage: 0,
+      average_required_bulk_coverage: null,
+    },
+    issues: error ? [error] : [],
+    ...(error ? { error } : {}),
+  };
+}
+
+function addCountIssue(issues: string[], count: number, message: string): void {
+  if (count > 0) {
+    issues.push(`${count} ${message}`);
+  }
+}
+
 function mapEhrBulkReadiness(
   row: EhrBulkReadinessRow | undefined,
   queueEnabled: boolean,
@@ -818,6 +1452,12 @@ function toNumber(value: number | string | null | undefined): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
+}
+
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value == null) return null;
+  const parsed = toNumber(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function errorMessage(err: unknown): string {

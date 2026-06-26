@@ -115,6 +115,69 @@ const health: SystemHealth = {
       },
     ],
   },
+  ehr_tenants: {
+    status: 'blocked',
+    tenants: {
+      total: 3,
+      active: 2,
+      disabled: 1,
+      healthy: 1,
+      degraded: 0,
+      blocked: 1,
+      production: 1,
+      sandbox: 2,
+      staging: 0,
+    },
+    discovery: {
+      with_snapshots: 2,
+      smart_ok: 1,
+      capability_ok: 2,
+      with_resource_support: 2,
+      issuer_mismatches: 0,
+      missing_authorization_endpoint: 0,
+      missing_token_endpoint: 1,
+      latest_snapshot_at: '2026-06-26T20:00:00Z',
+    },
+    backend_services: {
+      tenants_with_enabled_clients: 2,
+      enabled_clients: 2,
+      ready_for_token_exchange: 1,
+      credentials_incomplete: 1,
+      scopes_missing: 0,
+      token_requests_24h: 3,
+      latest_token_issued_at: '2026-06-26T19:00:00Z',
+      latest_token_expired: 0,
+    },
+    smart_launch: {
+      launches_started_24h: 4,
+      launches_denied_24h: 1,
+      callbacks_succeeded_24h: 2,
+      callbacks_failed_24h: 0,
+      handoffs_completed_24h: 2,
+      expired_pending_launches: 0,
+      latest_success_at: '2026-06-26T19:30:00Z',
+    },
+    fhir_api: {
+      failed_requests_24h: 6,
+      auth_failures_24h: 3,
+      rate_limit_failures_24h: 1,
+      network_failures_24h: 2,
+      backend_token_failures_24h: 1,
+      backend_token_auth_failures_24h: 1,
+      latest_failure_at: '2026-06-26T19:45:00Z',
+      affected_resource_types: ['Observation', 'Patient'],
+    },
+    resource_coverage: {
+      required_resource_types: ['Condition', 'Encounter', 'Observation', 'Patient'],
+      tenants_with_required_bulk_coverage: 1,
+      tenants_missing_required_bulk_coverage: 1,
+      average_required_bulk_coverage: 0.875,
+    },
+    issues: [
+      '1 active EHR tenant(s) are missing SMART token endpoints',
+      '1 enabled Backend Services client(s) have incomplete credentials',
+    ],
+  },
   ehr_bulk: {
     status: 'ok',
     queue_enabled: true,
@@ -233,6 +296,20 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('Da Vinci DEQM')).toBeInTheDocument();
     expect(screen.getByText('Artifacts 4/4 / runtime optional')).toBeInTheDocument();
     expect(screen.getByText('VALIDATOR_JAR=validator_cli.jar ./scripts/fhir-validate.sh')).toBeInTheDocument();
+    expect(screen.getByText('EHR/FHIR Tenant Readiness')).toBeInTheDocument();
+    expect(screen.getAllByText('1/2 active tenants healthy').length).toBeGreaterThan(0);
+    expect(screen.getByText('1 healthy / 0 degraded')).toBeInTheDocument();
+    expect(screen.getByText('1 blocked / 1 disabled')).toBeInTheDocument();
+    expect(screen.getByText('1/2 SMART')).toBeInTheDocument();
+    expect(screen.getByText('1/2 token-ready')).toBeInTheDocument();
+    expect(screen.getByText('88% average')).toBeInTheDocument();
+    expect(screen.getByText('4 starts / 2 callbacks')).toBeInTheDocument();
+    expect(screen.getByText('1 denied / 0 failed')).toBeInTheDocument();
+    expect(screen.getByText('6 failed / 3 auth')).toBeInTheDocument();
+    expect(screen.getByText('1 rate / 2 network')).toBeInTheDocument();
+    expect(screen.getByText('1 total / 1 auth')).toBeInTheDocument();
+    expect(screen.getByText('Observation, Patient')).toBeInTheDocument();
+    expect(screen.getByText('1 enabled Backend Services client(s) have incomplete credentials')).toBeInTheDocument();
     expect(screen.getByText('EHR Sync Alerts')).toBeInTheDocument();
     expect(screen.getByText('ops.example')).toBeInTheDocument();
     expect(screen.getByText('Authentication Providers')).toBeInTheDocument();
@@ -241,6 +318,8 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('https://issuer.example.test')).toBeInTheDocument();
     expect(screen.getByText('Configured')).toBeInTheDocument();
     expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /bulk export/i })).not.toBeInTheDocument();
   });
 

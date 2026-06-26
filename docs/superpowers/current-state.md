@@ -185,6 +185,13 @@ devlogs do not override the current codebase state.
   pub/sub counts, configured Redis endpoint display, configured Solr core names
   and per-core health, plus repeatable queue next-run and latest-completed
   timestamps for scheduler-style queues.
+- Follow-up continuation extended System Health with aggregate EHR/FHIR tenant
+  readiness. The API/UI now report disabled, degraded, blocked, and healthy
+  tenant states from stored SMART discovery, CapabilityStatement, backend
+  services, token metadata, SMART launch audit/session, and required Bulk
+  resource coverage evidence, plus PHI-safe 24-hour FHIR API and backend-token
+  failure counts, without calling live vendor diagnostics or EMPI services
+  during the health poll.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password
@@ -249,5 +256,4 @@ devlogs do not override the current codebase state.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
 6. Run official Cypress CVU+ and QPP sandbox validation once the external validator/runtime and credentials are available.
-7. Extend the remaining System Health visibility with deeper FHIR tenant readiness and clearer blocked/degraded/healthy semantics.
-8. Broaden role-based E2E into write-path and incident-path workflows for EHR, Measure Governance, alerts, and clinical worklists.
+7. Broaden role-based E2E into write-path and incident-path workflows for EHR, Measure Governance, alerts, and clinical worklists.

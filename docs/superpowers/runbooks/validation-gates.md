@@ -211,6 +211,7 @@ Before a release or handoff, record:
 - [ ] `./scripts/deqm-validate.sh`
 - [ ] Admin System Health shows Standards Readiness for CQL/FHIR/DEQM assets.
 - [ ] Admin System Health shows Redis pub/sub, Solr core, and scheduler queue timing details.
+- [ ] Admin System Health shows aggregate EHR/FHIR tenant readiness with disabled/degraded/blocked/healthy semantics and 24-hour FHIR/backend-token failure counts from stored evidence.
 - [ ] `npm run test:e2e --workspace=apps/web`
 - [ ] Local `/health`
 - [ ] Public `/health`
@@ -221,5 +222,6 @@ Before a release or handoff, record:
   QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API validation
   still require the external validator/runtime and credentials.
 - Expand Playwright to authenticated role-based workflows.
-- Add worker, queue, CQL sidecar, EHR tenant, and Bulk Data checks to admin
-  health and release smoke checks.
+- Add release smoke checks that assert the existing worker, queue, CQL/FHIR/DEQM,
+  EHR/FHIR tenant readiness, EHR sync alerting, and Bulk Data health sections are
+  visible after deployment.

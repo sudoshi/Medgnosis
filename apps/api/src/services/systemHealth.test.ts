@@ -52,6 +52,7 @@ vi.mock('./auth/providerHealth.js', () => ({
 import {
   getAuthHealth,
   getEhrBulkReadiness,
+  getEhrTenantReadiness,
   getRedisHealth,
   getSolrHealth,
   getStandardsReadiness,
@@ -103,6 +104,203 @@ beforeEach(() => {
       issues: [],
     },
   ]);
+});
+
+describe('getEhrTenantReadiness', () => {
+  it('summarizes active EHR/FHIR tenant readiness from stored evidence', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        total_tenants: 3,
+        active_tenants: 2,
+        disabled_tenants: 1,
+        healthy_tenants: 1,
+        degraded_tenants: 1,
+        blocked_tenants: 0,
+        production_tenants: 1,
+        sandbox_tenants: 2,
+        staging_tenants: 0,
+        tenants_with_snapshots: 2,
+        tenants_smart_ok: 2,
+        tenants_capability_ok: 2,
+        tenants_with_resource_support: 2,
+        issuer_mismatches: 0,
+        missing_authorization_endpoint: 0,
+        missing_token_endpoint: 0,
+        latest_snapshot_at: '2026-06-26 20:00:00+00',
+        tenants_with_enabled_backend_clients: 2,
+        enabled_backend_clients: 2,
+        tenants_ready_for_token_exchange: 2,
+        backend_credentials_incomplete: 0,
+        backend_scopes_missing: 0,
+        backend_token_requests_24h: 3,
+        latest_backend_token_issued_at: '2026-06-26 19:00:00+00',
+        latest_backend_token_expired: 1,
+        launches_started_24h: 4,
+        launches_denied_24h: 0,
+        callbacks_succeeded_24h: 2,
+        callbacks_failed_24h: 0,
+        handoffs_completed_24h: 2,
+        expired_pending_launches: 0,
+        latest_launch_success_at: '2026-06-26 19:30:00+00',
+        fhir_failed_requests_24h: 6,
+        fhir_auth_failures_24h: 3,
+        fhir_rate_limit_failures_24h: 1,
+        fhir_network_failures_24h: 2,
+        backend_token_failures_24h: 1,
+        backend_token_auth_failures_24h: 1,
+        latest_fhir_failure_at: '2026-06-26 19:45:00+00',
+        affected_fhir_resource_types: ['Observation', 'Patient'],
+        required_bulk_resource_types: ['Condition', 'Encounter', 'Observation', 'Patient'],
+        tenants_with_required_bulk_coverage: 1,
+        tenants_missing_required_bulk_coverage: 1,
+        average_required_bulk_coverage: '0.8750',
+      },
+    ]);
+
+    const readiness = await getEhrTenantReadiness();
+
+    expect(readiness).toMatchObject({
+      status: 'degraded',
+      tenants: {
+        total: 3,
+        active: 2,
+        disabled: 1,
+        healthy: 1,
+        degraded: 1,
+        blocked: 0,
+        production: 1,
+        sandbox: 2,
+      },
+      discovery: {
+        with_snapshots: 2,
+        smart_ok: 2,
+        capability_ok: 2,
+        latest_snapshot_at: '2026-06-26 20:00:00+00',
+      },
+      backend_services: {
+        tenants_with_enabled_clients: 2,
+        ready_for_token_exchange: 2,
+        token_requests_24h: 3,
+        latest_token_expired: 1,
+      },
+      smart_launch: {
+        launches_started_24h: 4,
+        callbacks_succeeded_24h: 2,
+        latest_success_at: '2026-06-26 19:30:00+00',
+      },
+      fhir_api: {
+        failed_requests_24h: 6,
+        auth_failures_24h: 3,
+        rate_limit_failures_24h: 1,
+        network_failures_24h: 2,
+        backend_token_failures_24h: 1,
+        backend_token_auth_failures_24h: 1,
+        latest_failure_at: '2026-06-26 19:45:00+00',
+        affected_resource_types: ['Observation', 'Patient'],
+      },
+      resource_coverage: {
+        required_resource_types: ['Condition', 'Encounter', 'Observation', 'Patient'],
+        tenants_with_required_bulk_coverage: 1,
+        tenants_missing_required_bulk_coverage: 1,
+        average_required_bulk_coverage: 0.875,
+      },
+    });
+    expect(readiness.issues).toEqual([
+      '1 active EHR tenant(s) are missing required Bulk resource coverage',
+      '1 active EHR tenant(s) have expired latest Backend Services token evidence',
+      '3 FHIR API authorization/authentication failure(s) were recorded in the last 24 hours',
+      '1 FHIR API rate-limit failure(s) were recorded in the last 24 hours',
+      '2 FHIR API network/timeout failure(s) were recorded in the last 24 hours',
+      '1 Backend Services token request failure(s) were recorded in the last 24 hours',
+    ]);
+  });
+
+  it('marks tenant readiness blocked for hard SMART or backend blockers', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        total_tenants: '2',
+        active_tenants: '2',
+        disabled_tenants: '0',
+        healthy_tenants: '0',
+        degraded_tenants: '0',
+        blocked_tenants: '2',
+        production_tenants: '1',
+        sandbox_tenants: '1',
+        staging_tenants: '0',
+        tenants_with_snapshots: '2',
+        tenants_smart_ok: '1',
+        tenants_capability_ok: '2',
+        tenants_with_resource_support: '2',
+        issuer_mismatches: '1',
+        missing_authorization_endpoint: '0',
+        missing_token_endpoint: '1',
+        latest_snapshot_at: null,
+        tenants_with_enabled_backend_clients: '1',
+        enabled_backend_clients: '1',
+        tenants_ready_for_token_exchange: '0',
+        backend_credentials_incomplete: '1',
+        backend_scopes_missing: '1',
+        backend_token_requests_24h: '0',
+        latest_backend_token_issued_at: null,
+        latest_backend_token_expired: '0',
+        launches_started_24h: '0',
+        launches_denied_24h: '1',
+        callbacks_succeeded_24h: '0',
+        callbacks_failed_24h: '1',
+        handoffs_completed_24h: '0',
+        expired_pending_launches: '1',
+        latest_launch_success_at: null,
+        required_bulk_resource_types: ['Condition', 'Encounter', 'Observation', 'Patient'],
+        tenants_with_required_bulk_coverage: '0',
+        tenants_missing_required_bulk_coverage: '2',
+        average_required_bulk_coverage: '0.2500',
+      },
+    ]);
+
+    const readiness = await getEhrTenantReadiness();
+
+    expect(readiness.status).toBe('blocked');
+    expect(readiness.tenants.blocked).toBe(2);
+    expect(readiness.issues).toEqual([
+      '1 active EHR tenant(s) have SMART issuer drift',
+      '1 active EHR tenant(s) are missing SMART token endpoints',
+      '1 enabled Backend Services client(s) have incomplete credentials',
+      '1 enabled Backend Services client(s) have no requested system scopes',
+      '1 active EHR tenant(s) lack successful SMART configuration evidence',
+      '2 active EHR tenant(s) are missing required Bulk resource coverage',
+      '1 active EHR tenant(s) have no enabled Backend Services client',
+      '1 SMART launch denial(s) were recorded in the last 24 hours',
+      '1 SMART callback failure(s) were recorded in the last 24 hours',
+      '1 pending SMART launch session(s) expired without callback completion',
+    ]);
+  });
+
+  it('marks tenant readiness disabled when no tenants are active', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        total_tenants: '1',
+        active_tenants: '0',
+        disabled_tenants: '1',
+      },
+    ]);
+
+    const readiness = await getEhrTenantReadiness();
+
+    expect(readiness.status).toBe('disabled');
+    expect(readiness.issues).toEqual(['No EHR tenants are active or testing']);
+  });
+
+  it('returns an error section when tenant readiness SQL fails', async () => {
+    mockSql.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const readiness = await getEhrTenantReadiness();
+
+    expect(readiness).toMatchObject({
+      status: 'error',
+      error: 'database unavailable',
+      issues: ['database unavailable'],
+    });
+  });
 });
 
 describe('getStandardsReadiness', () => {

@@ -33,6 +33,8 @@ Follow-up System Health standards-readiness work on 2026-06-26 adds a CQL/FHIR/D
 
 Follow-up System Health runtime-detail work on 2026-06-26 adds Redis alert pub/sub counts, configured Redis endpoint visibility, Solr configured-core names and per-core health, and repeatable queue next-run/latest-completed timestamps to the admin health API and UI. This closes the scheduler/Redis/Solr visibility gap without adding new database state.
 
+Follow-up System Health EHR/FHIR readiness work on 2026-06-26 adds a stored-evidence tenant readiness section to the admin health API and UI. The section distinguishes disabled, degraded, blocked, and healthy EHR/FHIR tenant states from aggregate SMART discovery, CapabilityStatement, backend-services credential/scope, token metadata, SMART launch audit/session, required Bulk resource coverage, and PHI-safe 24-hour FHIR API/backend-token failure evidence. It does not call live vendor diagnostics, request backend tokens, or touch the parallel EMPI/identity track during the 60-second health poll.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
@@ -824,6 +826,14 @@ Focused EHR audit redaction validation on 2026-06-26:
 - Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 903 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests.
 - Release `737dfde` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, public health returned healthy, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, local `HEAD` matched `origin/main`, and production migration dry-run reported 91 applied migrations with none pending.
 
+Focused System Health EHR/FHIR tenant-readiness validation on 2026-06-26:
+
+- `npm run test --workspace=apps/api -- src/services/systemHealth.test.ts src/routes/admin/index.test.ts` passed 2 files and 74 tests.
+- `npm run test --workspace=apps/web -- src/pages/admin/SystemHealthTab.test.tsx` passed 1 file and 2 tests.
+- `npm run typecheck --workspace=apps/api`, `npm run typecheck --workspace=apps/web`, `npm run lint --workspace=apps/api`, `npm run lint --workspace=apps/web`, `npm run build --workspace=apps/api`, `npm run build --workspace=apps/web`, and `git diff --check` passed.
+- `npm run test` passed across API, web, shared, and Solr: API 117 files passed with 911 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests.
+- A read-only `.env.production` service probe for `getEhrTenantReadiness()` reached PostgreSQL and returned a degraded aggregate state for 2 active sandbox tenants, with PHI-safe issues for missing stored SMART/FHIR snapshots, one active tenant without an enabled Backend Services client, expired latest backend-token evidence, expired pending launch sessions, and no 24-hour FHIR/backend-token failure rows. Sourcing `.env.production` still emits the existing lines 84/85 warnings.
+
 Focused worker/CQL restart runbook validation on 2026-06-26:
 
 - The documented worker commands were checked against `scripts/medgnosis-worker.service`, `scripts/medgnosis-api.service`, `scripts/deploy-production.sh`, and the live service model.
@@ -950,7 +960,7 @@ Still needed:
 
 - Keep token exchange and FHIR-read failure audit coverage PHI-safe as additional vendor paths are wired.
 - Audit FHIR reads by tenant/resource/patient/user.
-- Add deeper EHR tenant and SMART launch health drilldowns beyond the current readiness evidence panel.
+- Keep aggregate System Health EHR/FHIR readiness aligned with EHR Integrations tenant drilldowns as vendor paths expand.
 - FHIR API health dashboard.
 - Add deeper Bulk ingestion dashboard drilldowns beyond current job/file/schedule/sync metrics.
 - Configure external alert delivery for the current EHR readiness/sync/Bulk and FHIR 401/403/429 spike snapshots.
@@ -1053,7 +1063,7 @@ Mitigation:
 
 6. **EHR observability and runbooks**
    - Preserve PHI-safe token/FHIR-read failure audit coverage as new vendor paths are added.
-   - Add deeper EHR tenant, SMART launch, FHIR API, and Bulk ingestion health panels.
+   - Use the new aggregate System Health EHR/FHIR readiness panel with the existing EHR Integrations tenant drilldowns during operator triage.
    - Configure external stuck-job and token-failure alert delivery.
 
 7. **Epic/Cerner vendor readiness**
@@ -1168,6 +1178,6 @@ Scripts:
 | Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk deleted-output tombstone processing for crosswalk-mapped EDW rows, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, readiness diagnostics, bounded patient/resource rollups, bounded conflict/stale drilldowns, FHIR/token failure alert summaries, replay/dead-letter runbook, EHR sync alert runbook, and admin status UI present; vendor tombstone edge-case evidence, configured external delivery, incident rehearsal, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Partial | QDM bridge runbook, worker/CQL sidecar restart runbook, QRDA/QPP validation runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health standards readiness, Redis pub/sub detail, Solr core detail, scheduler-style queue timing, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; deeper EHR launch/FHIR tenant readiness, configured external alert delivery, and incident rehearsal evidence remain |
+| Observability/runbooks | Partial | QDM bridge runbook, worker/CQL sidecar restart runbook, QRDA/QPP validation runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health standards readiness, Redis pub/sub detail, Solr core detail, scheduler-style queue timing, System Health aggregate EHR/FHIR tenant readiness with blocked/degraded/healthy semantics and 24-hour FHIR/backend-token failure counts, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; configured external alert delivery and incident rehearsal evidence remain |
 
 Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.
