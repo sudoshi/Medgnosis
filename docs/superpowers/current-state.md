@@ -174,6 +174,13 @@ devlogs do not override the current codebase state.
   only. Anti-enumeration and untrusted-token branches carry explicit no-audit
   rationale comments, and OIDC callback success audit details no longer store raw
   email claims.
+- Follow-up production checkpoint on 2026-06-26 deployed auth/session audit
+  hardening release `8d6ee91`; full root gates passed, production migration
+  list reported 91 applied migrations and no pending migrations, the deploy
+  script passed, `medgnosis-api`, `medgnosis-worker`, and
+  `medgnosis-auto-deploy` were active, public health was healthy, and
+  `/api/v1/auth/providers` returned local plus Authentik enabled with public
+  registration and demo quick-fill disabled.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

@@ -38,8 +38,9 @@ Assessment baseline for this refresh:
 - Ingest-run drilldown application release commit: `95af0de feat(ehr): add ingest run drilldowns`.
 - Readiness token diagnostics application release commit: `1c560e0 feat(ehr): add readiness token diagnostics`.
 - EHR sync alert dispatch application release commit: `1eba305 feat(ehr): add sync alert dispatch`.
+- Auth/session audit hardening application release commit: `8d6ee91 feat(auth): harden session audit coverage`.
 - Production was deployed successfully after `091` was applied, after `25b6f7d`, after `ab87e84`, after `9ba7246`, after `95af0de`, after `1c560e0`, and again after `1eba305`; the documentation checkpoint may be a later commit on top of the same application releases.
-- Auth/session audit hardening is the active 2026-06-26 continuation pending this tranche's release checkpoint.
+- Auth/session audit hardening release `8d6ee91` was pushed, deployed, and public-health verified on 2026-06-26. `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active; production migration list reported 91 applied migrations and no pending migrations; `/api/v1/auth/providers` returned local and Authentik enabled with public registration and demo quick-fill disabled.
 - Production migrations are current through `091_ehr_medication_events.sql`.
 - The deployed non-EMPI work slice contains MedicationDispense/MedicationAdministration hydration in `apps/api/src/services/ehr/edwHydration.ts`, refresh/resource-scope expansion in `apps/api/src/services/ehr/patientContextRefresh.ts` and `apps/api/src/services/ehr/scopePolicy.ts`, focused regression coverage in the paired tests, migration `091_ehr_medication_events.sql`, bounded patient/resource rollups plus conflict/stale drilldowns and issue action metadata in `apps/api/src/services/ehr/syncStatus.ts` and `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, Bulk replay drilldowns, PHI-light ingest-run operational summaries in `apps/api/src/services/ehr/ingestRuns.ts`, selectable ingest-run details in `apps/web/src/pages/admin/EhrIntegrationsTab.tsx`, readiness capability/backend/Bulk diagnostics plus backend token checks in `apps/api/src/services/ehr/readinessEvidence.ts`, PHI-safe sync alert snapshots in `apps/api/src/services/ehr/syncAlerts.ts`, FHIR/token failure audit summaries in `apps/api/src/services/ehr/fhirRequestAudit.ts`, failed FHIR request audit wiring in `apps/api/src/services/ehr/fhirClient.ts`, backend-token failure audit wiring in `apps/api/src/services/ehr/backendServices.ts`, System Health alert status/dispatch in `apps/api/src/services/systemHealth.ts`, `apps/api/src/routes/admin/index.ts`, and `apps/web/src/pages/admin/SystemHealthTab.tsx`, and this documentation refresh.
 
@@ -60,6 +61,7 @@ Relevant commits now in history:
 - `95af0de feat(ehr): add ingest run drilldowns`
 - `1c560e0 feat(ehr): add readiness token diagnostics`
 - `1eba305 feat(ehr): add sync alert dispatch`
+- `8d6ee91 feat(auth): harden session audit coverage`
 
 ## Implemented Capabilities
 
