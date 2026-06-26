@@ -205,6 +205,11 @@ devlogs do not override the current codebase state.
   snapshot, and fails on any unhandled `/api/v1/**` request. This is local
   frontend release evidence only; it does not use production credentials, call
   live vendor diagnostics, or touch the parallel EMPI track.
+- Follow-up continuation hardened the non-EMPI admin OMOP de-identified cohort
+  POST contract. The route now validates bounded cohort criteria before service
+  calls and emits only aggregate audit details for the generated extract:
+  presence of age bounds, condition-filter count, and returned row count. Raw
+  condition codes are not persisted in audit details.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

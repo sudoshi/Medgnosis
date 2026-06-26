@@ -28,6 +28,7 @@ const {
   mockFetchOidcDiscovery,
   mockGetOidcProviderConfig,
   mockRecordAuthProviderTestEvent,
+  mockGenerateDeidentifiedCohort,
   mockRefreshMeasures,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
@@ -66,6 +67,7 @@ const {
     mockFetchOidcDiscovery: vi.fn(),
     mockGetOidcProviderConfig: vi.fn(),
     mockRecordAuthProviderTestEvent: vi.fn(),
+    mockGenerateDeidentifiedCohort: vi.fn(),
     mockRefreshMeasures: vi.fn(),
   };
 });
@@ -92,7 +94,7 @@ vi.mock('../../services/omopExport.js', () => ({
   exportPatientsToOmop: vi.fn(),
   exportConditionsToOmop: vi.fn(),
   exportMeasurementsToOmop: vi.fn(),
-  generateDeidentifiedCohort: vi.fn(),
+  generateDeidentifiedCohort: mockGenerateDeidentifiedCohort,
 }));
 vi.mock('../../services/measureEvaluator.js', () => ({
   getMeasureEvaluator: vi.fn(() => ({ refresh: mockRefreshMeasures })),
@@ -189,6 +191,15 @@ beforeEach(() => {
     redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
   });
   mockRecordAuthProviderTestEvent.mockResolvedValue(undefined);
+  mockGenerateDeidentifiedCohort.mockResolvedValue([
+    {
+      person_id: 123,
+      age_group: '50-59',
+      gender: 'female',
+      race: 'Unknown',
+      ethnicity: 'Unknown',
+    },
+  ]);
   mockRefreshMeasures.mockResolvedValue({ rowCount: 42, durationMs: 1234 });
   mockDispatchEhrSyncAlertSnapshot.mockResolvedValue({
     status: 'sent',
@@ -487,6 +498,78 @@ describe('admin system health route', () => {
       }),
     );
     expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('https://ops.example/hooks');
+    await app.close();
+  });
+});
+
+describe('admin OMOP cohort route', () => {
+  it('generates a de-identified cohort and audits only aggregate criteria', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/omop/cohort',
+      payload: {
+        min_age: 40,
+        max_age: 75,
+        conditions: [' E11.9 ', 'I10'],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        count: 1,
+        cohort: [
+          {
+            person_id: 123,
+            age_group: '50-59',
+          },
+        ],
+      },
+    });
+    expect(mockGenerateDeidentifiedCohort).toHaveBeenCalledWith({
+      min_age: 40,
+      max_age: 75,
+      conditions: ['E11.9', 'I10'],
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'omop_deidentified_cohort_generate',
+      'omop_cohort',
+      undefined,
+      {
+        minAgePresent: true,
+        maxAgePresent: true,
+        conditionCount: 2,
+        returnedRows: 1,
+      },
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('E11.9');
+    await app.close();
+  });
+
+  it.each([
+    ['negative minimum age', { min_age: -1 }, 'min_age must be a non-negative integer'],
+    ['minimum above maximum', { min_age: 80, max_age: 40 }, 'min_age must be less than or equal to max_age'],
+    ['non-array conditions', { conditions: 'E11.9' }, 'conditions must be an array of strings'],
+    ['empty condition entry', { conditions: ['E11.9', ' '] }, 'conditions must be an array of non-empty strings'],
+  ])('rejects invalid cohort criteria for %s before service or audit calls', async (_name, payload, message) => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/omop/cohort',
+      payload,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'BAD_REQUEST', message },
+    });
+    expect(mockGenerateDeidentifiedCohort).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
 });

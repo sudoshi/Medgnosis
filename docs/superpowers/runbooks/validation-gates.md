@@ -173,6 +173,9 @@ Current scope:
 - Authenticated admin operational release smoke for System Health, EHR
   Integrations, and Measure Governance with fully mocked APIs and unhandled
   request detection.
+- API admin route contract coverage includes the non-EMPI OMOP de-identified
+  cohort POST path with invalid-input rejection and PHI-safe aggregate audit
+  details.
 - SMART launch completion path for resolved Patient, dashboard fallback, invalid
   handoff, and preserved login return.
 - API SMART launch regression coverage includes missing-crosswalk Patient

@@ -76,6 +76,12 @@ interface AdminUserScopeRow {
   org_id: number | null;
 }
 
+interface OmopCohortCriteria {
+  min_age?: number;
+  max_age?: number;
+  conditions?: string[];
+}
+
 const PROMOTION_MODES: MeasurePromotionMode[] = [
   'sql_only',
   'cql_shadow',
@@ -258,6 +264,59 @@ function nonnegativeInt(value: unknown): number | null {
   if (typeof value === 'string' && !/^(0|[1-9]\d*)$/.test(value)) return null;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseOmopCohortCriteria(value: unknown): { criteria: OmopCohortCriteria } | { error: string } {
+  if (value === undefined || value === null) return { criteria: {} };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'Request body must be an object' };
+  }
+
+  const body = value as Record<string, unknown>;
+  const rawMinAge = body.min_age ?? body.minAge;
+  const rawMaxAge = body.max_age ?? body.maxAge;
+  let minAge: number | undefined;
+  if (rawMinAge !== undefined) {
+    const parsedMinAge = nonnegativeInt(rawMinAge);
+    if (parsedMinAge === null) {
+      return { error: 'min_age must be a non-negative integer' };
+    }
+    minAge = parsedMinAge;
+  }
+  let maxAge: number | undefined;
+  if (rawMaxAge !== undefined) {
+    const parsedMaxAge = nonnegativeInt(rawMaxAge);
+    if (parsedMaxAge === null) {
+      return { error: 'max_age must be a non-negative integer' };
+    }
+    maxAge = parsedMaxAge;
+  }
+  if (minAge !== undefined && maxAge !== undefined && minAge > maxAge) {
+    return { error: 'min_age must be less than or equal to max_age' };
+  }
+
+  const rawConditions = body.conditions;
+  let conditions: string[] | undefined;
+  if (rawConditions !== undefined) {
+    if (!Array.isArray(rawConditions)) {
+      return { error: 'conditions must be an array of strings' };
+    }
+    conditions = rawConditions
+      .map((condition) => (typeof condition === 'string' ? condition.trim() : ''))
+      .filter(Boolean);
+    if (conditions.length !== rawConditions.length) {
+      return { error: 'conditions must be an array of non-empty strings' };
+    }
+    if (conditions.length > 50) {
+      return { error: 'conditions must include at most 50 entries' };
+    }
+  }
+
+  const criteria: OmopCohortCriteria = {};
+  if (minAge !== undefined) criteria.min_age = minAge;
+  if (maxAge !== undefined) criteria.max_age = maxAge;
+  if (conditions !== undefined) criteria.conditions = conditions;
+  return { criteria };
 }
 
 function optionalEnum<T extends string>(
@@ -724,13 +783,22 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { success: true, data: { measurements: data, count: data.length } };
   });
 
-  app.post('/omop/cohort', async (req) => {
-    const criteria = req.body as {
-      min_age?: number;
-      max_age?: number;
-      conditions?: string[];
-    };
-    const data = await generateDeidentifiedCohort(criteria);
+  app.post('/omop/cohort', async (req, reply) => {
+    const parsed = parseOmopCohortCriteria(req.body);
+    if ('error' in parsed) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: parsed.error },
+      });
+    }
+
+    const data = await generateDeidentifiedCohort(parsed.criteria);
+    await req.auditLog('omop_deidentified_cohort_generate', 'omop_cohort', undefined, {
+      minAgePresent: parsed.criteria.min_age !== undefined,
+      maxAgePresent: parsed.criteria.max_age !== undefined,
+      conditionCount: parsed.criteria.conditions?.length ?? 0,
+      returnedRows: data.length,
+    });
     return { success: true, data: { cohort: data, count: data.length } };
   });
 

@@ -39,6 +39,8 @@ Follow-up release-evidence hardening on 2026-06-26 makes the background worker e
 
 Follow-up admin release-smoke work on 2026-06-26 adds fully mocked Playwright coverage for the operational admin tabs that carry EHR readiness evidence: System Health, EHR Integrations, and Measure Governance. The spec seeds a local admin session, dispatches the EHR sync alert snapshot, asserts the EHR/FHIR tenant, Bulk, standards, sync-status, readiness-evidence, and QDM dossier panels render, and fails on any unhandled `/api/v1/**` request. It does not use production credentials, call live vendor diagnostics, or advance EMPI/identity work.
 
+Follow-up admin contract work on 2026-06-26 hardens `POST /api/admin/omop/cohort`, a non-EMPI mutation-style extract route. The route now validates age and condition criteria before calling the OMOP export service, trims bounded condition filters, and records a PHI-safe aggregate audit event with only age-bound presence, condition count, and returned row count. Focused admin route tests prove valid response shape, invalid-input rejection before service/audit calls, and raw condition-code redaction from audit metadata.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
