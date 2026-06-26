@@ -171,10 +171,10 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add PHI-safe audit coverage for EHR QDM/CQL load actions and redaction proof for diagnostics/test-connection and patient-level Bulk controls.
   - [x] Add audit entries or coverage proof for auth provider changes.
   - [x] Add focused API PHI redaction regression tests for Pino structured logging and Sentry error telemetry paths.
-- [ ] Tighten production headers and CSP.
-  - [ ] Review `apps/api/src/app.ts` CSP settings.
-  - [ ] Add explicit script/connect/img/font policies for production.
-  - [ ] Verify Swagger exposure policy in production.
+- [x] Tighten production headers and CSP.
+  - [x] Review `apps/api/src/app.ts` CSP settings.
+  - [x] Add explicit script/connect/img/font policies for production.
+  - [x] Verify Swagger exposure policy in production.
 
 Acceptance gate:
 

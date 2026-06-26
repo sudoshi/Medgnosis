@@ -123,6 +123,11 @@ devlogs do not override the current codebase state.
   covers common auth/secrets/patient identifiers, request query/params/body
   fields, settings secrets, and server-error message/stack paths, while Sentry
   `beforeSend` and captured exception context are sanitized before delivery.
+- Follow-up continuation tightened production HTTP hardening. API Helmet options
+  now use an explicit production CSP with named script/connect/img/font/form
+  directives, HSTS remains production-only, local/test CSP remains disabled for
+  tooling, and Swagger registration is blocked in production even if
+  `SWAGGER_ENABLED=true` is accidentally set.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

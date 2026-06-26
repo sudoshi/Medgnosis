@@ -19,6 +19,7 @@ import solrPlugin from './plugins/solr.js';
 import { registerRoutes } from './routes/index.js';
 import { logRedactionOptions } from './observability/redaction.js';
 import { initSentry } from './observability/sentry.js';
+import { buildHelmetOptions, shouldRegisterSwagger } from './security/http.js';
 
 export async function buildApp() {
   initSentry({ dsn: config.sentryDsn, environment: config.nodeEnv });
@@ -46,25 +47,7 @@ export async function buildApp() {
   // ------------------------------------------------------------------
   // Security headers
   // ------------------------------------------------------------------
-  await fastify.register(fastifyHelmet, {
-    hsts: config.isProd
-      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-      : false,
-    noSniff: true,
-    frameguard: { action: 'deny' },
-    hidePoweredBy: true,
-    contentSecurityPolicy: config.isProd
-      ? {
-          directives: {
-            defaultSrc: ["'self'"],
-            baseUri: ["'self'"],
-            frameAncestors: ["'none'"],
-            objectSrc: ["'none'"],
-          },
-        }
-      : false,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-  });
+  await fastify.register(fastifyHelmet, buildHelmetOptions(config));
 
   await fastify.register(fastifyCors, {
     origin: config.corsOrigin,
@@ -94,7 +77,7 @@ export async function buildApp() {
   // ------------------------------------------------------------------
   // OpenAPI / Swagger documentation
   // ------------------------------------------------------------------
-  if (config.swaggerEnabled) {
+  if (shouldRegisterSwagger(config)) {
     await fastify.register(fastifySwagger, {
       openapi: {
         info: {
