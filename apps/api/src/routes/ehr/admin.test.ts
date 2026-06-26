@@ -1240,6 +1240,77 @@ describe('EHR admin routes', () => {
     await app.close();
   });
 
+  it('audits SMART connection test alias with aggregate diagnostics metadata', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.ehr_tenant') && text.includes('WHERE id =')) {
+        return Promise.resolve(values.includes(42) ? [tenantRow] : []);
+      }
+      if (text.includes('INSERT INTO phm_edw.ehr_capability_snapshot')) {
+        return Promise.resolve([snapshotRow]);
+      }
+      return Promise.resolve([]);
+    });
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(smartConfiguration()))
+      .mockResolvedValueOnce(jsonResponse(capabilityStatement()));
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/test-connection',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_diagnostics_run',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        environment: 'sandbox',
+        snapshotId: 12,
+        smartOk: true,
+        capabilityOk: true,
+      }),
+    );
+    await app.close();
+  });
+
+  it('audits SMART diagnostics failures with sanitized tenant metadata', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    vi.stubGlobal('fetch', undefined);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/ehr/admin/tenants/42/diagnostics',
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'EHR_DISCOVERY_FAILED' },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_diagnostics_failed',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        vendor: 'epic',
+        environment: 'sandbox',
+      }),
+    );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('client-secret');
+    expect(auditDetails).not.toContain('Bearer ');
+    await app.close();
+  });
+
   it('returns 404 when diagnostics target an unknown tenant', async () => {
     mockSql.mockResolvedValueOnce([]);
     const app = await buildApp();
@@ -1515,6 +1586,55 @@ describe('EHR admin routes', () => {
     await app.close();
   });
 
+  it('audits patient-level Bulk Data schedules without raw patient identifiers', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    upsertBulkSchedule.mockResolvedValueOnce({
+      ...bulkSchedule,
+      exportLevel: 'patient',
+      groupId: null,
+      patientId: 'Patient/pat-secret',
+      typeFilters: [],
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/bulk-schedules',
+      payload: {
+        exportLevel: 'patient',
+        patientId: 'Patient/pat-secret',
+        resourceTypes: ['Patient', 'Observation'],
+        intervalMinutes: 1440,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(upsertBulkSchedule).toHaveBeenCalledWith({
+      ehrTenantId: 42,
+      orgId: 7,
+      exportLevel: 'patient',
+      patientId: 'Patient/pat-secret',
+      resourceTypes: ['Patient', 'Observation'],
+      sinceMode: 'last_success',
+      intervalMinutes: 1440,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_schedule_upsert',
+      'ehr_bulk_schedule',
+      '00000000-0000-4000-8000-000000000091',
+      expect.objectContaining({
+        tenantId: 42,
+        exportLevel: 'patient',
+        hasGroupId: false,
+        hasPatientId: true,
+        typeFilterCount: 0,
+      }),
+    );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('Patient/pat-secret');
+    await app.close();
+  });
+
   it('rejects invalid Bulk Data schedule intervals before tenant lookup', async () => {
     const app = await buildApp();
 
@@ -1679,6 +1799,56 @@ describe('EHR admin routes', () => {
     const exportAuditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
     expect(exportAuditDetails).not.toContain('group-1');
     expect(exportAuditDetails).not.toContain('Observation?date=ge2026-01-01');
+    await app.close();
+  });
+
+  it('audits patient-level Bulk Data export kickoff without raw patient identifiers', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    enqueueEhrBulkExport.mockResolvedValueOnce({
+      enqueued: true,
+      queueName: 'medgnosis-ehr-bulk-import',
+      jobId: 'ehr-bulk-kickoff:42:patient',
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ehr/admin/tenants/42/bulk-exports',
+      payload: {
+        exportLevel: 'patient',
+        patientId: 'Patient/pat-secret',
+        resourceTypes: ['Patient', 'Observation'],
+        maxResourcesPerFile: 500,
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(enqueueEhrBulkExport).toHaveBeenCalledWith({
+      ehrTenantId: 42,
+      orgId: 7,
+      vendor: 'epic',
+      triggeredBy: 'manual',
+      exportLevel: 'patient',
+      patientId: 'Patient/pat-secret',
+      resourceTypes: ['Patient', 'Observation'],
+      maxResourcesPerFile: 500,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_bulk_export_enqueue',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        exportLevel: 'patient',
+        hasGroupId: false,
+        hasPatientId: true,
+        typeFilterCount: 0,
+        enqueued: true,
+        queueJobId: 'ehr-bulk-kickoff:42:patient',
+      }),
+    );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('Patient/pat-secret');
     await app.close();
   });
 
@@ -2052,6 +2222,38 @@ describe('EHR admin routes', () => {
       engineBaseUrl: 'http://engine.example.test/fhir',
       limit: 25,
     });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_qdm_cql_load',
+      'ehr_tenant',
+      '42',
+      expect.objectContaining({
+        tenantId: 42,
+        orgId: 7,
+        ingestRunIdPresent: true,
+        qdmEventFilterCount: 2,
+        patientIdFilterCount: 0,
+        patientRefFilterCount: 1,
+        qdmDatatypeFilterCount: 1,
+        periodStart: '2026-01-01',
+        periodEnd: '2026-12-31',
+        includePatientRecords: true,
+        engineBaseUrlConfigured: true,
+        limit: 25,
+        qdmEventsSelected: 2,
+        qdmEventsIncluded: 3,
+        qdmEventsProjected: 3,
+        qdmEventsSkipped: 0,
+        bundleEntries: 3,
+        load: expect.objectContaining({ total: 3, created: 1, ok: 3, failed: 0 }),
+      }),
+    );
+    const auditMetadata = mockAuditLog.mock.calls.find(([action]) => action === 'ehr_qdm_cql_load')?.[3] as Record<
+      string,
+      unknown
+    >;
+    expect(JSON.stringify(auditMetadata)).not.toMatch(
+      /Patient\/pat-1|Laboratory Test|qdmEventIds|patientRefs|engine\.example\.test|00000000-0000-4000-8000-000000000068/,
+    );
     await app.close();
   });
 

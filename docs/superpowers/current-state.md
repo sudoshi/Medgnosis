@@ -111,6 +111,13 @@ devlogs do not override the current codebase state.
 - This continuation adds PHI-safe QDM/CQL promotion attempt audits for validated
   dry-run, promoted, and failed CQL-authoritative promotion requests, with
   aggregate-only coverage, materialization, and guardrail-failure metadata.
+- Follow-up continuation added PHI-safe EHR tenant mutation audit coverage for
+  tenant/client upserts, diagnostics/test-connection actions, backend-token
+  checks, manual refresh/replay controls, QDM/CQL load actions, Bulk
+  schedule/export/import/resume/cancel controls, and worker-adjacent state
+  transitions. Audit details record tenant/org/vendor, action flags, ids,
+  statuses, and aggregate counts only; they do not store secrets, tokens, raw
+  FHIR/NDJSON payloads, patient identifiers, group identifiers, or engine URLs.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

@@ -50,7 +50,11 @@ import {
 import { normalizeStagedRunToQdm } from '../../services/ehr/qdmBridge.js';
 import { getTenantReadinessEvidence } from '../../services/ehr/readinessEvidence.js';
 import { getTenantSyncStatus } from '../../services/ehr/syncStatus.js';
-import { loadQdmEventsToCqlEngine } from '../../services/qdm/index.js';
+import {
+  loadQdmEventsToCqlEngine,
+  type LoadQdmEventsToCqlEngineInput,
+  type LoadQdmEventsToCqlEngineResult,
+} from '../../services/qdm/index.js';
 import { enqueueEhrBulkExport, enqueueEhrBulkImport } from '../../workers/ehr-bulk-import.js';
 import { enqueueSmartPatientContextRefresh } from '../../workers/ehr-patient-context-refresh.js';
 
@@ -767,6 +771,12 @@ async function sendTenantQdmCqlLoad(
     ehrTenantId: tenant.id,
     orgId: tenant.orgId,
   });
+  await request.auditLog('ehr_qdm_cql_load', 'ehr_tenant', String(tenant.id), qdmCqlLoadAuditDetails({
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    input: parsedBody.input,
+    result,
+  }));
 
   return reply.send({
     success: true,
@@ -1941,6 +1951,41 @@ function numberDetail(value: unknown, key: string): number | null {
   if (!isRecord(value)) return null;
   const detail = value[key];
   return typeof detail === 'number' && Number.isFinite(detail) ? detail : null;
+}
+
+function qdmCqlLoadAuditDetails(input: {
+  tenantId: number;
+  orgId: number | null;
+  input: LoadQdmEventsToCqlEngineInput;
+  result: LoadQdmEventsToCqlEngineResult;
+}): Record<string, unknown> {
+  return {
+    tenantId: input.tenantId,
+    orgId: input.orgId,
+    ingestRunIdPresent: input.input.ingestRunId !== undefined,
+    qdmEventFilterCount: input.input.qdmEventIds?.length ?? 0,
+    patientIdFilterCount: input.input.patientIds?.length ?? 0,
+    patientRefFilterCount: input.input.patientRefs?.length ?? 0,
+    qdmDatatypeFilterCount: input.input.qdmDatatypes?.length ?? 0,
+    periodStart: input.input.periodStart ?? null,
+    periodEnd: input.input.periodEnd ?? null,
+    includePatientRecords: input.input.includePatientRecords !== false,
+    engineBaseUrlConfigured: input.input.engineBaseUrl !== undefined,
+    limit: input.input.limit ?? null,
+    qdmEventsSelected: input.result.qdmEventsSelected,
+    qdmEventsIncluded: input.result.qdmEventsIncluded,
+    qdmEventsProjected: input.result.qdmEventsProjected,
+    qdmEventsSkipped: input.result.qdmEventsSkipped,
+    bundleEntries: input.result.bundleEntries,
+    load: input.result.load
+      ? {
+          total: input.result.load.total,
+          created: input.result.load.created,
+          ok: input.result.load.ok,
+          failed: input.result.load.failed,
+        }
+      : null,
+  };
 }
 
 function errorMessage(error: unknown): string {
