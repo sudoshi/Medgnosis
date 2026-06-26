@@ -38,7 +38,39 @@ const health: SystemHealth = {
   database: { status: 'ok' },
   redis: { status: 'ok' },
   solr: { status: 'disabled', enabled: false },
-  auth: { local_enabled: true, oidc_enabled: false },
+  auth: {
+    status: 'ok',
+    local_enabled: true,
+    oidc_enabled: true,
+    providers: [
+      {
+        provider_type: 'local',
+        display_name: 'Email and password',
+        enabled: true,
+        status: 'ok',
+        updated_at: '2026-06-26T00:00:00Z',
+        last_test: null,
+        issues: [],
+      },
+      {
+        provider_type: 'oidc',
+        display_name: 'Authentik',
+        enabled: true,
+        status: 'ok',
+        updated_at: '2026-06-26T00:00:00Z',
+        last_test: {
+          status: 'ok',
+          tested_at: '2026-06-26T01:00:00Z',
+          response_ms: 45,
+          issuer: 'https://issuer.example.test',
+          client_configured: true,
+          error_code: null,
+          error_message: null,
+        },
+        issues: [],
+      },
+    ],
+  },
   workers: {
     status: 'degraded',
     total_workers: 3,
@@ -142,8 +174,12 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('3 active / 0 failed')).toBeInTheDocument();
     expect(screen.getByText('EHR Sync Alerts')).toBeInTheDocument();
     expect(screen.getByText('ops.example')).toBeInTheDocument();
+    expect(screen.getByText('Authentication Providers')).toBeInTheDocument();
+    expect(screen.getByText('Authentik')).toBeInTheDocument();
+    expect(screen.getByText((text) => text.startsWith('OK /') && text.endsWith('/ 45 ms'))).toBeInTheDocument();
+    expect(screen.getByText('https://issuer.example.test')).toBeInTheDocument();
     expect(screen.getByText('Configured')).toBeInTheDocument();
-    expect(screen.getByText('Enabled')).toBeInTheDocument();
+    expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /bulk export/i })).not.toBeInTheDocument();
   });
 

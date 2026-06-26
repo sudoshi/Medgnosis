@@ -9,6 +9,10 @@ import { sql } from '@medgnosis/db';
 import { config } from '../config.js';
 import { getSolrClient, isSolrAvailable } from '../plugins/solr.js';
 import { getOidcProviderConfig } from './auth/oidc/providerConfig.js';
+import {
+  listAuthProviderHealth,
+  type AuthProviderHealth,
+} from './auth/providerHealth.js';
 import { getEhrSyncAlertingStatus, type EhrSyncAlertingStatus } from './ehr/syncAlerts.js';
 
 export type HealthStatus = 'ok' | 'degraded' | 'error' | 'disabled';
@@ -18,7 +22,7 @@ export interface SystemHealth {
   database: { status: HealthStatus; error?: string };
   redis: { status: HealthStatus; error?: string };
   solr: { status: HealthStatus; enabled: boolean };
-  auth: { local_enabled: boolean; oidc_enabled: boolean; error?: string };
+  auth: AuthHealth;
   workers: WorkerQueueHealth;
   ehr_bulk: EhrBulkReadiness;
   ehr_sync_alerts: EhrSyncAlertingStatus;
@@ -74,6 +78,14 @@ export interface EhrBulkReadiness {
     latest_completed_at: string | null;
   };
   issues: string[];
+  error?: string;
+}
+
+export interface AuthHealth {
+  status: HealthStatus;
+  local_enabled: boolean;
+  oidc_enabled: boolean;
+  providers: AuthProviderHealth[];
   error?: string;
 }
 
@@ -315,19 +327,39 @@ async function getSolrHealth(): Promise<SystemHealth['solr']> {
   };
 }
 
-async function getAuthHealth(): Promise<SystemHealth['auth']> {
+export async function getAuthHealth(): Promise<SystemHealth['auth']> {
   try {
+    const oidcProvider = await getOidcProviderConfig();
+    const providers = await listAuthProviderHealth({
+      localEnabled: config.localAuthEnabled,
+      oidcEnabled: oidcProvider.enabled,
+    });
     return {
+      status: aggregateAuthStatus(providers, config.localAuthEnabled, oidcProvider.enabled),
       local_enabled: config.localAuthEnabled,
-      oidc_enabled: (await getOidcProviderConfig()).enabled,
+      oidc_enabled: oidcProvider.enabled,
+      providers,
     };
   } catch (err) {
     return {
+      status: 'error',
       local_enabled: config.localAuthEnabled,
       oidc_enabled: false,
+      providers: [],
       error: errorMessage(err),
     };
   }
+}
+
+function aggregateAuthStatus(
+  providers: AuthProviderHealth[],
+  localEnabled: boolean,
+  oidcEnabled: boolean,
+): HealthStatus {
+  if (!localEnabled && !oidcEnabled) return 'error';
+  if (providers.some((provider) => provider.status === 'error')) return 'error';
+  if (providers.some((provider) => provider.status === 'degraded')) return 'degraded';
+  return 'ok';
 }
 
 async function inspectQueue(

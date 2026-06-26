@@ -140,6 +140,10 @@ devlogs do not override the current codebase state.
   regression coverage for admin-role inheritance, super-admin-only auth-provider
   governance, super-admin grants, EHR admin inheritance, and Bulk tenant/org
   mismatch rejection before import side effects.
+- Follow-up continuation added auth-provider last-test evidence to System
+  Health. OIDC provider tests now write PHI-free success/failure evidence, auth
+  health aggregates provider status, and the admin System Health tab shows
+  provider availability, issuer/error detail, and latest test timing.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

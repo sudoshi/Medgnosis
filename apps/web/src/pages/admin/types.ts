@@ -44,7 +44,13 @@ export interface SystemHealth {
   database: { status: string; error?: string };
   redis: { status: string; error?: string };
   solr: { status: string; enabled: boolean };
-  auth: { local_enabled: boolean; oidc_enabled: boolean; error?: string };
+  auth: {
+    status: string;
+    local_enabled: boolean;
+    oidc_enabled: boolean;
+    providers: AuthProviderHealth[];
+    error?: string;
+  };
   workers: {
     status: string;
     total_workers: number;
@@ -91,6 +97,24 @@ export interface SystemHealth {
     error?: string;
   };
   duration_ms: number;
+}
+
+export interface AuthProviderHealth {
+  provider_type: 'local' | 'oidc';
+  display_name: string;
+  enabled: boolean;
+  status: string;
+  updated_at: string | null;
+  last_test: {
+    status: 'ok' | 'error';
+    tested_at: string;
+    response_ms: number | null;
+    issuer: string | null;
+    client_configured: boolean | null;
+    error_code: string | null;
+    error_message: string | null;
+  } | null;
+  issues: string[];
 }
 
 export interface EhrSyncAlertDispatchResult {

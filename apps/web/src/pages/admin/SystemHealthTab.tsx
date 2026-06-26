@@ -52,6 +52,25 @@ function queueCounts(counts: SystemHealth['workers']['counts']) {
   return `W ${counts.waiting} / A ${counts.active} / D ${counts.delayed} / F ${counts.failed}`;
 }
 
+type AuthProviderHealth = SystemHealth['auth']['providers'][number];
+
+function authProviderLastTest(provider: AuthProviderHealth): string {
+  if (!provider.last_test) return 'No test recorded';
+  const parts = [
+    provider.last_test.status.toUpperCase(),
+    fmtDateTime(provider.last_test.tested_at),
+  ];
+  if (provider.last_test.response_ms !== null) parts.push(`${provider.last_test.response_ms} ms`);
+  return parts.join(' / ');
+}
+
+function authProviderDetail(provider: AuthProviderHealth): string {
+  if (!provider.enabled) return 'Disabled';
+  if (provider.last_test?.error_message) return provider.last_test.error_message;
+  if (provider.provider_type === 'oidc' && provider.last_test?.issuer) return provider.last_test.issuer;
+  return provider.enabled ? 'Enabled' : 'Disabled';
+}
+
 export function SystemHealthTab() {
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'system-health'],
@@ -96,7 +115,7 @@ export function SystemHealthTab() {
             <HealthRow
               icon={KeyRound}
               label="Authentication"
-              status={health.auth.oidc_enabled || health.auth.local_enabled ? 'ok' : 'error'}
+              status={health.auth.status}
               detail={`Local ${health.auth.local_enabled ? 'on' : 'off'} / OIDC ${health.auth.oidc_enabled ? 'on' : 'off'}`}
             />
             <HealthRow icon={Activity} label="Probe" status="ok" detail={`${health.duration_ms} ms`} />
@@ -134,6 +153,37 @@ export function SystemHealthTab() {
           </div>
 
           <div className="space-y-5">
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-bright">Authentication Providers</h3>
+                  <p className="mt-0.5 text-xs text-ghost">Provider availability and latest test evidence</p>
+                </div>
+                <StatusPill status={health.auth.status} />
+              </div>
+              <div className="divide-y divide-edge/20">
+                {health.auth.providers.map((provider) => (
+                  <div key={provider.provider_type} className="py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-bright">{provider.display_name}</p>
+                        <p className="truncate text-xs text-ghost">{authProviderDetail(provider)}</p>
+                      </div>
+                      <StatusPill status={provider.status} />
+                    </div>
+                    <p className="mt-2 truncate font-data text-xs text-dim">{authProviderLastTest(provider)}</p>
+                    {provider.issues.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {provider.issues.slice(0, 2).map((issue) => (
+                          <p key={issue} className="truncate text-xs text-amber">{issue}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="surface p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>

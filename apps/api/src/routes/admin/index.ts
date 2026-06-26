@@ -22,6 +22,10 @@ import { getSolrClient, isSolrAvailable } from '../../plugins/solr.js';
 import { config } from '../../config.js';
 import { fetchOidcDiscovery } from '../../services/auth/oidc/discovery.js';
 import { getOidcProviderConfig } from '../../services/auth/oidc/providerConfig.js';
+import {
+  recordAuthProviderTestEvent,
+  type AuthProviderTestEventInput,
+} from '../../services/auth/providerHealth.js';
 import { getSystemHealth } from '../../services/systemHealth.js';
 import {
   dispatchEhrSyncAlertSnapshot,
@@ -153,6 +157,20 @@ function maskProvider(row: AuthProviderRow) {
       ]),
     ),
   };
+}
+
+async function recordProviderTestEvidence(
+  app: FastifyInstance,
+  input: AuthProviderTestEventInput,
+): Promise<void> {
+  try {
+    await recordAuthProviderTestEvent(input);
+  } catch (err) {
+    app.log.error(
+      { err, provider_type: input.providerType, status: input.status },
+      'Failed to record auth provider test evidence',
+    );
+  }
 }
 
 function positiveInt(value: unknown): number | null {
@@ -523,9 +541,27 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
 
+    const startedAt = Date.now();
+    let clientConfigured: boolean | null = null;
+    let redirectUri: string | null = null;
+
     try {
       const provider = await getOidcProviderConfig();
+      clientConfigured = Boolean(provider.clientId);
+      redirectUri = provider.redirectUri;
       const discovery = await fetchOidcDiscovery(provider.discoveryUrl);
+      await recordProviderTestEvidence(app, {
+        providerType: 'oidc',
+        status: 'ok',
+        testedBy: req.user.sub,
+        responseMs: Date.now() - startedAt,
+        issuer: discovery.issuer,
+        authorizationEndpoint: discovery.authorization_endpoint,
+        tokenEndpoint: discovery.token_endpoint,
+        jwksUri: discovery.jwks_uri,
+        clientConfigured,
+        redirectUri,
+      });
       return {
         success: true,
         data: {
@@ -539,6 +575,16 @@ export default async function adminRoutes(app: FastifyInstance) {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      await recordProviderTestEvidence(app, {
+        providerType: 'oidc',
+        status: 'error',
+        testedBy: req.user.sub,
+        responseMs: Date.now() - startedAt,
+        clientConfigured,
+        redirectUri,
+        errorCode: 'PROVIDER_TEST_FAILED',
+        errorMessage: message,
+      });
       return reply.status(502).send({
         success: false,
         error: { code: 'PROVIDER_TEST_FAILED', message },

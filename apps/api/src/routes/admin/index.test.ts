@@ -25,6 +25,9 @@ const {
   mockSendInviteEmail,
   mockDispatchEhrSyncAlertSnapshot,
   mockEhrSyncAlertAuditDetails,
+  mockFetchOidcDiscovery,
+  mockGetOidcProviderConfig,
+  mockRecordAuthProviderTestEvent,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
     readonly code: string;
@@ -59,6 +62,9 @@ const {
     mockSendInviteEmail: vi.fn(),
     mockDispatchEhrSyncAlertSnapshot: vi.fn(),
     mockEhrSyncAlertAuditDetails: vi.fn(),
+    mockFetchOidcDiscovery: vi.fn(),
+    mockGetOidcProviderConfig: vi.fn(),
+    mockRecordAuthProviderTestEvent: vi.fn(),
   };
 });
 
@@ -108,9 +114,12 @@ vi.mock('ioredis', () => ({
     disconnect: vi.fn(),
   })),
 }));
-vi.mock('../../services/auth/oidc/discovery.js', () => ({ fetchOidcDiscovery: vi.fn() }));
+vi.mock('../../services/auth/oidc/discovery.js', () => ({ fetchOidcDiscovery: mockFetchOidcDiscovery }));
 vi.mock('../../services/auth/oidc/providerConfig.js', () => ({
-  getOidcProviderConfig: vi.fn(() => ({ enabled: false })),
+  getOidcProviderConfig: mockGetOidcProviderConfig,
+}));
+vi.mock('../../services/auth/providerHealth.js', () => ({
+  recordAuthProviderTestEvent: mockRecordAuthProviderTestEvent,
 }));
 vi.mock('../../services/systemHealth.js', () => ({
   getSystemHealth: mockGetSystemHealth,
@@ -165,6 +174,19 @@ beforeEach(() => {
     activationUrl: 'http://localhost:5173/accept-invite?token=raw-token-not-persisted',
   });
   mockSendInviteEmail.mockResolvedValue(false);
+  mockFetchOidcDiscovery.mockResolvedValue({
+    issuer: 'https://issuer.example.test',
+    authorization_endpoint: 'https://issuer.example.test/oauth2/authorize',
+    token_endpoint: 'https://issuer.example.test/oauth2/token',
+    jwks_uri: 'https://issuer.example.test/oauth2/jwks',
+  });
+  mockGetOidcProviderConfig.mockResolvedValue({
+    enabled: false,
+    discoveryUrl: 'https://issuer.example.test/.well-known/openid-configuration',
+    clientId: 'medgnosis-client',
+    redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
+  });
+  mockRecordAuthProviderTestEvent.mockResolvedValue(undefined);
   mockDispatchEhrSyncAlertSnapshot.mockResolvedValue({
     status: 'sent',
     reason: 'sent',
@@ -515,6 +537,65 @@ describe('admin authentication provider routes', () => {
       await app.close();
     },
   );
+
+  it('records successful OIDC provider test evidence', async () => {
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/auth-providers/oidc/test',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        issuer: 'https://issuer.example.test',
+        client_configured: true,
+        redirect_uri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
+      },
+    });
+    expect(mockRecordAuthProviderTestEvent).toHaveBeenCalledWith(expect.objectContaining({
+      providerType: 'oidc',
+      status: 'ok',
+      testedBy: SUPER_ADMIN_USER.sub,
+      issuer: 'https://issuer.example.test',
+      clientConfigured: true,
+      redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
+      responseMs: expect.any(Number),
+    }));
+    await app.close();
+  });
+
+  it('records failed OIDC provider test evidence', async () => {
+    mockFetchOidcDiscovery.mockRejectedValueOnce(new Error('discovery unavailable'));
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/auth-providers/oidc/test',
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: {
+        code: 'PROVIDER_TEST_FAILED',
+        message: 'discovery unavailable',
+      },
+    });
+    expect(mockRecordAuthProviderTestEvent).toHaveBeenCalledWith(expect.objectContaining({
+      providerType: 'oidc',
+      status: 'error',
+      testedBy: SUPER_ADMIN_USER.sub,
+      clientConfigured: true,
+      redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
+      errorCode: 'PROVIDER_TEST_FAILED',
+      errorMessage: 'discovery unavailable',
+      responseMs: expect.any(Number),
+    }));
+    await app.close();
+  });
 });
 
 describe('admin user invitation routes', () => {

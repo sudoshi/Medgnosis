@@ -357,6 +357,7 @@ Implemented:
 - Production Swagger suppression.
 - Public registration and demo-login exposure policy from `/auth/providers`.
 - Backend role/permission matrix with admin and super-admin regression evidence.
+- Auth-provider health and last-test evidence in System Health.
 
 Not yet complete:
 

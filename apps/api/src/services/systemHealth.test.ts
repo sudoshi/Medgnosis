@@ -1,8 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockQueueCtor, mockSql } = vi.hoisted(() => ({
+const {
+  mockQueueCtor,
+  mockSql,
+  mockConfig,
+  mockGetOidcProviderConfig,
+  mockListAuthProviderHealth,
+} = vi.hoisted(() => ({
   mockQueueCtor: vi.fn(),
   mockSql: vi.fn(),
+  mockConfig: {
+    redisUrl: 'redis://localhost:6379/0',
+    solrEnabled: false,
+    nodeEnv: 'test',
+    localAuthEnabled: true,
+  },
+  mockGetOidcProviderConfig: vi.fn(),
+  mockListAuthProviderHealth: vi.fn(),
 }));
 
 vi.mock('bullmq', () => ({
@@ -10,41 +24,65 @@ vi.mock('bullmq', () => ({
 }));
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 vi.mock('../config.js', () => ({
-  config: {
-    redisUrl: 'redis://localhost:6379/0',
-    solrEnabled: false,
-    nodeEnv: 'test',
-    localAuthEnabled: true,
-  },
+  config: mockConfig,
 }));
 vi.mock('../plugins/solr.js', () => ({
   getSolrClient: vi.fn(() => null),
   isSolrAvailable: vi.fn(() => false),
 }));
 vi.mock('./auth/oidc/providerConfig.js', () => ({
-  getOidcProviderConfig: vi.fn(() => ({ enabled: false })),
+  getOidcProviderConfig: mockGetOidcProviderConfig,
+}));
+vi.mock('./auth/providerHealth.js', () => ({
+  listAuthProviderHealth: mockListAuthProviderHealth,
 }));
 
-import { getEhrBulkReadiness, getWorkerQueueHealth } from './systemHealth.js';
+import {
+  getAuthHealth,
+  getEhrBulkReadiness,
+  getWorkerQueueHealth,
+} from './systemHealth.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env['EHR_BULK_IMPORT_QUEUE_ENABLED'];
+  mockConfig.localAuthEnabled = true;
+  mockGetOidcProviderConfig.mockResolvedValue({ enabled: false });
+  mockListAuthProviderHealth.mockResolvedValue([
+    {
+      provider_type: 'local',
+      display_name: 'Email and password',
+      enabled: true,
+      status: 'ok',
+      updated_at: null,
+      last_test: null,
+      issues: [],
+    },
+    {
+      provider_type: 'oidc',
+      display_name: 'Authentik',
+      enabled: false,
+      status: 'disabled',
+      updated_at: null,
+      last_test: null,
+      issues: [],
+    },
+  ]);
 });
 
 describe('getWorkerQueueHealth', () => {
   it('aggregates queue counts and repeatable scheduler readiness', async () => {
     mockQueueCtor.mockImplementation(function QueueMock(name: string) {
       return {
-      getJobCounts: vi.fn().mockResolvedValue(
-        name === 'nightly'
-          ? { waiting: 1, active: 0, delayed: 2, failed: 0 }
-          : { waiting: 0, active: 1, delayed: 0, failed: 1 },
-      ),
-      getWorkersCount: vi.fn().mockResolvedValue(name === 'nightly' ? 1 : 2),
-      isPaused: vi.fn().mockResolvedValue(false),
-      getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly-repeat' }]),
-      close: vi.fn().mockResolvedValue(undefined),
+        getJobCounts: vi.fn().mockResolvedValue(
+          name === 'nightly'
+            ? { waiting: 1, active: 0, delayed: 2, failed: 0 }
+            : { waiting: 0, active: 1, delayed: 0, failed: 1 },
+        ),
+        getWorkersCount: vi.fn().mockResolvedValue(name === 'nightly' ? 1 : 2),
+        isPaused: vi.fn().mockResolvedValue(false),
+        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly-repeat' }]),
+        close: vi.fn().mockResolvedValue(undefined),
       };
     });
 
@@ -140,5 +178,95 @@ describe('getEhrBulkReadiness', () => {
       '1 Bulk schedules failed in the last 24 hours',
       '1 Bulk jobs failed in the last 24 hours',
     ]);
+  });
+});
+
+describe('getAuthHealth', () => {
+  it('aggregates provider health and last-test evidence', async () => {
+    mockGetOidcProviderConfig.mockResolvedValueOnce({ enabled: true });
+    mockListAuthProviderHealth.mockResolvedValueOnce([
+      {
+        provider_type: 'local',
+        display_name: 'Email and password',
+        enabled: true,
+        status: 'ok',
+        updated_at: null,
+        last_test: null,
+        issues: [],
+      },
+      {
+        provider_type: 'oidc',
+        display_name: 'Authentik',
+        enabled: true,
+        status: 'ok',
+        updated_at: '2026-06-26T00:00:00Z',
+        last_test: {
+          status: 'ok',
+          tested_at: '2026-06-26T01:00:00Z',
+          response_ms: 45,
+          issuer: 'https://issuer.example.test',
+          client_configured: true,
+          error_code: null,
+          error_message: null,
+        },
+        issues: [],
+      },
+    ]);
+
+    const health = await getAuthHealth();
+
+    expect(health).toEqual({
+      status: 'ok',
+      local_enabled: true,
+      oidc_enabled: true,
+      providers: [
+        expect.objectContaining({ provider_type: 'local', status: 'ok' }),
+        expect.objectContaining({
+          provider_type: 'oidc',
+          status: 'ok',
+          last_test: expect.objectContaining({
+            status: 'ok',
+            tested_at: '2026-06-26T01:00:00Z',
+          }),
+        }),
+      ],
+    });
+    expect(mockListAuthProviderHealth).toHaveBeenCalledWith({
+      localEnabled: true,
+      oidcEnabled: true,
+    });
+  });
+
+  it('degrades auth health when an enabled provider lacks test evidence', async () => {
+    mockGetOidcProviderConfig.mockResolvedValueOnce({ enabled: true });
+    mockListAuthProviderHealth.mockResolvedValueOnce([
+      {
+        provider_type: 'local',
+        display_name: 'Email and password',
+        enabled: true,
+        status: 'ok',
+        updated_at: null,
+        last_test: null,
+        issues: [],
+      },
+      {
+        provider_type: 'oidc',
+        display_name: 'Authentik',
+        enabled: true,
+        status: 'degraded',
+        updated_at: null,
+        last_test: null,
+        issues: ['No OIDC provider test has been recorded'],
+      },
+    ]);
+
+    const health = await getAuthHealth();
+
+    expect(health.status).toBe('degraded');
+    expect(health.providers[1]).toMatchObject({
+      provider_type: 'oidc',
+      status: 'degraded',
+      issues: ['No OIDC provider test has been recorded'],
+    });
   });
 });
