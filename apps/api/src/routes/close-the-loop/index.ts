@@ -7,6 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { loopResolveSchema } from '@medgnosis/shared';
+import { computeOutcomeMetrics, parseWindowDays } from '../../services/outcomeTracking.js';
 
 export default async function closeTheLoopRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -57,6 +58,21 @@ export default async function closeTheLoopRoutes(fastify: FastifyInstance): Prom
       sql`SELECT closure_type, count(*)::int AS n FROM phm_edw.result_loop WHERE loop_status = 'closed' GROUP BY closure_type`,
     ]);
     return reply.send({ success: true, data: { by_status: byStatus, by_closure: byClosure } });
+  });
+
+  // GET /close-the-loop/outcomes?window=30|60|90 — close-the-loop outcome rates.
+  // Real numerator/denominator over an explicit look-back window across all five
+  // outcome types (gap closure, order/referral completion, alert ack, outreach).
+  // Provider-scoped to the caller's panel when the JWT carries a provider_id.
+  // Aggregate-only response — no patient-level rows, no PHI.
+  fastify.get('/outcomes', async (request, reply) => {
+    const query = request.query as { window?: string };
+    const windowDays = parseWindowDays(query.window);
+    const providerId = request.user.provider_id ?? null;
+
+    const report = await computeOutcomeMetrics({ windowDays, providerId });
+
+    return reply.send({ success: true, data: report });
   });
 
   // POST /close-the-loop/:id/resolve — document a terminal disposition
