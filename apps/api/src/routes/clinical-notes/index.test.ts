@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 
-const { mockSql } = vi.hoisted(() => ({
+const { mockAuditLog, mockSql } = vi.hoisted(() => ({
+  mockAuditLog: vi.fn(),
   mockSql: vi.fn(),
 }));
 
@@ -27,13 +28,14 @@ async function buildApp(user: JwtPayload = PROVIDER_USER) {
   app.decorate('authenticate', async (request: FastifyRequest) => {
     request.user = user;
   });
-  app.decorateRequest('auditLog', async () => {});
+  app.decorateRequest('auditLog', mockAuditLog);
   await app.register(clinicalNoteRoutes);
   await app.ready();
   return app;
 }
 
 beforeEach(() => {
+  mockAuditLog.mockReset();
   mockSql.mockReset();
   vi.mocked(getPatientClinicalContext).mockReset();
 });
@@ -67,6 +69,18 @@ describe('clinical note authorization and authorship', () => {
       strings.join('').includes('INSERT INTO phm_edw.clinical_note'),
     );
     expect(insertCall?.[2]).toBe(PROVIDER_USER.sub);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'clinical_note_create',
+      'clinical_note',
+      'note-1',
+      expect.objectContaining({
+        patient_id: 42,
+        encounter_id: null,
+        visit_type: 'followup',
+        status: 'draft',
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('Follow-up');
     await app.close();
   });
 
@@ -99,6 +113,7 @@ describe('clinical note authorization and authorship', () => {
         strings.join('').includes('INSERT INTO phm_edw.clinical_note'),
       ),
     ).toBe(false);
+    expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -127,6 +142,146 @@ describe('clinical note authorization and authorship', () => {
 
     expect(res.statusCode).toBe(403);
     expect(getPatientClinicalContext).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('audits draft note updates with changed-field flags only', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.clinical_note') && text.includes('SELECT status, patient_id')) {
+        return Promise.resolve([{ status: 'draft', patient_id: 42 }]);
+      }
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes('UPDATE phm_edw.clinical_note')) {
+        return Promise.resolve([{ note_id: '11111111-1111-4111-8111-111111111111', updated_date: '2026-06-26T12:00:00Z' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/11111111-1111-4111-8111-111111111111',
+      payload: {
+        subjective: 'Patient reports improved symptoms',
+        plan_text: 'Continue medication',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'clinical_note_update',
+      'clinical_note',
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({
+        patient_id: 42,
+        status: 'draft',
+        changed_fields: expect.objectContaining({
+          subjective: true,
+          plan_text: true,
+          objective: false,
+        }),
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('Patient reports improved symptoms');
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('Continue medication');
+    await app.close();
+  });
+
+  it('audits note finalization with a status transition', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.clinical_note') && text.includes('SELECT status, patient_id')) {
+        return Promise.resolve([{ status: 'draft', patient_id: 42 }]);
+      }
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes("SET status = 'finalized'")) {
+        return Promise.resolve([{ note_id: '11111111-1111-4111-8111-111111111111', status: 'finalized' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/11111111-1111-4111-8111-111111111111/finalize',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'clinical_note_finalize',
+      'clinical_note',
+      '11111111-1111-4111-8111-111111111111',
+      { patient_id: 42, from_status: 'draft', to_status: 'finalized' },
+    );
+    await app.close();
+  });
+
+  it('audits note amendments without raw amendment reason', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.clinical_note') && text.includes('SELECT status, patient_id')) {
+        return Promise.resolve([{ status: 'finalized', patient_id: 42 }]);
+      }
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes("SET status = 'amended'")) {
+        return Promise.resolve([{ note_id: '11111111-1111-4111-8111-111111111111', status: 'amended' }]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/11111111-1111-4111-8111-111111111111/amend',
+      payload: { reason: 'Correcting dictated assessment text' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'clinical_note_amend',
+      'clinical_note',
+      '11111111-1111-4111-8111-111111111111',
+      { patient_id: 42, from_status: 'finalized', to_status: 'amended', reason_present: true },
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('Correcting dictated assessment text');
+    await app.close();
+  });
+
+  it('audits draft note soft deletion', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.clinical_note') && text.includes('SELECT status, patient_id')) {
+        return Promise.resolve([{ status: 'draft', patient_id: 42 }]);
+      }
+      if (text.includes('SELECT pcp_provider_id')) {
+        return Promise.resolve([{ pcp_provider_id: 7 }]);
+      }
+      if (text.includes("SET active_ind = 'N'")) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'clinical_note_soft_delete',
+      'clinical_note',
+      '11111111-1111-4111-8111-111111111111',
+      { patient_id: 42, from_status: 'draft', active_ind: 'N' },
+    );
     await app.close();
   });
 });

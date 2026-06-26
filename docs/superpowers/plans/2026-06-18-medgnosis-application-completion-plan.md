@@ -174,6 +174,8 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add PHI-safe audit coverage for EHR QDM/CQL load actions and redaction proof for diagnostics/test-connection and patient-level Bulk controls.
   - [x] Add audit entries or coverage proof for auth provider changes.
   - [x] Add PHI-light audit entries for admin user profile updates and deactivation.
+  - [x] Add PHI-light audit entries for legacy admin FHIR endpoint create/update/deactivate/sync, auth-provider test attempts, and materialized-view refresh runs.
+  - [x] Add PHI-light audit entries for clinical-note create/update/finalize/amend/soft-delete lifecycle mutations and manual surveillance tick runs.
   - [x] Add focused API PHI redaction regression tests for Pino structured logging and Sentry error telemetry paths.
 - [x] Tighten production headers and CSP.
   - [x] Review `apps/api/src/app.ts` CSP settings.

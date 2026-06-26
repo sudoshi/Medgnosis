@@ -156,6 +156,12 @@ devlogs do not override the current codebase state.
   `super_admin` global, including regression coverage for org-scoped reads,
   out-of-org mutation denial, malformed org claims, super-admin target-org user
   creation, and global super-admin audit visibility.
+- Follow-up continuation added PHI-light audit rows and regression coverage for
+  remaining admin FHIR endpoint mutations, auth-provider test attempts,
+  materialized-view refresh runs, clinical-note lifecycle mutations, and manual
+  surveillance tick runs. Audit details intentionally avoid endpoint URLs,
+  provider test error text, SOAP note content, chief complaint text, and
+  amendment reason text.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

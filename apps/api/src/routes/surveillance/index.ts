@@ -65,6 +65,11 @@ export default async function surveillanceRoutes(fastify: FastifyInstance): Prom
       return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
     }
     const result = await streamTick();
+    await request.auditLog('surveillance_tick_run', 'surveillance_tick', undefined, {
+      ticked: result.ticked,
+      alerts: result.alerts,
+      initiated_by: 'manual',
+    });
     return reply.send({ success: true, data: result });
   });
 }

@@ -54,6 +54,12 @@ export default async function clinicalNoteRoutes(
       RETURNING note_id, patient_id, visit_type, status,
                 chief_complaint, created_date
     `;
+    await request.auditLog('clinical_note_create', 'clinical_note', String(note.note_id), {
+      patient_id,
+      encounter_id: encounter_id ?? null,
+      visit_type,
+      status: note.status ?? 'draft',
+    });
 
     return reply.status(201).send({ success: true, data: note });
   });
@@ -173,6 +179,18 @@ export default async function clinicalNoteRoutes(
         WHERE note_id = ${noteId}::uuid AND active_ind = 'Y'
         RETURNING note_id, updated_date
       `;
+      await request.auditLog('clinical_note_update', 'clinical_note', String(updated.note_id ?? noteId), {
+        patient_id: existing.patient_id,
+        changed_fields: {
+          chief_complaint: data.chief_complaint !== undefined,
+          subjective: data.subjective !== undefined,
+          objective: data.objective !== undefined,
+          assessment: data.assessment !== undefined,
+          plan_text: data.plan_text !== undefined,
+          visit_type: data.visit_type !== undefined,
+        },
+        status: existing.status,
+      });
 
       return reply.send({ success: true, data: updated });
     },
@@ -212,6 +230,11 @@ export default async function clinicalNoteRoutes(
         WHERE note_id = ${noteId}::uuid
         RETURNING note_id, status, finalized_at
       `;
+      await request.auditLog('clinical_note_finalize', 'clinical_note', String(updated.note_id ?? noteId), {
+        patient_id: note.patient_id,
+        from_status: note.status,
+        to_status: updated.status ?? 'finalized',
+      });
 
       return reply.send({ success: true, data: updated });
     },
@@ -265,6 +288,12 @@ export default async function clinicalNoteRoutes(
         WHERE note_id = ${noteId}::uuid
         RETURNING note_id, status, amended_at, amendment_reason
       `;
+      await request.auditLog('clinical_note_amend', 'clinical_note', String(updated.note_id ?? noteId), {
+        patient_id: note.patient_id,
+        from_status: note.status,
+        to_status: updated.status ?? 'amended',
+        reason_present: true,
+      });
 
       return reply.send({ success: true, data: updated });
     },
@@ -303,6 +332,11 @@ export default async function clinicalNoteRoutes(
         SET active_ind = 'N', updated_date = NOW()
         WHERE note_id = ${noteId}::uuid
       `;
+      await request.auditLog('clinical_note_soft_delete', 'clinical_note', noteId, {
+        patient_id: note.patient_id,
+        from_status: note.status,
+        active_ind: 'N',
+      });
 
       return reply.send({ success: true, data: { deleted: true } });
     },
