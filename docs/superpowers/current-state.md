@@ -192,6 +192,13 @@ devlogs do not override the current codebase state.
   dispatch error strings. Focused EHR validation passed 4 API files and 68
   tests; full follow-up gates passed with API 117 files/903 tests, web 27
   files/47 tests, shared 43 tests, Solr 18 tests, and one skipped API smoke.
+- Follow-up production checkpoint on 2026-06-26 deployed EHR audit-redaction
+  release `737dfde`; the deploy script passed, all three production services
+  were active, production migration dry-run reported 91 applied migrations and
+  no pending migrations, public health was healthy, and
+  `/api/v1/auth/providers` returned local plus Authentik enabled with public
+  registration and demo quick-fill disabled. Sourcing `.env.production` still
+  emits the existing lines 84/85 warnings.
 - Follow-up production checkpoint on 2026-06-26 deployed non-EMPI mutation audit
   hardening release `0e82fb3`; the deploy script passed, all three production
   services were active, production migration dry-run reported 91 applied
