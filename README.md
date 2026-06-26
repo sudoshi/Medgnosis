@@ -356,6 +356,7 @@ Implemented:
 - Production log redaction hooks and Sentry telemetry scrubbing.
 - Production Swagger suppression.
 - Public registration and demo-login exposure policy from `/auth/providers`.
+- Backend role/permission matrix with admin and super-admin regression evidence.
 
 Not yet complete:
 
@@ -368,6 +369,7 @@ Not yet complete:
 - [EHR current-state devlog](docs/superpowers/devlogs/2026-06-17-ehr-integration-current-state-devlog.md)
 - [QDM bridge completion devlog](docs/superpowers/devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md)
 - [QDM bridge operations runbook](docs/superpowers/runbooks/qdm-bridge-operations.md)
+- [Role and permission matrix](docs/superpowers/runbooks/role-permission-matrix.md)
 - [Validation gates runbook](docs/superpowers/runbooks/validation-gates.md)
 - [Development log](docs/DEVLOG.md)
 

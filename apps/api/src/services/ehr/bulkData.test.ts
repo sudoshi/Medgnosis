@@ -964,6 +964,18 @@ describe('importBulkExportJob', () => {
     ).rejects.toThrow('does not belong to the selected EHR tenant');
   });
 
+  it('rejects tenant organization mismatches before starting an import run', async () => {
+    await expect(
+      importBulkExportJob({
+        tenant: { ...tenant, orgId: 9 },
+        job: ehrBulkJob({ orgId: 7 }),
+        token,
+        fetchImpl: vi.fn<FetchLike>(),
+        startIngestRun: vi.fn(),
+      }),
+    ).rejects.toThrow('Bulk Data job organization does not match the selected tenant');
+  });
+
   it('rejects manifests that broaden beyond the original requested resource types', async () => {
     await expect(
       importBulkExportJob({

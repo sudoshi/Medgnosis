@@ -102,6 +102,13 @@ const ADMIN_USER: JwtPayload = {
   org_id: 'org-1',
 };
 
+const SUPER_ADMIN_USER: JwtPayload = {
+  sub: 'super-1',
+  email: 'super@example.test',
+  role: 'super_admin',
+  org_id: 'org-1',
+};
+
 const PROVIDER_USER: JwtPayload = {
   sub: 'provider-1',
   email: 'provider@example.test',
@@ -339,6 +346,23 @@ describe('EHR admin routes', () => {
     expect(mockSql.mock.calls[0]!.slice(1)).toEqual(
       expect.arrayContaining(['epic', 'sandbox', 'testing']),
     );
+    await app.close();
+  });
+
+  it('allows super-admin users through EHR admin gates', async () => {
+    mockSql.mockResolvedValueOnce([tenantRow]);
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/ehr/admin/tenants',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { tenants: [{ id: 42, orgId: 7 }] },
+    });
     await app.close();
   });
 
@@ -2309,7 +2333,8 @@ async function buildApp(user: JwtPayload = ADMIN_USER): Promise<FastifyInstance>
     'requireRole',
     (roles: JwtPayload['role'][]) =>
       async (request: FastifyRequest, reply: FastifyReply) => {
-        if (!roles.includes(request.user.role)) {
+        const role = request.user.role;
+        if (!(roles.includes(role) || (role === 'super_admin' && roles.includes('admin')))) {
           await reply.status(403).send({
             success: false,
             error: {

@@ -1,6 +1,6 @@
 # Medgnosis Current-State Index
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 ## Purpose
 
@@ -16,6 +16,7 @@ devlogs do not override the current codebase state.
 - [QDM bridge operations runbook](runbooks/qdm-bridge-operations.md) - how to run and monitor QDM/CQL shadow refreshes safely.
 - [EHR Bulk replay and dead-letter runbook](runbooks/ehr-bulk-replay-dead-letter.md) - PHI-light Bulk import resume, QDM replay, and worker dead-letter triage.
 - [EHR sync alerts and stale-data incident runbook](runbooks/ehr-sync-alerts-stale-data.md) - PHI-safe external alert routing, stale-data triage, and Bulk incident rehearsal checklist.
+- [Role and permission matrix](runbooks/role-permission-matrix.md) - current route-family RBAC expectations and backend regression evidence.
 - [Validation gates runbook](runbooks/validation-gates.md) - current command matrix for local/release validation.
 
 ## Active Implementation Plans
@@ -135,6 +136,10 @@ devlogs do not override the current codebase state.
   `PUBLIC_REGISTRATION_ALLOW_PRODUCTION=true`, demo quick-fill is suppressed in
   production, and the login/register UI hides or blocks those surfaces when the
   backend policy disables them.
+- Follow-up continuation documented the backend role/permission matrix and added
+  regression coverage for admin-role inheritance, super-admin-only auth-provider
+  governance, super-admin grants, EHR admin inheritance, and Bulk tenant/org
+  mismatch rejection before import side effects.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

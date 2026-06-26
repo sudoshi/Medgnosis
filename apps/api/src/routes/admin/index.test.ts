@@ -134,6 +134,13 @@ const ADMIN_USER: JwtPayload = {
   org_id: 'org-1',
 };
 
+const SUPER_ADMIN_USER: JwtPayload = {
+  sub: '00000000-0000-4000-8000-000000000003',
+  email: 'super@example.test',
+  role: 'super_admin',
+  org_id: 'org-1',
+};
+
 const PROVIDER_USER: JwtPayload = {
   sub: '00000000-0000-4000-8000-000000000002',
   email: 'provider@example.test',
@@ -322,6 +329,19 @@ describe('admin system health route', () => {
 });
 
 describe('admin authentication provider routes', () => {
+  it('rejects normal admins from auth provider listing before querying settings', async () => {
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/auth-providers',
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSql).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('lists only currently supported auth provider surfaces and masks stored secrets', async () => {
     mockSql.mockResolvedValueOnce([
       {
@@ -357,7 +377,7 @@ describe('admin authentication provider routes', () => {
         updated_at: '2026-06-19T00:00:00Z',
       },
     ]);
-    const app = await buildApp();
+    const app = await buildApp(SUPER_ADMIN_USER);
 
     const res = await app.inject({
       method: 'GET',
@@ -386,6 +406,21 @@ describe('admin authentication provider routes', () => {
     expect(JSON.stringify(res.json())).not.toContain('ldap');
     expect(JSON.stringify(res.json())).not.toContain('saml2');
     expect(JSON.stringify(res.json())).not.toContain('stored-secret');
+    await app.close();
+  });
+
+  it('rejects normal admins from auth provider updates before persistence', async () => {
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/auth-providers/oidc',
+      payload: { enabled: true },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -425,7 +460,7 @@ describe('admin authentication provider routes', () => {
           },
         ]);
       }) as typeof mockSql);
-    const app = await buildApp();
+    const app = await buildApp(SUPER_ADMIN_USER);
 
     const res = await app.inject({
       method: 'PATCH',
@@ -462,7 +497,7 @@ describe('admin authentication provider routes', () => {
   it.each(['local', 'ldap', 'oauth2', 'saml2'])(
     'rejects unsupported auth provider mutation for %s before persistence',
     async (providerType) => {
-      const app = await buildApp();
+      const app = await buildApp(SUPER_ADMIN_USER);
 
       const res = await app.inject({
         method: 'PATCH',
@@ -611,6 +646,27 @@ describe('admin user invitation routes', () => {
     await app.close();
   });
 
+  it('rejects normal admins creating a super-admin invite before persistence', async () => {
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      payload: {
+        email: 'super.new@example.test',
+        first_name: 'Super',
+        last_name: 'New',
+        role: 'super_admin',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('resends invites only for inactive users', async () => {
     const invitedUser = {
       id: '11111111-1111-4111-8111-111111111111',
@@ -739,6 +795,21 @@ describe('admin user invitation routes', () => {
     });
 
     expect(res.statusCode).toBe(409);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects normal admins granting super-admin access before persistence', async () => {
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111',
+      payload: { role: 'super_admin' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSql).not.toHaveBeenCalled();
     expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
@@ -1566,12 +1637,30 @@ async function buildApp(user: JwtPayload = ADMIN_USER): Promise<FastifyInstance>
   );
   app.decorate(
     'requirePermission',
-    () => async () => {
-      /* no-op permission gate for focused admin route tests */
+    (permission: string) => async (request: FastifyRequest, reply: FastifyReply) => {
+      const role = request.user.role;
+      const superAdminOnly = new Set(['admin:auth-providers', 'admin:ai-providers', 'admin:roles']);
+      if (superAdminOnly.has(permission) && role !== 'super_admin') {
+        await reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: `Permission '${permission}' is required to access this resource`,
+          },
+        });
+      }
     },
   );
-  app.decorate('requireSuperAdmin', async () => {
-    /* no-op super-admin gate for focused admin route tests */
+  app.decorate('requireSuperAdmin', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.user.role !== 'super_admin') {
+      await reply.status(403).send({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Super-admin access is required to access this resource',
+        },
+      });
+    }
   });
   app.decorateRequest('auditLog', mockAuditLog);
   await app.register(adminRoutes, { prefix: '/api/admin' });

@@ -154,9 +154,11 @@ Objective: make authentication and admin controls production-honest.
   - [ ] Add provider health and last-test evidence to System Health.
   - [ ] Add JIT provisioning and group reconciliation tests for role mapping edge cases.
 - [ ] Finish role and permission matrix documentation.
-  - [ ] List route families and allowed roles.
-  - [ ] Add tests for admin-only and super-admin-only route behavior.
+  - [x] List route families and allowed roles.
+  - [x] Add tests for admin-only and super-admin-only route behavior.
+  - [x] Add bounded Bulk import tenant/org mismatch regression.
   - [ ] Confirm tenant/org isolation for EHR tenants, patient access, admin users, and audit views.
+  - [ ] Decide and document global-admin versus org-scoped audit-log visibility before marking audit views complete.
 - [ ] Strengthen audit coverage.
   - [ ] Confirm every mutation route calls audit logging.
   - [x] Add audit entries for admin invite create/resend/revoke.
