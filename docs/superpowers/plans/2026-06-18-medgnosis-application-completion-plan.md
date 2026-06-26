@@ -158,7 +158,8 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add tests for admin-only and super-admin-only route behavior.
   - [x] Add bounded Bulk import tenant/org mismatch regression.
   - [ ] Confirm tenant/org isolation for EHR tenants, patient access, admin users, and audit views.
-  - [ ] Decide and document global-admin versus org-scoped audit-log visibility before marking audit views complete.
+    - [x] Scope admin-user listing/mutations/invite controls and actor-user audit-log reads by org for normal admins; keep `super_admin` global.
+  - [x] Decide and document global-admin versus org-scoped audit-log visibility before marking audit views complete.
 - [ ] Strengthen audit coverage.
   - [ ] Confirm every mutation route calls audit logging.
   - [x] Add audit entries for admin invite create/resend/revoke.

@@ -151,6 +151,11 @@ devlogs do not override the current codebase state.
 - Follow-up continuation closed another admin audit gap: admin user profile
   updates and user deactivation now emit PHI-light audit rows with role/active
   state and changed-field categories rather than email or name details.
+- Follow-up continuation scoped admin-user listing/mutations/invite controls and
+  actor-user audit-log reads by org for normal admins while keeping
+  `super_admin` global, including regression coverage for org-scoped reads,
+  out-of-org mutation denial, malformed org claims, super-admin target-org user
+  creation, and global super-admin audit visibility.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

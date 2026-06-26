@@ -140,21 +140,21 @@ const ADMIN_USER: JwtPayload = {
   sub: '00000000-0000-4000-8000-000000000001',
   email: 'admin@example.test',
   role: 'admin',
-  org_id: 'org-1',
+  org_id: '7',
 };
 
 const SUPER_ADMIN_USER: JwtPayload = {
   sub: '00000000-0000-4000-8000-000000000003',
   email: 'super@example.test',
   role: 'super_admin',
-  org_id: 'org-1',
+  org_id: '7',
 };
 
 const PROVIDER_USER: JwtPayload = {
   sub: '00000000-0000-4000-8000-000000000002',
   email: 'provider@example.test',
   role: 'provider',
-  org_id: 'org-1',
+  org_id: '7',
   provider_id: 7,
 };
 
@@ -606,10 +606,13 @@ describe('admin user invitation routes', () => {
       created_at: '2026-06-18T00:00:00Z',
       status: 'pending',
     };
-    mockSql.mockImplementation(((strings: TemplateStringsArray) => {
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = strings.join('');
       expect(query).toContain('public.app_user_invites');
       expect(query).toContain('pending_invite');
+      expect(query).toContain('WHERE u.org_id =');
+      expect(query).toContain("u.role <> 'super_admin'");
+      expect(values).toEqual([7]);
       return Promise.resolve([
         {
           id: '11111111-1111-4111-8111-111111111111',
@@ -649,6 +652,47 @@ describe('admin user invitation routes', () => {
     await app.close();
   });
 
+  it('keeps super-admin user listing global', async () => {
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      expect(query).toContain('public.app_user_invites');
+      expect(query).toContain('pending_invite');
+      expect(query).not.toContain('WHERE u.org_id =');
+      expect(values).toEqual([]);
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { users: [] },
+    });
+    await app.close();
+  });
+
+  it('rejects normal admin user listing without a numeric organization scope', async () => {
+    const app = await buildApp({ ...ADMIN_USER, org_id: 'org-1' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'ADMIN_ORG_SCOPE_REQUIRED' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('creates admin-invited users as inactive and issues a tokenized invite', async () => {
     const createdUser = {
       id: '11111111-1111-4111-8111-111111111111',
@@ -671,7 +715,9 @@ describe('admin user invitation routes', () => {
         expect(values[1]).toBe('New');
         expect(values[2]).toBe('User');
         expect(values[3]).toBe('provider');
-        expect(values[4]).toBe('$2b$12$pendinginvitehash');
+        expect(values[4]).toBe(7);
+        expect(values[5]).toBe('$2b$12$pendinginvitehash');
+        expect(query).toContain('role, org_id, password_hash');
         expect(query).toContain('must_change_password, is_active');
         expect(query).toContain('FALSE');
         return Promise.resolve([createdUser]);
@@ -727,6 +773,77 @@ describe('admin user invitation routes', () => {
     await app.close();
   });
 
+  it('creates super-admin-invited non-super-admin users in the requested organization', async () => {
+    const createdUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'org.admin@example.test',
+      first_name: 'Org',
+      last_name: 'Admin',
+      role: 'admin',
+      is_active: false,
+      created_at: '2026-06-18T00:00:00Z',
+    };
+
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      if (query.includes('SELECT id FROM public.app_users')) {
+        expect(values[0]).toBe('org.admin@example.test');
+        return Promise.resolve([]);
+      }
+      if (query.includes('INSERT INTO public.app_users')) {
+        expect(values[0]).toBe('org.admin@example.test');
+        expect(values[3]).toBe('admin');
+        expect(values[4]).toBe(42);
+        expect(values[5]).toBe('$2b$12$pendinginvitehash');
+        return Promise.resolve([createdUser]);
+      }
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      payload: {
+        email: 'org.admin@example.test',
+        first_name: 'Org',
+        last_name: 'Admin',
+        role: 'admin',
+        org_id: 42,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockCreateUserInvite).toHaveBeenCalledWith({
+      userId: createdUser.id,
+      createdBy: SUPER_ADMIN_USER.sub,
+    });
+    await app.close();
+  });
+
+  it('rejects super-admin-created non-super-admin users without any target organization', async () => {
+    const app = await buildApp({ ...SUPER_ADMIN_USER, org_id: '' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      payload: {
+        email: 'orgless.admin@example.test',
+        first_name: 'Orgless',
+        role: 'admin',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'TARGET_ORG_REQUIRED' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('rejects normal admins creating a super-admin invite before persistence', async () => {
     const app = await buildApp(ADMIN_USER);
 
@@ -744,6 +861,25 @@ describe('admin user invitation routes', () => {
     expect(res.statusCode).toBe(403);
     expect(mockSql).not.toHaveBeenCalled();
     expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not revoke invites for users outside a normal admin organization', async () => {
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      expect(query).toContain('AND org_id =');
+      expect(values).toEqual(['11111111-1111-4111-8111-111111111111', 7]);
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111/revoke-invite',
+    });
+
+    expect(res.statusCode).toBe(404);
     expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
@@ -809,6 +945,26 @@ describe('admin user invitation routes', () => {
 
     expect(res.statusCode).toBe(409);
     expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not resend invites for users outside a normal admin organization', async () => {
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      expect(query).toContain('AND org_id =');
+      expect(values).toEqual(['11111111-1111-4111-8111-111111111111', 7]);
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111/resend-invite',
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(mockCreateUserInvite).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -904,7 +1060,9 @@ describe('admin user invitation routes', () => {
       role: 'analyst',
       is_active: true,
     };
-    mockSql.mockResolvedValueOnce([updatedUser]);
+    mockSql
+      .mockResolvedValueOnce([{ id: updatedUser.id, role: 'analyst', is_active: true, org_id: 7 }])
+      .mockResolvedValueOnce([updatedUser]);
     const app = await buildApp(ADMIN_USER);
 
     const res = await app.inject({
@@ -930,6 +1088,43 @@ describe('admin user invitation routes', () => {
     await app.close();
   });
 
+  it('does not let normal admins update users outside their organization', async () => {
+    mockSql.mockResolvedValueOnce([]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111',
+      payload: { first_name: 'Outside' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(mockSql).toHaveBeenCalledOnce();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not let normal admins mutate existing super-admin accounts', async () => {
+    mockSql.mockResolvedValueOnce([{
+      id: '11111111-1111-4111-8111-111111111111',
+      role: 'super_admin',
+      is_active: true,
+      org_id: 7,
+    }]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111',
+      payload: { first_name: 'Root' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSql).toHaveBeenCalledOnce();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('audits admin user deactivation without email details', async () => {
     const deactivatedUser = {
       id: '11111111-1111-4111-8111-111111111111',
@@ -937,6 +1132,7 @@ describe('admin user invitation routes', () => {
       is_active: false,
     };
     mockSql
+      .mockResolvedValueOnce([{ id: deactivatedUser.id, role: 'analyst', is_active: true, org_id: 7 }])
       .mockResolvedValueOnce([{ role: 'analyst', is_active: true }])
       .mockResolvedValueOnce([deactivatedUser]);
     const app = await buildApp(ADMIN_USER);
@@ -954,6 +1150,109 @@ describe('admin user invitation routes', () => {
       { is_active: false },
     );
     expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('deactivated@example.test');
+    await app.close();
+  });
+
+  it('does not let normal admins deactivate users outside their organization', async () => {
+    mockSql.mockResolvedValueOnce([]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/users/11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(mockSql).toHaveBeenCalledOnce();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe('admin audit-log visibility routes', () => {
+  it('scopes normal admin audit-log reads to actor users in their organization', async () => {
+    const sqlCalls: Array<{ query: string; values: unknown[] }> = [];
+    const auditRow = {
+      audit_id: '99999999-9999-4999-8999-999999999999',
+      event_type: 'user_update',
+      target_type: 'app_user',
+      target_id: '11111111-1111-4111-8111-111111111111',
+      description: '{}',
+      ip_address: '127.0.0.1',
+      created_at: '2026-06-18T12:00:00Z',
+      user_email: 'admin@example.test',
+      user_first_name: 'Admin',
+      user_last_name: 'User',
+    };
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      sqlCalls.push({ query, values });
+      if (query.includes('COUNT(*)')) return Promise.resolve([{ count: '1' }]);
+      return Promise.resolve([auditRow]);
+    }) as typeof mockSql);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/audit-log?event_type=user_update&limit=10&offset=5',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { logs: [auditRow], total: 1 },
+    });
+    expect(sqlCalls[0]?.query).toContain('JOIN public.app_users au ON al.user_id = au.id');
+    expect(sqlCalls[0]?.query).toContain('AND au.org_id =');
+    expect(sqlCalls[0]?.values).toEqual(['user_update', 7, 10, 5]);
+    expect(sqlCalls[1]?.query).toContain('JOIN public.app_users au ON al.user_id = au.id');
+    expect(sqlCalls[1]?.query).toContain('AND au.org_id =');
+    expect(sqlCalls[1]?.values).toEqual(['user_update', 7]);
+    await app.close();
+  });
+
+  it('keeps super-admin audit-log reads global including system rows', async () => {
+    const sqlCalls: Array<{ query: string; values: unknown[] }> = [];
+    mockSql.mockImplementation(((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('');
+      sqlCalls.push({ query, values });
+      if (query.includes('COUNT(*)')) return Promise.resolve([{ count: '2' }]);
+      return Promise.resolve([]);
+    }) as typeof mockSql);
+    const app = await buildApp(SUPER_ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/audit-log?event_type=system_job&limit=10&offset=0',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { logs: [], total: 2 },
+    });
+    expect(sqlCalls[0]?.query).toContain('LEFT JOIN public.app_users au ON al.user_id = au.id');
+    expect(sqlCalls[0]?.query).not.toContain('au.org_id =');
+    expect(sqlCalls[0]?.values).toEqual(['system_job', 10, 0]);
+    expect(sqlCalls[1]?.query).not.toContain('au.org_id =');
+    expect(sqlCalls[1]?.values).toEqual(['system_job']);
+    await app.close();
+  });
+
+  it('rejects normal admin audit-log reads without a numeric organization scope', async () => {
+    const app = await buildApp({ ...ADMIN_USER, org_id: 'org-1' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/audit-log',
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'ADMIN_ORG_SCOPE_REQUIRED' },
+    });
+    expect(mockSql).not.toHaveBeenCalled();
     await app.close();
   });
 });

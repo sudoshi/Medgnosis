@@ -8,7 +8,7 @@
 //   _migrations: id, name, applied_at
 // =============================================================================
 
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import identityReviewRoutes from './identityReview.js';
 import {
   exportPatientsToOmop,
@@ -69,6 +69,13 @@ interface AuthProviderRow {
   updated_at: string;
 }
 
+interface AdminUserScopeRow {
+  id: string;
+  role: string;
+  is_active: boolean;
+  org_id: number | null;
+}
+
 const PROMOTION_MODES: MeasurePromotionMode[] = [
   'sql_only',
   'cql_shadow',
@@ -104,6 +111,74 @@ function isVisibleAuthProviderType(value: string): value is VisibleAuthProviderT
 
 function isManagedAuthProviderType(value: string): value is ManagedAuthProviderType {
   return (MANAGED_AUTH_PROVIDER_TYPES as readonly string[]).includes(value);
+}
+
+function requestAdminOrgId(request: FastifyRequest): number | null {
+  return positiveIntFromUnknown(request.user.org_id);
+}
+
+function positiveIntFromUnknown(value: unknown): number | null {
+  if (Array.isArray(value)) return null;
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim().length > 0
+      ? Number(value)
+      : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function isGlobalAdminRequest(request: FastifyRequest): boolean {
+  return request.user.role === 'super_admin';
+}
+
+function adminScopeError(reply: FastifyReply) {
+  return reply.status(403).send({
+    success: false,
+    error: {
+      code: 'ADMIN_ORG_SCOPE_REQUIRED',
+      message: 'Admin organization scope is required for this operation',
+    },
+  });
+}
+
+async function requireAdminUserInScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  userId: string,
+): Promise<AdminUserScopeRow | undefined> {
+  const orgId = requestAdminOrgId(request);
+  if (!isGlobalAdminRequest(request) && orgId === null) {
+    await adminScopeError(reply);
+    return undefined;
+  }
+
+  const [target] = isGlobalAdminRequest(request)
+    ? await sql<AdminUserScopeRow[]>`
+        SELECT id, role, is_active, org_id
+        FROM public.app_users
+        WHERE id = ${userId}::uuid
+      `
+    : await sql<AdminUserScopeRow[]>`
+        SELECT id, role, is_active, org_id
+        FROM public.app_users
+        WHERE id = ${userId}::uuid
+          AND org_id = ${orgId}
+      `;
+
+  if (!target) {
+    await reply.status(404).send({ success: false, error: { message: 'User not found' } });
+    return undefined;
+  }
+
+  if (target.role === 'super_admin' && !isGlobalAdminRequest(request)) {
+    await reply.status(403).send({
+      success: false,
+      error: { message: 'Only a super-admin can modify a super-admin account' },
+    });
+    return undefined;
+  }
+
+  return target;
 }
 
 function listFromUnknown(value: unknown): string[] | undefined {
@@ -681,48 +756,88 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   // ---- User Management ----
 
-  app.get('/users', async () => {
-    const users = await sql`
-      SELECT
-        u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
-        u.created_at, u.last_login_at,
-        p.first_name AS provider_first_name,
-        p.last_name  AS provider_last_name,
-        CASE
-          WHEN pending_invite.id IS NULL THEN NULL
-          ELSE jsonb_build_object(
-            'id', pending_invite.id,
-            'expires_at', pending_invite.expires_at::text,
-            'created_at', pending_invite.created_at::text,
-            'status',
-              CASE
-                WHEN pending_invite.expires_at <= NOW() THEN 'expired'
-                ELSE 'pending'
-              END
-          )
-        END AS pending_invite
-      FROM public.app_users u
-      LEFT JOIN phm_edw.provider p ON p.email = u.email
-      LEFT JOIN LATERAL (
-        SELECT i.id, i.expires_at, i.created_at
-        FROM public.app_user_invites i
-        WHERE i.user_id = u.id
-          AND i.accepted_at IS NULL
-          AND i.revoked_at IS NULL
-        ORDER BY i.created_at DESC
-        LIMIT 1
-      ) pending_invite ON TRUE
-      ORDER BY u.created_at DESC
-    `;
+  app.get('/users', async (req, reply) => {
+    const orgId = requestAdminOrgId(req);
+    if (!isGlobalAdminRequest(req) && orgId === null) return adminScopeError(reply);
+
+    const users = isGlobalAdminRequest(req)
+      ? await sql`
+          SELECT
+            u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
+            u.created_at, u.last_login_at,
+            p.first_name AS provider_first_name,
+            p.last_name  AS provider_last_name,
+            CASE
+              WHEN pending_invite.id IS NULL THEN NULL
+              ELSE jsonb_build_object(
+                'id', pending_invite.id,
+                'expires_at', pending_invite.expires_at::text,
+                'created_at', pending_invite.created_at::text,
+                'status',
+                  CASE
+                    WHEN pending_invite.expires_at <= NOW() THEN 'expired'
+                    ELSE 'pending'
+                  END
+              )
+            END AS pending_invite
+          FROM public.app_users u
+          LEFT JOIN phm_edw.provider p ON p.email = u.email
+          LEFT JOIN LATERAL (
+            SELECT i.id, i.expires_at, i.created_at
+            FROM public.app_user_invites i
+            WHERE i.user_id = u.id
+              AND i.accepted_at IS NULL
+              AND i.revoked_at IS NULL
+            ORDER BY i.created_at DESC
+            LIMIT 1
+          ) pending_invite ON TRUE
+          ORDER BY u.created_at DESC
+        `
+      : await sql`
+          SELECT
+            u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
+            u.created_at, u.last_login_at,
+            p.first_name AS provider_first_name,
+            p.last_name  AS provider_last_name,
+            CASE
+              WHEN pending_invite.id IS NULL THEN NULL
+              ELSE jsonb_build_object(
+                'id', pending_invite.id,
+                'expires_at', pending_invite.expires_at::text,
+                'created_at', pending_invite.created_at::text,
+                'status',
+                  CASE
+                    WHEN pending_invite.expires_at <= NOW() THEN 'expired'
+                    ELSE 'pending'
+                  END
+              )
+            END AS pending_invite
+          FROM public.app_users u
+          LEFT JOIN phm_edw.provider p ON p.email = u.email
+          LEFT JOIN LATERAL (
+            SELECT i.id, i.expires_at, i.created_at
+            FROM public.app_user_invites i
+            WHERE i.user_id = u.id
+              AND i.accepted_at IS NULL
+              AND i.revoked_at IS NULL
+            ORDER BY i.created_at DESC
+            LIMIT 1
+          ) pending_invite ON TRUE
+          WHERE u.org_id = ${orgId}
+            AND u.role <> 'super_admin'
+          ORDER BY u.created_at DESC
+        `;
     return { success: true, data: { users } };
   });
 
   app.post('/users', async (req, reply) => {
-    const { email, first_name, last_name, role } = req.body as {
+    const { email, first_name, last_name, role, org_id, orgId } = req.body as {
       email: string;
       first_name: string;
       last_name?: string;
       role?: string;
+      org_id?: string | number;
+      orgId?: string | number;
     };
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const trimmedFirstName = typeof first_name === 'string' ? first_name.trim() : '';
@@ -741,6 +856,35 @@ export default async function adminRoutes(app: FastifyInstance) {
         error: { message: 'Only a super-admin can create another super-admin' },
       });
     }
+    const adminOrgId = requestAdminOrgId(req);
+    if (!isGlobalAdminRequest(req) && adminOrgId === null) return adminScopeError(reply);
+    const requestedOrgValue = org_id ?? orgId;
+    const requestedOrgId = requestedOrgValue === undefined ? null : positiveIntFromUnknown(requestedOrgValue);
+    if (requestedOrgValue !== undefined && requestedOrgId === null) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'INVALID_ORG_ID',
+          message: 'org_id must be a positive integer',
+        },
+      });
+    }
+
+    let targetOrgId: number | null;
+    if (isGlobalAdminRequest(req)) {
+      targetOrgId = resolvedRole === 'super_admin' ? null : (requestedOrgId ?? adminOrgId);
+      if (targetOrgId === null) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'TARGET_ORG_REQUIRED',
+            message: 'org_id is required when creating non-super-admin users',
+          },
+        });
+      }
+    } else {
+      targetOrgId = adminOrgId;
+    }
 
     const [existing] = await sql`SELECT id FROM public.app_users WHERE lower(email) = ${normalizedEmail}`;
     if (existing) {
@@ -749,12 +893,13 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     const pendingPasswordHash = await createPendingPasswordHash();
     const [user] = await sql`
-      INSERT INTO public.app_users (email, first_name, last_name, role, password_hash, must_change_password, is_active)
+      INSERT INTO public.app_users (email, first_name, last_name, role, org_id, password_hash, must_change_password, is_active)
       VALUES (
         ${normalizedEmail},
         ${trimmedFirstName},
         ${trimmedLastName},
         ${resolvedRole},
+        ${targetOrgId},
         ${pendingPasswordHash},
         FALSE,
         FALSE
@@ -782,7 +927,9 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.post('/users/:id/resend-invite', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const [user] = await sql<{
+    const orgId = requestAdminOrgId(req);
+    if (!isGlobalAdminRequest(req) && orgId === null) return adminScopeError(reply);
+    const [user] = isGlobalAdminRequest(req) ? await sql<{
       id: string;
       email: string;
       first_name: string;
@@ -793,6 +940,18 @@ export default async function adminRoutes(app: FastifyInstance) {
       SELECT id, email, first_name, last_name, role, is_active
       FROM public.app_users
       WHERE id = ${id}::uuid
+    ` : await sql<{
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      is_active: boolean;
+    }[]>`
+      SELECT id, email, first_name, last_name, role, is_active
+      FROM public.app_users
+      WHERE id = ${id}::uuid
+        AND org_id = ${orgId}
     `;
 
     if (!user) {
@@ -830,7 +989,9 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.post('/users/:id/revoke-invite', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const [user] = await sql<{
+    const orgId = requestAdminOrgId(req);
+    if (!isGlobalAdminRequest(req) && orgId === null) return adminScopeError(reply);
+    const [user] = isGlobalAdminRequest(req) ? await sql<{
       id: string;
       email: string;
       first_name: string;
@@ -841,6 +1002,18 @@ export default async function adminRoutes(app: FastifyInstance) {
       SELECT id, email, first_name, last_name, role, is_active
       FROM public.app_users
       WHERE id = ${id}::uuid
+    ` : await sql<{
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      is_active: boolean;
+    }[]>`
+      SELECT id, email, first_name, last_name, role, is_active
+      FROM public.app_users
+      WHERE id = ${id}::uuid
+        AND org_id = ${orgId}
     `;
 
     if (!user) {
@@ -914,6 +1087,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
 
+    const target = await requireAdminUserInScope(req, reply, id);
+    if (target === undefined) return reply;
+
     if ((role && role !== 'super_admin') || is_active === false) {
       const wouldRemoveLastSuperAdmin = await isLastActiveSuperAdmin(id);
       if (wouldRemoveLastSuperAdmin) {
@@ -924,17 +1100,31 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
 
-    const [updated] = await sql`
-      UPDATE public.app_users
-      SET
-        role       = COALESCE(${role ?? null}, role),
-        is_active  = COALESCE(${is_active ?? null}, is_active),
-        first_name = COALESCE(${first_name ?? null}, first_name),
-        last_name  = COALESCE(${last_name ?? null}, last_name),
-        updated_at = NOW()
-      WHERE id = ${id}
-      RETURNING id, email, first_name, last_name, role, is_active
-    `;
+    const orgId = requestAdminOrgId(req);
+    const [updated] = isGlobalAdminRequest(req)
+      ? await sql`
+          UPDATE public.app_users
+          SET
+            role       = COALESCE(${role ?? null}, role),
+            is_active  = COALESCE(${is_active ?? null}, is_active),
+            first_name = COALESCE(${first_name ?? null}, first_name),
+            last_name  = COALESCE(${last_name ?? null}, last_name),
+            updated_at = NOW()
+          WHERE id = ${id}::uuid
+          RETURNING id, email, first_name, last_name, role, is_active
+        `
+      : await sql`
+          UPDATE public.app_users
+          SET
+            role       = COALESCE(${role ?? null}, role),
+            is_active  = COALESCE(${is_active ?? null}, is_active),
+            first_name = COALESCE(${first_name ?? null}, first_name),
+            last_name  = COALESCE(${last_name ?? null}, last_name),
+            updated_at = NOW()
+          WHERE id = ${id}::uuid
+            AND org_id = ${orgId}
+          RETURNING id, email, first_name, last_name, role, is_active
+        `;
 
     if (!updated) return reply.status(404).send({ success: false, error: { message: 'User not found' } });
     await req.auditLog('user_update', 'app_user', String(updated.id ?? id), {
@@ -950,6 +1140,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.delete('/users/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
 
+    const target = await requireAdminUserInScope(req, reply, id);
+    if (target === undefined) return reply;
+
     const wouldRemoveLastSuperAdmin = await isLastActiveSuperAdmin(id);
     if (wouldRemoveLastSuperAdmin) {
       return reply.status(400).send({
@@ -958,12 +1151,21 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
     }
 
-    const [updated] = await sql`
-      UPDATE public.app_users
-      SET is_active = FALSE, updated_at = NOW()
-      WHERE id = ${id}
-      RETURNING id, email, is_active
-    `;
+    const orgId = requestAdminOrgId(req);
+    const [updated] = isGlobalAdminRequest(req)
+      ? await sql`
+          UPDATE public.app_users
+          SET is_active = FALSE, updated_at = NOW()
+          WHERE id = ${id}::uuid
+          RETURNING id, email, is_active
+        `
+      : await sql`
+          UPDATE public.app_users
+          SET is_active = FALSE, updated_at = NOW()
+          WHERE id = ${id}::uuid
+            AND org_id = ${orgId}
+          RETURNING id, email, is_active
+        `;
 
     if (!updated) return reply.status(404).send({ success: false, error: { message: 'User not found' } });
     await req.auditLog('user_deactivate', 'app_user', String(updated.id ?? id), {
@@ -1067,15 +1269,21 @@ export default async function adminRoutes(app: FastifyInstance) {
   // ---- Audit Log ----
   // Schema: id (uuid), user_id (uuid), action, resource_type, resource_id, details (jsonb), ip_address, user_agent, created_at
 
-  app.get('/audit-log', async (req) => {
+  app.get('/audit-log', async (req, reply) => {
     const { limit = '50', offset = '0', event_type } = req.query as {
       limit?: string;
       offset?: string;
       event_type?: string;  // maps to audit_log.action
     };
+    const orgId = requestAdminOrgId(req);
+    if (!isGlobalAdminRequest(req) && orgId === null) return adminScopeError(reply);
 
-    const logs = event_type
-      ? await sql`
+    let logs: readonly unknown[];
+    let countRows: readonly { count: number | string }[];
+
+    if (isGlobalAdminRequest(req)) {
+      logs = event_type
+        ? await sql`
           SELECT
             al.id AS audit_id, al.action AS event_type, al.resource_type AS target_type,
             al.resource_id AS target_id, al.details::text AS description,
@@ -1087,7 +1295,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           ORDER BY al.created_at DESC
           LIMIT ${Number(limit)} OFFSET ${Number(offset)}
         `
-      : await sql`
+        : await sql`
           SELECT
             al.id AS audit_id, al.action AS event_type, al.resource_type AS target_type,
             al.resource_id AS target_id, al.details::text AS description,
@@ -1099,10 +1307,54 @@ export default async function adminRoutes(app: FastifyInstance) {
           LIMIT ${Number(limit)} OFFSET ${Number(offset)}
         `;
 
-    const [{ count }] = event_type
-      ? await sql`SELECT COUNT(*) AS count FROM public.audit_log WHERE action = ${event_type}`
-      : await sql`SELECT COUNT(*) AS count FROM public.audit_log`;
+      countRows = event_type
+        ? await sql`SELECT COUNT(*) AS count FROM public.audit_log WHERE action = ${event_type}`
+        : await sql`SELECT COUNT(*) AS count FROM public.audit_log`;
+    } else {
+      logs = event_type
+        ? await sql`
+          SELECT
+            al.id AS audit_id, al.action AS event_type, al.resource_type AS target_type,
+            al.resource_id AS target_id, al.details::text AS description,
+            al.ip_address, al.created_at,
+            au.email AS user_email, au.first_name AS user_first_name, au.last_name AS user_last_name
+          FROM public.audit_log al
+          JOIN public.app_users au ON al.user_id = au.id
+          WHERE al.action = ${event_type}
+            AND au.org_id = ${orgId}
+          ORDER BY al.created_at DESC
+          LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+        `
+        : await sql`
+          SELECT
+            al.id AS audit_id, al.action AS event_type, al.resource_type AS target_type,
+            al.resource_id AS target_id, al.details::text AS description,
+            al.ip_address, al.created_at,
+            au.email AS user_email, au.first_name AS user_first_name, au.last_name AS user_last_name
+          FROM public.audit_log al
+          JOIN public.app_users au ON al.user_id = au.id
+          WHERE au.org_id = ${orgId}
+          ORDER BY al.created_at DESC
+          LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+        `;
 
+      countRows = event_type
+        ? await sql`
+          SELECT COUNT(*) AS count
+          FROM public.audit_log al
+          JOIN public.app_users au ON al.user_id = au.id
+          WHERE al.action = ${event_type}
+            AND au.org_id = ${orgId}
+        `
+        : await sql`
+          SELECT COUNT(*) AS count
+          FROM public.audit_log al
+          JOIN public.app_users au ON al.user_id = au.id
+          WHERE au.org_id = ${orgId}
+        `;
+    }
+
+    const [{ count = 0 } = { count: 0 }] = countRows;
     return { success: true, data: { logs, total: Number(count) } };
   });
 

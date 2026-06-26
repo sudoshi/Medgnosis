@@ -39,7 +39,8 @@ role; it inherits admin route access and adds governance-only permissions.
 | `/api/v1/admin/*` | `authenticate` plus `requireRole(['admin'])` | `admin`, `super_admin` | Parent admin plugin gate. Identity review inherits this hook. |
 | `/api/v1/admin/system-health` and `/api/v1/admin/system-health/ehr-sync-alerts/dispatch` | `admin:system-health` | `admin`, `super_admin` | Explicit permission gate on top of the admin route family. |
 | `/api/v1/admin/auth-providers*` | `requireSuperAdmin` | `super_admin` | Auth-provider listing, mutation, and provider test routes are governance-only. |
-| `/api/v1/admin/users` super-admin grants/invites | inline route guard | `super_admin` only when creating or granting `super_admin` | Normal admins may manage non-super-admin users but cannot create, invite, resend, revoke, or grant super-admin access. |
+| `/api/v1/admin/users` and invite controls | inline route guard plus org scope | `admin`, `super_admin`; `super_admin` remains global | Normal admins are limited to users in their numeric `org_id`, may manage non-super-admin users in that org, and cannot create, invite, resend, revoke, mutate, or grant `super_admin` access. |
+| `/api/v1/admin/audit-log` | admin route gate plus org scope | `admin`, `super_admin`; `super_admin` remains global | Normal admins see audit rows joined to actor users in their numeric `org_id`; super-admins see all audit rows, including system rows without a user actor. |
 | `/api/v1/ehr/admin/*` | `authenticate` plus `requireRole(['admin'])` | `admin`, `super_admin` | Tenant, SMART, Bulk, schedule, and replay administration. |
 
 ## Regression Evidence
@@ -50,9 +51,11 @@ The current backend regression set proves the highest-risk gates directly:
   normal-role denial, the super-admin-only decorator, `admin:system-health`, and
   `admin:auth-providers`.
 - `apps/api/src/routes/admin/index.test.ts` covers normal-admin denial for auth
-  provider list/update, super-admin access to supported provider surfaces, and
+  provider list/update, super-admin access to supported provider surfaces,
   normal-admin denial before persistence/audit when attempting to create or
-  grant `super_admin`.
+  grant `super_admin`, org-scoped admin-user listing/mutation/invite behavior,
+  super-admin target-org assignment for non-super-admin invites, and
+  actor-user-org-scoped normal-admin audit-log reads.
 - `apps/api/src/routes/ehr/admin.test.ts` covers `super_admin` inheritance
   through EHR admin route gates.
 - `apps/api/src/services/ehr/bulkData.test.ts` covers tenant id and tenant org
@@ -70,12 +73,12 @@ npm run test --workspace=apps/api -- \
 
 ## Residual Gaps
 
-- Audit-log views currently need an explicit policy decision before they can be
-  marked org-isolated: global admin audit visibility may be intentional, but it
-  should be documented as a product/security decision if retained.
 - Role-specific frontend visibility should be expanded with web E2E coverage so
   normal admins cannot reach governance tabs through navigation or direct URL
   entry, even though backend enforcement is the authority.
+- Normal-admin audit-log reporting is intentionally actor-user scoped in this
+  tranche. A separate product/security decision is still needed before exposing
+  org-owned system or worker audit rows to non-super-admins.
 - Patient and clinical workspace routes rely on route-specific provider/patient
   scoping. They are not fully proved by the admin RBAC matrix tests and should
   keep separate patient-access regression coverage.
