@@ -1,0 +1,55 @@
+name: Migration Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: migration-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  DATABASE_URL: postgres://medgnosis:medgnosis_dev@localhost:5432/medgnosis_dev
+  REDIS_URL: redis://localhost:6379
+  JWT_SECRET: ci-test-secret-not-for-production
+  NODE_ENV: test
+
+jobs:
+  migration-check:
+    name: Migration List + Dry-Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: medgnosis
+          POSTGRES_PASSWORD: medgnosis_dev
+          POSTGRES_DB: medgnosis_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U medgnosis"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Type check
+        run: npx turbo run typecheck
+      # Dry-run mode: the list + --dry-run gates apply NO migrations. A fresh CI
+      # database has pending migrations by design, so --allow-pending keeps this
+      # job green while still proving both gates run and the counts parse.
+      - name: Migration list + dry-run gate
+        run: ./scripts/migration-check.sh --allow-pending
