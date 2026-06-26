@@ -637,6 +637,11 @@ export default async function adminRoutes(app: FastifyInstance) {
         clientConfigured,
         redirectUri,
       });
+      await req.auditLog('auth_provider_test', 'auth_provider', 'oidc', {
+        provider_type: 'oidc',
+        status: 'ok',
+        client_configured: clientConfigured,
+      });
       return {
         success: true,
         data: {
@@ -659,6 +664,12 @@ export default async function adminRoutes(app: FastifyInstance) {
         redirectUri,
         errorCode: 'PROVIDER_TEST_FAILED',
         errorMessage: message,
+      });
+      await req.auditLog('auth_provider_test', 'auth_provider', 'oidc', {
+        provider_type: 'oidc',
+        status: 'error',
+        client_configured: clientConfigured,
+        error_code: 'PROVIDER_TEST_FAILED',
       });
       return reply.status(502).send({
         success: false,
@@ -1203,6 +1214,11 @@ export default async function adminRoutes(app: FastifyInstance) {
       )
       RETURNING *
     `;
+    await req.auditLog('fhir_endpoint_create', 'fhir_endpoint', String(endpoint?.endpoint_id ?? ''), {
+      ehr_type: endpoint?.ehr_type ?? ehr_type,
+      auth_type: endpoint?.auth_type ?? auth_type ?? 'oauth2',
+      version: endpoint?.version ?? version ?? 'R4',
+    });
     return { success: true, data: { endpoint } };
   });
 
@@ -1232,6 +1248,17 @@ export default async function adminRoutes(app: FastifyInstance) {
     `;
 
     if (!endpoint) return reply.status(404).send({ success: false, error: { message: 'Endpoint not found' } });
+    await req.auditLog('fhir_endpoint_update', 'fhir_endpoint', String(endpoint.endpoint_id ?? id), {
+      fields_changed: {
+        name: name !== undefined,
+        base_url: base_url !== undefined,
+        auth_type: auth_type !== undefined,
+        status: status !== undefined,
+        version: version !== undefined,
+        notes: notes !== undefined,
+      },
+      status: endpoint.status ?? status ?? null,
+    });
     return { success: true, data: { endpoint } };
   });
 
@@ -1246,6 +1273,9 @@ export default async function adminRoutes(app: FastifyInstance) {
     `;
 
     if (!endpoint) return reply.status(404).send({ success: false, error: { message: 'Endpoint not found' } });
+    await req.auditLog('fhir_endpoint_deactivate', 'fhir_endpoint', String(endpoint.endpoint_id ?? id), {
+      is_active: false,
+    });
     return { success: true };
   });
 
@@ -1263,6 +1293,10 @@ export default async function adminRoutes(app: FastifyInstance) {
     `;
 
     if (!endpoint) return reply.status(404).send({ success: false, error: { message: 'Endpoint not found' } });
+    await req.auditLog('fhir_endpoint_sync', 'fhir_endpoint', String(endpoint.endpoint_id ?? id), {
+      status: endpoint.status ?? 'connected',
+      synced: true,
+    });
     return { success: true, data: { endpoint } };
   });
 
@@ -1396,7 +1430,7 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   // ---- Refresh Materialized Views ----
 
-  app.post('/refresh-mat-views', async (_, reply) => {
+  app.post('/refresh-mat-views', async (req, reply) => {
     // REFRESH CONCURRENTLY cannot run inside a transaction — iterate sequentially
     const views = [
       'phm_star.mv_patient_dashboard',
@@ -1427,6 +1461,13 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
 
     const allOk = results.every((r) => r.status === 'ok');
+    await req.auditLog('materialized_views_refresh', 'materialized_view', 'admin_refresh', {
+      total: results.length,
+      ok: results.filter((result) => result.status === 'ok').length,
+      error: results.filter((result) => result.status === 'error').length,
+      all_ok: allOk,
+      views: results.map((result) => ({ view: result.view, status: result.status })),
+    });
     return reply
       .status(allOk ? 200 : 207)
       .send({ success: allOk, data: { results } });

@@ -564,6 +564,16 @@ describe('admin authentication provider routes', () => {
       redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
       responseMs: expect.any(Number),
     }));
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'auth_provider_test',
+      'auth_provider',
+      'oidc',
+      expect.objectContaining({
+        provider_type: 'oidc',
+        status: 'ok',
+        client_configured: true,
+      }),
+    );
     await app.close();
   });
 
@@ -594,6 +604,18 @@ describe('admin authentication provider routes', () => {
       errorMessage: 'discovery unavailable',
       responseMs: expect.any(Number),
     }));
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'auth_provider_test',
+      'auth_provider',
+      'oidc',
+      expect.objectContaining({
+        provider_type: 'oidc',
+        status: 'error',
+        client_configured: true,
+        error_code: 'PROVIDER_TEST_FAILED',
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('discovery unavailable');
     await app.close();
   });
 });
@@ -1253,6 +1275,133 @@ describe('admin audit-log visibility routes', () => {
       error: { code: 'ADMIN_ORG_SCOPE_REQUIRED' },
     });
     expect(mockSql).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe('admin FHIR endpoint mutation audit routes', () => {
+  it('audits FHIR endpoint creation without endpoint URL details', async () => {
+    const endpoint = {
+      endpoint_id: 17,
+      ehr_type: 'epic',
+      auth_type: 'oauth2',
+      version: 'R4',
+      base_url: 'https://ehr.example.test/fhir',
+    };
+    mockSql.mockResolvedValueOnce([endpoint]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/fhir-endpoints',
+      payload: {
+        name: 'Epic Sandbox',
+        ehr_type: 'epic',
+        base_url: 'https://ehr.example.test/fhir',
+        auth_type: 'oauth2',
+        version: 'R4',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'fhir_endpoint_create',
+      'fhir_endpoint',
+      '17',
+      expect.objectContaining({ ehr_type: 'epic', auth_type: 'oauth2', version: 'R4' }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('https://ehr.example.test/fhir');
+    await app.close();
+  });
+
+  it('audits FHIR endpoint updates as changed-field flags', async () => {
+    mockSql.mockResolvedValueOnce([{ endpoint_id: 17, status: 'active' }]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/fhir-endpoints/17',
+      payload: {
+        base_url: 'https://ehr.example.test/fhir',
+        status: 'active',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'fhir_endpoint_update',
+      'fhir_endpoint',
+      '17',
+      expect.objectContaining({
+        fields_changed: expect.objectContaining({ base_url: true, status: true, name: false }),
+        status: 'active',
+      }),
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('https://ehr.example.test/fhir');
+    await app.close();
+  });
+
+  it('audits FHIR endpoint deactivation', async () => {
+    mockSql.mockResolvedValueOnce([{ endpoint_id: 17 }]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/fhir-endpoints/17',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'fhir_endpoint_deactivate',
+      'fhir_endpoint',
+      '17',
+      { is_active: false },
+    );
+    await app.close();
+  });
+
+  it('audits FHIR endpoint sync checks', async () => {
+    mockSql.mockResolvedValueOnce([{ endpoint_id: 17, status: 'connected' }]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/fhir-endpoints/17/sync',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'fhir_endpoint_sync',
+      'fhir_endpoint',
+      '17',
+      { status: 'connected', synced: true },
+    );
+    await app.close();
+  });
+
+  it('audits materialized view refresh outcomes', async () => {
+    const unsafe = vi.fn().mockResolvedValue([]);
+    (mockSql as unknown as { unsafe: typeof unsafe }).unsafe = unsafe;
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/refresh-mat-views',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(unsafe).toHaveBeenCalledTimes(7);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'materialized_views_refresh',
+      'materialized_view',
+      'admin_refresh',
+      expect.objectContaining({
+        total: 8,
+        ok: 8,
+        error: 0,
+        all_ok: true,
+      }),
+    );
     await app.close();
   });
 });
