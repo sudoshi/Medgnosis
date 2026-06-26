@@ -25,6 +25,8 @@ Follow-up Bulk deleted-output verification on 2026-06-26 closes a stale planning
 
 Follow-up operations runbook work on 2026-06-26 adds a production worker and CQL sidecar restart runbook. The runbook reflects the current host-systemd production worker, the deploy script's worker restart behavior, the opt-in HAPI clinical-reasoning sidecar, and the smoke/shadow-refresh commands that prove CQL recovery without changing SQL-authoritative production behavior.
 
+Follow-up QRDA/QPP validation work on 2026-06-26 adds deterministic QRDA Cat I, QRDA Cat III, and QPP JSON fixtures, local structural validation scripts, and an external-validator handoff runbook. The local gates now prove well-formed CDA XML and the expected QPP performance-data shape; official Cypress CVU+ and QPP sandbox/API validation remain external gates and are not marked complete.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
@@ -822,6 +824,12 @@ Focused worker/CQL restart runbook validation on 2026-06-26:
 - The documented CQL sidecar commands were checked against `docker-compose.yml`, `docker/cql-engine/README.md`, `scripts/cql-engine-smoke.sh`, `scripts/cql-qdm-smoke.sh`, and `scripts/cql-realmeasure-smoke.sh`.
 - `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only runbook slice.
 
+Focused QRDA/QPP local validation on 2026-06-26:
+
+- `./scripts/qrda-validate.sh` passed local XML structural checks for `apps/api/test-fixtures/quality/qrda-cat1-sample.xml` and `apps/api/test-fixtures/quality/qrda-cat3-sample.xml`; official Cypress CVU+ validation was explicitly skipped because external CVU+ commands were not configured.
+- `./scripts/qpp-validate.sh` passed local JSON structural checks for `apps/api/test-fixtures/quality/qpp-submission-sample.json`; official QPP sandbox/API validation was explicitly skipped because `QPP_VALIDATE_CMD` was not configured.
+- `npm run test --workspace=apps/api -- src/services/qrda/qrdaCat1.test.ts src/services/qrda/qrdaCat3.test.ts` passed 2 files and 12 tests.
+
 Focused EHR tests covered during the EHR foundation tranche:
 
 - `apps/api/src/routes/ehr/admin.test.ts`
@@ -1154,6 +1162,6 @@ Scripts:
 | Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk deleted-output tombstone processing for crosswalk-mapped EDW rows, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, readiness diagnostics, bounded patient/resource rollups, bounded conflict/stale drilldowns, FHIR/token failure alert summaries, replay/dead-letter runbook, EHR sync alert runbook, and admin status UI present; vendor tombstone edge-case evidence, configured external delivery, incident rehearsal, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Partial | QDM bridge runbook, worker/CQL sidecar restart runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, configured external alert delivery, and incident rehearsal evidence remain |
+| Observability/runbooks | Partial | QDM bridge runbook, worker/CQL sidecar restart runbook, QRDA/QPP validation runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, configured external alert delivery, and incident rehearsal evidence remain |
 
 Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.

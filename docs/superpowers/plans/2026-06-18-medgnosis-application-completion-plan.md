@@ -39,6 +39,7 @@ Validation performed:
 - Focused EHR audit redaction validation after removing token metadata ids, launch session ids, provider-supplied SMART callback error text, webhook endpoint hosts, and raw webhook/error strings from audit details: `npm run test --workspace=apps/api -- src/routes/ehr/admin.test.ts src/routes/ehr/launch.test.ts src/services/ehr/syncAlerts.test.ts src/services/systemHealth.test.ts` passed 4 files and 68 tests. Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 903 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests. Commit `737dfde` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, production migration dry-run reported 91 applied migrations and no pending migrations, public `https://medgnosis.acumenus.net/health` returned healthy, and `/api/v1/auth/providers` returned local plus Authentik enabled with public registration and demo quick-fill disabled. Sourcing `.env.production` still emits the existing lines 84/85 warnings.
 - Focused Bulk deleted-output validation confirmed that completed Bulk manifests process `manifest.deleted` Bundle NDJSON entries by `request.method=DELETE` and `request.url=ResourceType/id`, then soft-delete crosswalk-mapped EDW rows and stamp `ehr_resource_crosswalk.deleted_at/deleted_reason`: `npm run test --workspace=apps/api -- src/services/ehr/bulkData.test.ts src/services/ehr/edwHydration.test.ts` passed 2 files and 74 tests.
 - Production worker/CQL restart runbook validation confirmed the documented commands against the current systemd worker unit, deploy script, Docker CQL profile, and CQL smoke scripts. `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only slice.
+- Focused QRDA/QPP local validation after adding deterministic Cat I, Cat III, and QPP fixtures plus validation scripts: `./scripts/qrda-validate.sh` passed local XML structural checks and explicitly skipped external CVU+ because `QRDA_CVU_CAT1_CMD`/`QRDA_CVU_CAT3_CMD` were not configured; `./scripts/qpp-validate.sh` passed local JSON structural checks and explicitly skipped external QPP sandbox/API validation because `QPP_VALIDATE_CMD` was not configured; `npm run test --workspace=apps/api -- src/services/qrda/qrdaCat1.test.ts src/services/qrda/qrdaCat3.test.ts` passed 2 files and 12 tests.
 
 Areas examined:
 
@@ -340,6 +341,7 @@ Objective: make quality measurement standards work governable, reproducible, and
   - [ ] Add backpressure and limits for large populations.
   - [ ] Add issue triage states for `qdm_bridge_issue` beyond open issue listing.
 - [ ] Complete reporting artifact validation.
+  - [x] Add deterministic QRDA Cat I, QRDA Cat III, and QPP sample fixtures plus local structural validation scripts and external validator handoff hooks.
   - [ ] QRDA Cat I: fill complete QDM patient data entries and validate with Cypress/CVU for the target reporting year.
   - [ ] QRDA Cat III: validate aggregate reports with Cypress/CVU and reporting-year template IDs.
   - [ ] QPP JSON: validate against the current QPP submission API sandbox or official schema/test harness.
@@ -580,8 +582,8 @@ Recommended second sprint:
 - [ ] Add remaining EDW/local-matching breadth for tenant-specific patient-detail needs.
 - [x] Add Bulk mock-server integration tests.
 - [x] Add EHR admin Bulk/job status UI.
-- [ ] Add QRDA Cat I/III Cypress validation plan and script.
-- [ ] Add QPP validation plan and fixture.
+- [x] Add QRDA Cat I/III Cypress validation plan and script.
+- [x] Add QPP validation plan and fixture.
 - [ ] Expand role-based E2E coverage.
   - [x] Add authenticated admin protected-route smoke coverage across all top-level app routes.
 - [x] Add the EHR Bulk replay/dead-letter production runbook.

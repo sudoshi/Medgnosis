@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <realmCode code="US"/>
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.1" extension="2015-08-01"/>
+  <templateId root="2.16.840.1.113883.10.20.24.1.1" extension="2017-08-01"/>
+  <templateId root="2.16.840.1.113883.10.20.24.1.2" extension="2017-08-01"/>
+  <id root="2.16.840.1.113883.4.336" extension="mgp-qrda-001"/>
+  <code code="55182-0" codeSystem="2.16.840.1.113883.6.1" displayName="Quality Measure Report"/>
+  <title>QRDA Category I — Patient mgp-qrda-001</title>
+  <effectiveTime value="20261231"/>
+  <confidentialityCode code="N" codeSystem="2.16.840.1.113883.5.25"/>
+  <languageCode code="en"/>
+  <recordTarget>
+    <patientRole>
+      <id root="2.16.840.1.113883.4.336" extension="mgp-qrda-001"/>
+      <patient>
+        <name use="L">
+          <given>Ada</given>
+          <family>Lovelace</family>
+        </name>
+        <administrativeGenderCode code="F" codeSystem="2.16.840.1.113883.5.1"/>
+        <birthTime value="19700505"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <component>
+    <structuredBody>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.24.2.2"/>
+          <code code="55186-1" codeSystem="2.16.840.1.113883.6.1" displayName="Measure Section"/>
+          <title>Measure Section</title>
+          <text>Patient-level results for 1 measure(s), reporting period 20260101–20261231.</text>
+          <entry>
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+              <effectiveTime>
+                <low value="20260101"/>
+                <high value="20261231"/>
+              </effectiveTime>
+            </act>
+          </entry>
+        <entry>
+          <organizer classCode="CLUSTER" moodCode="EVN">
+            <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+            <id root="2.16.840.1.113883.3.560.1.1001"/>
+            <statusCode code="completed"/>
+            <reference typeCode="REFR">
+              <externalDocument classCode="DOC" moodCode="EVN">
+                <id root="2.16.840.1.113883.3.560.1.1001"/>
+                <code code="57024-2" codeSystem="2.16.840.1.113883.6.1" displayName="Health Quality Measure Document"/>
+                <text>CMS122v13 v13</text>
+              </externalDocument>
+            </reference>
+            <component>
+              <observation classCode="OBS" moodCode="EVN">
+                <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+                <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                <value xsi:type="CD" code="IPOP" codeSystem="2.16.840.1.113883.5.4"/>
+                <component>
+                  <observation classCode="OBS" moodCode="EVN">
+                    <code code="MSRAGG" codeSystem="2.16.840.1.113883.5.4" displayName="rate aggregation"/>
+                    <value xsi:type="INT" value="1"/>
+                  </observation>
+                </component>
+              </observation>
+            </component>
+            <component>
+              <observation classCode="OBS" moodCode="EVN">
+                <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+                <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                <value xsi:type="CD" code="DENOM" codeSystem="2.16.840.1.113883.5.4"/>
+                <component>
+                  <observation classCode="OBS" moodCode="EVN">
+                    <code code="MSRAGG" codeSystem="2.16.840.1.113883.5.4" displayName="rate aggregation"/>
+                    <value xsi:type="INT" value="1"/>
+                  </observation>
+                </component>
+              </observation>
+            </component>
+            <component>
+              <observation classCode="OBS" moodCode="EVN">
+                <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+                <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                <value xsi:type="CD" code="DENEX" codeSystem="2.16.840.1.113883.5.4"/>
+                <component>
+                  <observation classCode="OBS" moodCode="EVN">
+                    <code code="MSRAGG" codeSystem="2.16.840.1.113883.5.4" displayName="rate aggregation"/>
+                    <value xsi:type="INT" value="0"/>
+                  </observation>
+                </component>
+              </observation>
+            </component>
+            <component>
+              <observation classCode="OBS" moodCode="EVN">
+                <templateId root="2.16.840.1.113883.10.20.24.3.98"/>
+                <code code="ASSERTION" codeSystem="2.16.840.1.113883.5.4"/>
+                <value xsi:type="CD" code="NUMER" codeSystem="2.16.840.1.113883.5.4"/>
+                <component>
+                  <observation classCode="OBS" moodCode="EVN">
+                    <code code="MSRAGG" codeSystem="2.16.840.1.113883.5.4" displayName="rate aggregation"/>
+                    <value xsi:type="INT" value="1"/>
+                  </observation>
+                </component>
+              </observation>
+            </component>
+          </organizer>
+        </entry>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.24.2.1"/>
+          <code code="55188-7" codeSystem="2.16.840.1.113883.6.1" displayName="Patient Data"/>
+          <title>Patient Data</title>
+          <text>QDM patient-data elements for the reporting period.</text>
+        </section>
+      </component>
+    </structuredBody>
+  </component>
+</ClinicalDocument>

@@ -15,6 +15,7 @@ devlogs do not override the current codebase state.
 - [FHIR/QDM bridge completion devlog](devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md) - completed QDM/CQL shadow-governance milestone and CMS122 promotion hold evidence.
 - [QDM bridge operations runbook](runbooks/qdm-bridge-operations.md) - how to run and monitor QDM/CQL shadow refreshes safely.
 - [Worker and CQL sidecar restart runbook](runbooks/worker-and-cql-sidecar-restart.md) - production worker restart, opt-in CQL sidecar recovery, and post-restart evidence.
+- [QRDA and QPP validation runbook](runbooks/qrda-qpp-validation.md) - local QRDA/QPP fixtures, structural validator scripts, and external Cypress/QPP handoff.
 - [EHR Bulk replay and dead-letter runbook](runbooks/ehr-bulk-replay-dead-letter.md) - PHI-light Bulk import resume, QDM replay, and worker dead-letter triage.
 - [EHR sync alerts and stale-data incident runbook](runbooks/ehr-sync-alerts-stale-data.md) - PHI-safe external alert routing, stale-data triage, and Bulk incident rehearsal checklist.
 - [Role and permission matrix](runbooks/role-permission-matrix.md) - current route-family RBAC expectations and backend regression evidence.
@@ -231,5 +232,6 @@ devlogs do not override the current codebase state.
 3. Keep MFA/session audit lifecycle coverage current as auth provider and session behavior evolves.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
-6. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
-7. Broaden role-based E2E beyond the current auth/admin/settings/protected-route smoke paths.
+6. Run official Cypress CVU+ and QPP sandbox validation once the external validator/runtime and credentials are available.
+7. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
+8. Broaden role-based E2E beyond the current auth/admin/settings/protected-route smoke paths.

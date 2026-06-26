@@ -81,6 +81,33 @@ Expected result as of 2026-06-18:
 - 0 errors
 - 0 warnings
 
+QRDA Cat I/Cat III local structural fixtures:
+
+```bash
+./scripts/qrda-validate.sh
+```
+
+Expected local result as of 2026-06-26:
+
+- `apps/api/test-fixtures/quality/qrda-cat1-sample.xml` parses as CDA XML.
+- `apps/api/test-fixtures/quality/qrda-cat3-sample.xml` parses as CDA XML.
+- Official Cypress CVU+ validation is skipped unless `QRDA_CVU_CAT1_CMD` and
+  `QRDA_CVU_CAT3_CMD` are configured.
+
+QPP JSON local structural fixture:
+
+```bash
+./scripts/qpp-validate.sh
+```
+
+Expected local result as of 2026-06-26:
+
+- `apps/api/test-fixtures/quality/qpp-submission-sample.json` has the expected
+  quality `measurementSets` / `electronicHealthRecord` shape and non-negative
+  integer counts.
+- Official QPP sandbox/API validation is skipped unless `QPP_VALIDATE_CMD` is
+  configured.
+
 ## Runtime Health Checks
 
 Local production container/proxy:
@@ -182,9 +209,9 @@ Before a release or handoff, record:
 
 ## Known Gaps To Close
 
-- Add QRDA Cat I/Cat III Cypress/CVU validation once reporting artifacts are
-  complete enough for submission-grade checks.
-- Add QPP JSON validation against an official schema or sandbox.
+- Local QRDA/QPP fixture and structural validation scripts now exist; official
+  QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API validation
+  still require the external validator/runtime and credentials.
 - Expand Playwright to authenticated role-based workflows.
 - Add worker, queue, CQL sidecar, EHR tenant, and Bulk Data checks to admin
   health and release smoke checks.

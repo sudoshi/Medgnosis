@@ -1,0 +1,22 @@
+{
+  "performanceYear": 2026,
+  "measurementSets": [
+    {
+      "category": "quality",
+      "submissionMethod": "electronicHealthRecord",
+      "measurements": [
+        {
+          "measureId": "122",
+          "value": {
+            "isEndToEndReported": true,
+            "performanceMet": 55,
+            "eligiblePopulation": 80,
+            "eligiblePopulationExclusion": 5,
+            "eligiblePopulationException": 0,
+            "performanceNotMet": 20
+          }
+        }
+      ]
+    }
+  ]
+}
