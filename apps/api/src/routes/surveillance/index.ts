@@ -6,6 +6,11 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { streamTick } from '../../services/surveillance.js';
+import {
+  getSurveillanceSource,
+  getSurveillanceSourceStatus,
+} from '../../services/surveillance/factory.js';
+import { Hl7v2SurveillanceSource } from '../../services/surveillance/hl7v2Source.js';
 import { isAdminRole } from '../../services/auth/permissions.js';
 
 export default async function surveillanceRoutes(fastify: FastifyInstance): Promise<void> {
@@ -72,4 +77,53 @@ export default async function surveillanceRoutes(fastify: FastifyInstance): Prom
     });
     return reply.send({ success: true, data: result });
   });
+
+  // GET /surveillance/source-status — operator view of the active feed.
+  // Reports current source mode, whether it is synthetic (demo), the last
+  // ingested event time, and healthy/stale/idle freshness. Aggregate, no PHI.
+  fastify.get('/source-status', async (_request, reply) => {
+    return reply.send({ success: true, data: getSurveillanceSourceStatus() });
+  });
+
+  // POST /surveillance/hl7v2/ingest — intake one raw HL7 v2 ORU message (admin).
+  // For an MLLP bridge / replay tooling: the body is the deframed message. Only
+  // available when SURVEILLANCE_SOURCE=hl7v2 (otherwise the active source cannot
+  // accept it). Buffered now; persisted + scored on the next ingestion cycle.
+  fastify.post<{ Body: { message?: string } | string }>(
+    '/hl7v2/ingest',
+    async (request, reply) => {
+      if (!isAdminRole(request.user.role)) {
+        return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
+      }
+      const source = getSurveillanceSource();
+      if (!(source instanceof Hl7v2SurveillanceSource)) {
+        return reply.status(409).send({
+          success: false,
+          error: { code: 'SOURCE_MISMATCH', message: `Active source is not hl7v2 (${source.mode})` },
+        });
+      }
+      const body = request.body;
+      const raw = typeof body === 'string' ? body : (body?.message ?? '');
+      if (typeof raw !== 'string' || raw.trim() === '') {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'EMPTY_MESSAGE', message: 'HL7 v2 message body is required' },
+        });
+      }
+      const event = await source.accept(raw);
+      await request.auditLog('surveillance_hl7v2_ingest', 'surveillance_source', undefined, {
+        accepted: event !== null,
+        admission_id: event?.admissionId,
+        pending: source.pending,
+        rejected: source.rejected,
+      });
+      if (!event) {
+        return reply.status(422).send({
+          success: false,
+          error: { code: 'UNMAPPED_MESSAGE', message: 'Message could not be parsed/resolved to an admission' },
+        });
+      }
+      return reply.send({ success: true, data: { accepted: true, admission_id: event.admissionId, pending: source.pending } });
+    },
+  );
 }
