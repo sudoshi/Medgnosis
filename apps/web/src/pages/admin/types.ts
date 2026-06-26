@@ -77,8 +77,14 @@ export interface SystemHealth {
     status: HealthStatusWire;
     total_workers: number;
     counts: QueueCounts;
+    completed_recent: number;
+    failure_rate: number;
+    stalled_queues: number;
     queues: WorkerQueueStatus[];
   };
+  scheduler: SchedulerHealth;
+  migrations: MigrationHealth;
+  observability: SystemObservability;
   ehr_tenants: {
     status: HealthStatusWire;
     tenants: {
@@ -250,6 +256,119 @@ export interface WorkerQueueStatus {
   repeatable_jobs?: number;
   next_run_at?: string | null;
   latest_completed_at?: string | null;
+  stalled?: boolean;
+  completed_recent?: number;
+  error?: string;
+}
+
+export interface SchedulerHealth {
+  status: HealthStatusWire;
+  queue: string;
+  workers: number;
+  paused: boolean;
+  repeatable_scheduled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  completed_recent: number;
+  failed_recent: number;
+  hours_since_last_run: number | null;
+  missed: boolean;
+  stale_after_hours: number;
+  issues: string[];
+  error?: string;
+}
+
+export interface MigrationHealth {
+  status: HealthStatusWire;
+  migrations: {
+    applied: number;
+    latest_name: string | null;
+    latest_applied_at: string | null;
+    pending: number;
+  };
+  materialized_views: {
+    total: number;
+    populated: number;
+    unpopulated: number;
+    names_unpopulated: string[];
+  };
+  issues: string[];
+  error?: string;
+}
+
+export interface SystemObservability {
+  status: HealthStatusWire;
+  worker_queue: {
+    depth: number;
+    failed: number;
+    failure_rate: number;
+    completed_recent: number;
+    stalled_queues: number;
+  };
+  scheduler: {
+    last_run_at: string | null;
+    last_success_at: string | null;
+    missed: boolean;
+    hours_since_last_run: number | null;
+  };
+  ehr_launch: {
+    started_24h: number;
+    succeeded_24h: number;
+    failed_24h: number;
+    denied_24h: number;
+    success_rate_24h: number | null;
+  };
+  bulk_import: {
+    completed_24h: number;
+    failed_24h: number;
+    active: number;
+    failure_rate_24h: number | null;
+  };
+  cql_engine: {
+    status: HealthStatusWire;
+    runtime_configured: boolean;
+    available: boolean;
+  };
+  qdm_bridge: {
+    status: HealthStatusWire;
+    blocking_issues: number;
+  };
+}
+
+export type SystemAlertDispatchStatus = 'sent' | 'skipped' | 'failed';
+export type SystemAlertSeverity = 'ok' | 'info' | 'warning' | 'critical';
+
+export interface SystemAlertingStatus {
+  status: 'ok' | 'degraded' | 'disabled';
+  enabled: boolean;
+  configured: boolean;
+  nightly_enabled: boolean;
+  endpoint_host: string | null;
+  last_dispatch_at: string | null;
+  last_dispatch_status: SystemAlertDispatchStatus | null;
+  last_dispatch_reason: string | null;
+  last_severity: SystemAlertSeverity | null;
+  last_issue_count: number | null;
+  last_critical_issue_count: number | null;
+  last_warning_issue_count: number | null;
+  error?: string;
+}
+
+export interface SystemAlertDispatchResult {
+  status: SystemAlertDispatchStatus;
+  reason: string;
+  enabled: boolean;
+  configured: boolean;
+  endpointHost: string | null;
+  generatedAt: string;
+  overallStatus: HealthStatusWire | 'disabled';
+  severity: SystemAlertSeverity;
+  issueCount: number;
+  criticalIssueCount: number;
+  warningIssueCount: number;
+  statusCode?: number;
   error?: string;
 }
 

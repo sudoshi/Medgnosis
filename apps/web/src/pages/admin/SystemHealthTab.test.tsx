@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SystemHealthTab } from './SystemHealthTab.js';
-import type { SystemHealth } from './types.js';
+import type { SystemAlertingStatus, SystemHealth } from './types.js';
 
 const { mockApiGet, mockApiPost } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
@@ -91,6 +91,9 @@ const health: SystemHealth = {
     status: 'degraded',
     total_workers: 3,
     counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
+    completed_recent: 9,
+    failure_rate: 0.1,
+    stalled_queues: 1,
     queues: [
       {
         name: 'medgnosis-ehr-bulk-import',
@@ -100,6 +103,8 @@ const health: SystemHealth = {
         workers: 1,
         paused: false,
         counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
+        stalled: false,
+        completed_recent: 7,
       },
       {
         name: 'medgnosis-nightly',
@@ -112,8 +117,81 @@ const health: SystemHealth = {
         repeatable_jobs: 0,
         next_run_at: '2026-06-21T02:00:00Z',
         latest_completed_at: '2026-06-20T02:00:00Z',
+        stalled: true,
+        completed_recent: 2,
       },
     ],
+  },
+  scheduler: {
+    status: 'blocked',
+    queue: 'medgnosis-nightly',
+    workers: 0,
+    paused: false,
+    repeatable_scheduled: true,
+    next_run_at: '2026-06-27T02:00:00Z',
+    last_run_at: '2026-06-24T02:00:00Z',
+    last_success_at: '2026-06-24T02:00:00Z',
+    last_failure_at: '2026-06-23T02:00:00Z',
+    completed_recent: 5,
+    failed_recent: 1,
+    hours_since_last_run: 48,
+    missed: true,
+    stale_after_hours: 36,
+    issues: ['Nightly scheduler has no active worker'],
+  },
+  migrations: {
+    status: 'degraded',
+    migrations: {
+      applied: 92,
+      latest_name: '092_ehr_capability_snapshot',
+      latest_applied_at: '2026-06-25T12:00:00Z',
+      pending: 2,
+    },
+    materialized_views: {
+      total: 4,
+      populated: 3,
+      unpopulated: 1,
+      names_unpopulated: ['phm_star.fact_patient_composite'],
+    },
+    issues: ['2 migration ledger row(s) are not marked applied'],
+  },
+  observability: {
+    status: 'blocked',
+    worker_queue: {
+      depth: 3,
+      failed: 1,
+      failure_rate: 0.1,
+      completed_recent: 9,
+      stalled_queues: 1,
+    },
+    scheduler: {
+      last_run_at: '2026-06-24T02:00:00Z',
+      last_success_at: '2026-06-24T02:00:00Z',
+      missed: true,
+      hours_since_last_run: 48,
+    },
+    ehr_launch: {
+      started_24h: 4,
+      succeeded_24h: 2,
+      failed_24h: 1,
+      denied_24h: 1,
+      success_rate_24h: 0.5,
+    },
+    bulk_import: {
+      completed_24h: 4,
+      failed_24h: 0,
+      active: 3,
+      failure_rate_24h: 0,
+    },
+    cql_engine: {
+      status: 'disabled',
+      runtime_configured: false,
+      available: false,
+    },
+    qdm_bridge: {
+      status: 'disabled',
+      blocking_issues: 0,
+    },
   },
   ehr_tenants: {
     status: 'blocked',
@@ -251,26 +329,69 @@ const health: SystemHealth = {
   duration_ms: 12,
 };
 
+const systemAlertingStatus: SystemAlertingStatus = {
+  status: 'ok',
+  enabled: true,
+  configured: true,
+  nightly_enabled: true,
+  endpoint_host: 'sysalerts.example',
+  last_dispatch_at: '2026-06-25T23:00:00Z',
+  last_dispatch_status: 'sent',
+  last_dispatch_reason: 'sent',
+  last_severity: 'critical',
+  last_issue_count: 4,
+  last_critical_issue_count: 2,
+  last_warning_issue_count: 2,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockApiGet.mockResolvedValue({ success: true, data: health });
-  mockApiPost.mockResolvedValue({
-    success: true,
-    data: {
-      ehrSyncAlertDispatch: {
-        status: 'sent',
-        reason: 'sent',
-        enabled: true,
-        configured: true,
-        endpointHost: 'ops.example',
-        generatedAt: '2026-06-25T22:30:00Z',
-        tenantCount: 1,
-        issueCount: 3,
-        criticalIssueCount: 1,
-        warningIssueCount: 2,
-        statusCode: 202,
+  mockApiGet.mockImplementation((path: string) => {
+    if (path === '/admin/system-health/system-alerts/status') {
+      return Promise.resolve({ success: true, data: { systemAlertingStatus } });
+    }
+    return Promise.resolve({ success: true, data: health });
+  });
+  mockApiPost.mockImplementation((path: string) => {
+    if (path === '/admin/system-health/system-alerts/dispatch') {
+      return Promise.resolve({
+        success: true,
+        data: {
+          systemAlertDispatch: {
+            status: 'sent',
+            reason: 'sent',
+            enabled: true,
+            configured: true,
+            endpointHost: 'sysalerts.example',
+            generatedAt: '2026-06-25T23:30:00Z',
+            overallStatus: 'degraded',
+            severity: 'critical',
+            issueCount: 4,
+            criticalIssueCount: 2,
+            warningIssueCount: 2,
+            statusCode: 202,
+          },
+        },
+      });
+    }
+    return Promise.resolve({
+      success: true,
+      data: {
+        ehrSyncAlertDispatch: {
+          status: 'sent',
+          reason: 'sent',
+          enabled: true,
+          configured: true,
+          endpointHost: 'ops.example',
+          generatedAt: '2026-06-25T22:30:00Z',
+          tenantCount: 1,
+          issueCount: 3,
+          criticalIssueCount: 1,
+          warningIssueCount: 2,
+          statusCode: 202,
+        },
       },
-    },
+    });
   });
 });
 
@@ -316,7 +437,7 @@ describe('SystemHealthTab', () => {
     expect(screen.getByText('Authentik')).toBeInTheDocument();
     expect(screen.getByText((text) => text.startsWith('OK /') && text.endsWith('/ 45 ms'))).toBeInTheDocument();
     expect(screen.getByText('https://issuer.example.test')).toBeInTheDocument();
-    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.getAllByText('Configured').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
@@ -327,9 +448,55 @@ describe('SystemHealthTab', () => {
     const user = userEvent.setup();
     renderHealthTab();
 
-    await user.click(await screen.findByRole('button', { name: /dispatch/i }));
+    await user.click(await screen.findByRole('button', { name: /^dispatch$/i }));
 
     expect(mockApiPost).toHaveBeenCalledWith('/admin/system-health/ehr-sync-alerts/dispatch');
     expect(await screen.findByText('sent / sent / 3 issues')).toBeInTheDocument();
+  });
+
+  it('renders scheduler, migrations and observability rollup sections', async () => {
+    renderHealthTab();
+
+    // Scheduler card: last-run/success/failure + missed detection.
+    expect(await screen.findByRole('heading', { name: 'Nightly Scheduler' })).toBeInTheDocument();
+    expect(screen.getAllByText('medgnosis-nightly').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('48h ago').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Missed window').length).toBeGreaterThan(0);
+    expect(screen.getByText('Schedule registered')).toBeInTheDocument();
+    expect(screen.getByText('5 completed / 1 failed (staleness 36h)')).toBeInTheDocument();
+    expect(screen.getByText('Nightly scheduler has no active worker')).toBeInTheDocument();
+
+    // Migrations card: applied/pending + matview populated/unpopulated.
+    expect(screen.getByRole('heading', { name: 'Migrations' })).toBeInTheDocument();
+    expect(screen.getAllByText('92 applied / 2 pending').length).toBeGreaterThan(0);
+    expect(screen.getByText('3/4 populated')).toBeInTheDocument();
+    expect(screen.getByText('1 unpopulated')).toBeInTheDocument();
+    expect(screen.getByText('Unpopulated phm_star.fact_patient_composite')).toBeInTheDocument();
+
+    // Observability rollup reflecting the flat observability fields.
+    expect(screen.getByText('Observability Rollup')).toBeInTheDocument();
+    expect(screen.getByText('Depth 3 / 1 failed')).toBeInTheDocument();
+    expect(screen.getByText('Failure 10% / 1 stalled')).toBeInTheDocument();
+    expect(screen.getByText('2 ok / 1 failed')).toBeInTheDocument();
+    expect(screen.getByText('Success 50%')).toBeInTheDocument();
+    expect(screen.getByText('Unavailable / runtime optional')).toBeInTheDocument();
+    expect(screen.getByText('0 blocking issue(s)')).toBeInTheDocument();
+
+    // Additive worker metrics on the existing worker display.
+    expect(screen.getByText('9 completed recent / failure 10% / 1 stalled')).toBeInTheDocument();
+    expect(screen.getByText('2 completed / stalled')).toBeInTheDocument();
+  });
+
+  it('renders system alerting status and dispatches a system alert', async () => {
+    const user = userEvent.setup();
+    renderHealthTab();
+
+    expect(await screen.findByText('System Alerting')).toBeInTheDocument();
+    expect(screen.getByText('sysalerts.example')).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: /dispatch system alert/i }));
+
+    expect(mockApiPost).toHaveBeenCalledWith('/admin/system-health/system-alerts/dispatch');
+    expect(await screen.findByText('sent / sent / 4 issues')).toBeInTheDocument();
   });
 });

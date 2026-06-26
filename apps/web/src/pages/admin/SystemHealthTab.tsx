@@ -1,8 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
-import { Activity, Database, HeartPulse, KeyRound, RefreshCw, Search, Server, Send, Wifi } from 'lucide-react';
+import { Activity, AlarmClock, BellRing, Database, GitBranch, HeartPulse, KeyRound, RefreshCw, Search, Server, Send, Wifi } from 'lucide-react';
 import { api, apiErrorMessage } from '../../services/api.js';
-import type { EhrSyncAlertDispatchResult, SystemHealth } from './types.js';
+import type {
+  EhrSyncAlertDispatchResult,
+  SystemAlertDispatchResult,
+  SystemAlertingStatus,
+  SystemHealth,
+} from './types.js';
 import { fmtDateTime } from './helpers.js';
 import { Button } from '@/components/ui/button';
 
@@ -92,6 +97,16 @@ function latestOrNone(value: string | null): string {
   return value ? fmtDateTime(value) : 'None';
 }
 
+function hoursLabel(value: number | null): string {
+  if (value === null) return 'No run recorded';
+  return `${value}h ago`;
+}
+
+function rateLabel(value: number | null): string {
+  if (value === null) return 'None';
+  return `${Math.round(value * 100)}%`;
+}
+
 type AuthProviderHealth = SystemHealth['auth']['providers'][number];
 
 function authProviderLastTest(provider: AuthProviderHealth): string {
@@ -125,9 +140,27 @@ export function SystemHealthTab() {
       void refetch();
     },
   });
+  const systemAlerts = useQuery({
+    queryKey: ['admin', 'system-health', 'system-alerts', 'status'],
+    queryFn: () => api.get<{ systemAlertingStatus: SystemAlertingStatus }>(
+      '/admin/system-health/system-alerts/status',
+    ),
+    refetchInterval: 60_000,
+  });
+  const dispatchSystemAlerts = useMutation({
+    mutationFn: () => api.post<{ systemAlertDispatch: SystemAlertDispatchResult }>(
+      '/admin/system-health/system-alerts/dispatch',
+    ),
+    onSuccess: () => {
+      void systemAlerts.refetch();
+      void refetch();
+    },
+  });
 
   const health = data?.data;
   const latestDispatch = dispatchAlerts.data?.data?.ehrSyncAlertDispatch;
+  const systemAlertStatus = systemAlerts.data?.data?.systemAlertingStatus;
+  const latestSystemDispatch = dispatchSystemAlerts.data?.data?.systemAlertDispatch;
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -164,6 +197,24 @@ export function SystemHealthTab() {
               status={health.ehr_tenants.status}
               detail={`${health.ehr_tenants.tenants.healthy}/${health.ehr_tenants.tenants.active} active tenants healthy`}
             />
+            <HealthRow
+              icon={AlarmClock}
+              label="Nightly Scheduler"
+              status={health.scheduler.status}
+              detail={`Last run ${latestOrNone(health.scheduler.last_run_at)} / ${health.scheduler.missed ? 'missed window' : 'on schedule'}`}
+            />
+            <HealthRow
+              icon={GitBranch}
+              label="Migrations"
+              status={health.migrations.status}
+              detail={`${health.migrations.migrations.applied} applied / ${health.migrations.migrations.pending} pending / ${health.migrations.materialized_views.unpopulated} matviews unpopulated`}
+            />
+            <HealthRow
+              icon={Activity}
+              label="Observability"
+              status={health.observability.status}
+              detail={`Queue depth ${health.observability.worker_queue.depth} / failure ${rateLabel(health.observability.worker_queue.failure_rate)} / CQL ${health.observability.cql_engine.available ? 'available' : 'unavailable'}`}
+            />
             <HealthRow icon={Activity} label="Probe" status="ok" detail={`${health.duration_ms} ms`} />
           </>
         )}
@@ -178,6 +229,9 @@ export function SystemHealthTab() {
                 <p className="mt-0.5 text-xs text-ghost">
                   {health.workers.total_workers} workers / {queueCounts(health.workers.counts)}
                 </p>
+                <p className="mt-0.5 text-xs text-ghost">
+                  {health.workers.completed_recent} completed recent / failure {rateLabel(health.workers.failure_rate)} / {health.workers.stalled_queues} stalled
+                </p>
               </div>
               <StatusPill status={health.workers.status} />
             </div>
@@ -188,6 +242,9 @@ export function SystemHealthTab() {
                     <p className="truncate text-sm font-medium text-bright">{queue.label}</p>
                     <p className="truncate font-data text-xs text-ghost">{queue.name}</p>
                     {queueTiming(queue) && <p className="mt-1 truncate text-xs text-ghost">{queueTiming(queue)}</p>}
+                    <p className="mt-1 truncate font-data text-xs text-dim">
+                      {queue.completed_recent ?? 0} completed{queue.stalled ? ' / stalled' : ''}
+                    </p>
                     {queue.error && <p className="mt-1 truncate text-xs text-crimson">{queue.error}</p>}
                   </div>
                   <p className="font-data text-xs text-dim md:text-right">{queueCounts(queue.counts)}</p>
@@ -447,6 +504,269 @@ export function SystemHealthTab() {
                     </p>
                   ))}
                 </div>
+              )}
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-bright">Nightly Scheduler</h3>
+                  <p className="mt-0.5 truncate text-xs text-ghost">{health.scheduler.queue}</p>
+                </div>
+                <StatusPill status={health.scheduler.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Last run</p>
+                  <p className="mt-1 font-data text-bright">{latestOrNone(health.scheduler.last_run_at)}</p>
+                  <p className="mt-1 font-data text-bright">{hoursLabel(health.scheduler.hours_since_last_run)}</p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Detection</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.scheduler.missed ? 'Missed window' : 'On schedule'}
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.scheduler.repeatable_scheduled ? 'Schedule registered' : 'No schedule'}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Last success</p>
+                  <p className="mt-1 font-data text-emerald">{latestOrNone(health.scheduler.last_success_at)}</p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Last failure</p>
+                  <p className="mt-1 font-data text-crimson">{latestOrNone(health.scheduler.last_failure_at)}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Run history</p>
+                <p className="mt-1 font-data text-bright">
+                  {health.scheduler.completed_recent} completed / {health.scheduler.failed_recent} failed (staleness {health.scheduler.stale_after_hours}h)
+                </p>
+              </div>
+              {health.scheduler.issues.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {health.scheduler.issues.slice(0, 4).map((issue) => (
+                    <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {health.scheduler.error && (
+                <p className="mt-3 rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                  {health.scheduler.error}
+                </p>
+              )}
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-bright">Migrations</h3>
+                  <p className="mt-0.5 truncate text-xs text-ghost">
+                    {health.migrations.migrations.applied} applied / {health.migrations.migrations.pending} pending
+                  </p>
+                </div>
+                <StatusPill status={health.migrations.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Ledger</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.migrations.migrations.applied} applied / {health.migrations.migrations.pending} pending
+                  </p>
+                  <p className="mt-1 truncate font-data text-bright">
+                    {health.migrations.migrations.latest_name ?? 'No migration recorded'}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Materialized views</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.migrations.materialized_views.populated}/{health.migrations.materialized_views.total} populated
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.migrations.materialized_views.unpopulated} unpopulated
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                <p className="text-ghost">Latest migration applied</p>
+                <p className="mt-1 font-data text-bright">
+                  {latestOrNone(health.migrations.migrations.latest_applied_at)}
+                </p>
+              </div>
+              {health.migrations.materialized_views.names_unpopulated.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {health.migrations.materialized_views.names_unpopulated.slice(0, 4).map((name) => (
+                    <p key={name} className="truncate text-xs text-amber">Unpopulated {name}</p>
+                  ))}
+                </div>
+              )}
+              {health.migrations.issues.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {health.migrations.issues.slice(0, 3).map((issue) => (
+                    <p key={issue} className="rounded-card border border-amber/20 bg-amber/5 px-3 py-2 text-xs text-amber">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {health.migrations.error && (
+                <p className="mt-3 rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                  {health.migrations.error}
+                </p>
+              )}
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-bright">Observability Rollup</h3>
+                  <p className="mt-0.5 truncate text-xs text-ghost">Alert-ready operational metrics</p>
+                </div>
+                <StatusPill status={health.observability.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Worker queue</p>
+                  <p className="mt-1 font-data text-bright">
+                    Depth {health.observability.worker_queue.depth} / {health.observability.worker_queue.failed} failed
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    Failure {rateLabel(health.observability.worker_queue.failure_rate)} / {health.observability.worker_queue.stalled_queues} stalled
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Scheduler</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.observability.scheduler.missed ? 'Missed' : 'On schedule'}
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    {hoursLabel(health.observability.scheduler.hours_since_last_run)}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">EHR launch 24h</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.observability.ehr_launch.succeeded_24h} ok / {health.observability.ehr_launch.failed_24h} failed
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    Success {rateLabel(health.observability.ehr_launch.success_rate_24h)}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <p className="text-ghost">Bulk import 24h</p>
+                  <p className="mt-1 font-data text-bright">
+                    {health.observability.bulk_import.completed_24h} done / {health.observability.bulk_import.failed_24h} failed
+                  </p>
+                  <p className="mt-1 font-data text-bright">
+                    Failure {rateLabel(health.observability.bulk_import.failure_rate_24h)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-ghost">CQL engine</p>
+                    <StatusPill status={health.observability.cql_engine.status} />
+                  </div>
+                  <p className="mt-1 font-data text-bright">
+                    {health.observability.cql_engine.available ? 'Available' : 'Unavailable'}
+                    {health.observability.cql_engine.runtime_configured ? ' / runtime configured' : ' / runtime optional'}
+                  </p>
+                </div>
+                <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-ghost">QDM bridge</p>
+                    <StatusPill status={health.observability.qdm_bridge.status} />
+                  </div>
+                  <p className="mt-1 font-data text-bright">
+                    {health.observability.qdm_bridge.blocking_issues} blocking issue(s)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="surface p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-bright">System Alerting</h3>
+                  <p className="mt-0.5 truncate text-xs text-ghost">
+                    {systemAlertStatus?.endpoint_host ?? 'No endpoint'}
+                  </p>
+                </div>
+                <StatusPill status={systemAlertStatus?.status ?? 'disabled'} />
+              </div>
+              {!systemAlertStatus && !systemAlerts.isError && (
+                <p className="text-xs text-ghost">Loading system alerting status...</p>
+              )}
+              {systemAlerts.isError && (
+                <p className="rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                  {apiErrorMessage(systemAlerts.error, 'Failed to load system alerting status')}
+                </p>
+              )}
+              {systemAlertStatus && (
+                <>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                      <p className="text-ghost">External</p>
+                      <p className="mt-1 font-data text-bright">
+                        {systemAlertStatus.configured ? 'Configured' : 'Disabled'}
+                      </p>
+                    </div>
+                    <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                      <p className="text-ghost">Nightly</p>
+                      <p className="mt-1 font-data text-bright">
+                        {systemAlertStatus.nightly_enabled ? 'Enabled' : 'Off'}
+                      </p>
+                    </div>
+                    <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                      <p className="text-ghost">Last issues</p>
+                      <p className="mt-1 font-data text-bright">{systemAlertStatus.last_issue_count ?? 0}</p>
+                    </div>
+                    <div className="rounded-card border border-edge/25 bg-s0 p-3">
+                      <p className="text-ghost">Critical</p>
+                      <p className="mt-1 font-data text-bright">{systemAlertStatus.last_critical_issue_count ?? 0}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+                    <p className="text-ghost">Last dispatch</p>
+                    <p className="mt-1 font-data text-bright">
+                      {latestOrNone(systemAlertStatus.last_dispatch_at)}
+                    </p>
+                    <p className="mt-2 text-ghost">Status</p>
+                    <p className="mt-1 font-data text-bright">
+                      {systemAlertStatus.last_dispatch_status ?? 'None'}
+                      {systemAlertStatus.last_dispatch_reason ? ` / ${systemAlertStatus.last_dispatch_reason}` : ''}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0 text-xs text-ghost">
+                      {latestSystemDispatch
+                        ? `${latestSystemDispatch.status} / ${latestSystemDispatch.reason} / ${latestSystemDispatch.issueCount} issues`
+                        : systemAlertStatus.error ?? 'Ready'}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => dispatchSystemAlerts.mutate()}
+                      disabled={dispatchSystemAlerts.isPending}
+                    >
+                      {dispatchSystemAlerts.isPending ? <RefreshCw /> : <BellRing />}
+                      Dispatch system alert
+                    </Button>
+                  </div>
+                  {dispatchSystemAlerts.isError && (
+                    <p className="mt-2 rounded-card border border-crimson/25 bg-crimson/5 px-3 py-2 text-xs text-crimson">
+                      {apiErrorMessage(dispatchSystemAlerts.error, 'Dispatch failed')}
+                    </p>
+                  )}
+                  <div className="sr-only" aria-live="polite">
+                    {latestSystemDispatch ? `System alert dispatch ${latestSystemDispatch.status}` : ''}
+                  </div>
+                </>
               )}
             </div>
 
