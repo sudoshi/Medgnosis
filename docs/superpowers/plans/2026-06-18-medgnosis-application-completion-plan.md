@@ -149,7 +149,7 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add password reset and forced password-change workflows.
   - [x] Ensure admin-created users cannot log in until activation is complete.
 - [ ] Harden OIDC/provider admin.
-  - [ ] Keep local login fallback unless explicitly disabled by env and documented.
+  - [x] Keep local login fallback unless explicitly disabled by env and documented.
   - [x] Either implement test flows for LDAP/OAuth2/SAML provider types or hide/disable those types until supported.
   - [ ] Add provider health and last-test evidence to System Health.
   - [ ] Add JIT provisioning and group reconciliation tests for role mapping edge cases.
@@ -460,7 +460,7 @@ Objective: make production operation boring and auditable.
   - [ ] Local, demo, staging, production env templates.
   - [ ] Secret reference strategy for EHR client secrets and private keys.
   - [ ] No demo credentials in production.
-  - [ ] Explicit public registration and Swagger policy.
+  - [x] Explicit public registration, demo quick-fill, and Swagger policy.
 - [ ] Add release checklist.
   - [ ] Validation gates.
   - [ ] Migration state.

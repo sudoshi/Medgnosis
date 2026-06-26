@@ -43,11 +43,14 @@ vi.mock('bcrypt', () => ({
 }));
 
 const mockConfig = {
+  nodeEnv: 'test',
   jwtSecret: 'test-secret-key-for-testing-only',
   jwtAccessExpiry: '15m',
   resendApiKey: '',
   emailFrom: 'test@example.com',
   publicRegistrationEnabled: true,
+  publicRegistrationAllowProduction: false,
+  demoQuickFillEnabled: false,
   localAuthEnabled: true,
   oidcEnabled: false,
   oidcLabel: 'Authentik',
@@ -129,7 +132,10 @@ beforeEach(() => {
   mockSql.mockResolvedValue([]);
   mockUnsafe.mockResolvedValue([]);
   mockConfig.publicRegistrationEnabled = true;
+  mockConfig.publicRegistrationAllowProduction = false;
+  mockConfig.demoQuickFillEnabled = false;
   mockConfig.localAuthEnabled = true;
+  mockConfig.nodeEnv = 'test';
 });
 
 // ---------------------------------------------------------------------------
@@ -169,7 +175,56 @@ function configureLoginMock(user: SqlRow | null = MOCK_USER): void {
 // Tests
 // ---------------------------------------------------------------------------
 
+describe('GET /auth/providers', () => {
+  it('reports auth exposure availability from environment policy', async () => {
+    mockConfig.localAuthEnabled = false;
+    mockConfig.publicRegistrationEnabled = true;
+    mockConfig.demoQuickFillEnabled = true;
+
+    const response = await app.inject({ method: 'GET', url: '/auth/providers' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      local_enabled: false,
+      oidc_enabled: false,
+      registration_enabled: true,
+      demo_quick_fill_enabled: true,
+    });
+  });
+
+  it('reports registration and demo quick-fill disabled under production guardrails', async () => {
+    mockConfig.nodeEnv = 'production';
+    mockConfig.publicRegistrationEnabled = true;
+    mockConfig.demoQuickFillEnabled = true;
+
+    const response = await app.inject({ method: 'GET', url: '/auth/providers' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      registration_enabled: false,
+      demo_quick_fill_enabled: false,
+    });
+  });
+});
+
 describe('POST /auth/login', () => {
+  it('returns 404 when local auth is disabled by environment policy', async () => {
+    mockConfig.localAuthEnabled = false;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'test@example.com', password: 'correct-password' },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error).toMatchObject({
+      code: 'LOCAL_AUTH_DISABLED',
+      message: 'Local sign-in is not enabled',
+    });
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for missing email', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -651,6 +706,22 @@ describe('POST /auth/register', () => {
     expect(response.statusCode).toBe(403);
     const body = response.json();
     expect(body.error.code).toBe('REGISTRATION_DISABLED');
+  });
+
+  it('returns 403 in production unless the production registration key is explicitly enabled', async () => {
+    mockConfig.nodeEnv = 'production';
+    mockConfig.publicRegistrationEnabled = true;
+    mockConfig.publicRegistrationAllowProduction = false;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'new@example.com', firstName: 'Jane', lastName: 'Doe' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe('REGISTRATION_DISABLED');
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it('returns 400 for missing required fields', async () => {

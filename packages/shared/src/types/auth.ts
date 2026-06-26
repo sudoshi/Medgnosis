@@ -86,6 +86,8 @@ export interface AuthProviderDiscovery {
   oidc_enabled: boolean;
   oidc_label: string | null;
   oidc_redirect_path: string | null;
+  registration_enabled: boolean;
+  demo_quick_fill_enabled: boolean;
 }
 
 export interface OidcExchangeResponse {

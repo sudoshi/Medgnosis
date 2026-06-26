@@ -60,6 +60,7 @@ import {
   verifyTotpCode,
   verifyTotpCodeWithStep,
 } from '../../services/auth/mfa.js';
+import { buildAuthExposurePolicy } from '../../security/authPolicy.js';
 
 const PASSWORD_RESET_RESPONSE_MESSAGE =
   'If this email is eligible for password reset, instructions have been sent to your inbox.';
@@ -156,6 +157,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   fastify.get('/providers', async () => {
     const oidcProvider = await getOidcProviderConfig();
     const oidcEnabled = isOidcPubliclyAvailable(oidcProvider);
+    const exposurePolicy = buildAuthExposurePolicy(config);
 
     return {
       success: true,
@@ -164,6 +166,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         oidc_enabled: oidcEnabled,
         oidc_label: oidcEnabled ? oidcProvider.label : null,
         oidc_redirect_path: oidcEnabled ? '/auth/oidc/redirect' : null,
+        registration_enabled: exposurePolicy.publicRegistrationEnabled,
+        demo_quick_fill_enabled: exposurePolicy.demoQuickFillEnabled,
       },
     };
   });
@@ -1396,7 +1400,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       },
     },
     async (request, reply) => {
-      if (!config.publicRegistrationEnabled) {
+      const exposurePolicy = buildAuthExposurePolicy(config);
+      if (!exposurePolicy.publicRegistrationEnabled) {
         return reply.status(403).send({
           success: false,
           error: {

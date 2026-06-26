@@ -128,6 +128,13 @@ devlogs do not override the current codebase state.
   directives, HSTS remains production-only, local/test CSP remains disabled for
   tooling, and Swagger registration is blocked in production even if
   `SWAGGER_ENABLED=true` is accidentally set.
+- Follow-up continuation closed the public auth exposure policy gap.
+  `/auth/providers` now returns effective public-registration and demo quick-fill
+  policy, production public registration requires both
+  `PUBLIC_REGISTRATION_ENABLED=true` and
+  `PUBLIC_REGISTRATION_ALLOW_PRODUCTION=true`, demo quick-fill is suppressed in
+  production, and the login/register UI hides or blocks those surfaces when the
+  backend policy disables them.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

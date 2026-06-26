@@ -288,8 +288,10 @@ Copy `.env.example` to `.env`. Key settings:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis for BullMQ and WebSocket pub/sub |
 | `JWT_SECRET` | JWT signing secret |
-| `LOCAL_AUTH_ENABLED` | Enables local login when supported by config |
-| `PUBLIC_REGISTRATION_ENABLED` | Controls public registration |
+| `LOCAL_AUTH_ENABLED` | Enables local login fallback; defaults to enabled |
+| `PUBLIC_REGISTRATION_ENABLED` | Controls public self-registration; defaults to disabled |
+| `PUBLIC_REGISTRATION_ALLOW_PRODUCTION` | Second production opt-in required before public registration is exposed in production |
+| `DEMO_QUICK_FILL_ENABLED` | Enables local/demo login quick-fill; suppressed when `NODE_ENV=production` |
 | `AI_PROVIDER` | `ollama` or `anthropic` |
 | `ANTHROPIC_API_KEY` | Required for Anthropic mode |
 | `ANTHROPIC_BAA_SIGNED` | Must be true before cloud PHI use |
@@ -310,8 +312,9 @@ Before deploying:
 - Replace demo credentials and localhost-only URLs.
 - Set a high-entropy `JWT_SECRET`.
 - Confirm `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, `WEB_APP_URL`, `FHIR_BASE_URL`, and `CQL_ENGINE_URL`.
-- Keep `PUBLIC_REGISTRATION_ENABLED=false` unless a real activation workflow is enabled.
-- Disable or protect Swagger in production.
+- Keep `PUBLIC_REGISTRATION_ENABLED=false` unless the inactive-user activation workflow is intentionally enabled for the environment; production exposure also requires `PUBLIC_REGISTRATION_ALLOW_PRODUCTION=true`.
+- Keep `DEMO_QUICK_FILL_ENABLED=false` in shared or production env files; the API suppresses it when `NODE_ENV=production`.
+- Leave `SWAGGER_ENABLED` unset or false in production for clarity; the API also suppresses Swagger when `NODE_ENV=production`.
 - Set `CDS_HOOKS_SECRET` before accepting production POST hook traffic.
 - Store EHR secrets as environment references, not raw values in database rows.
 - Keep Redis and Solr internal-only in production Docker unless intentionally exposed.
@@ -347,15 +350,16 @@ Implemented:
 - OIDC foundation with provider-admin controls.
 - Role-based access control.
 - Rate limiting.
-- Helmet security headers.
+- Helmet security headers with explicit production CSP.
 - Audit trail for many mutation and governance paths.
 - AI consent and BAA gates for cloud provider use.
-- Production log redaction hooks.
+- Production log redaction hooks and Sentry telemetry scrubbing.
+- Production Swagger suppression.
+- Public registration and demo-login exposure policy from `/auth/providers`.
 
 Not yet complete:
 
 - Complete audit proof for every mutation route.
-- Final production CSP review.
 
 ## Documentation
 

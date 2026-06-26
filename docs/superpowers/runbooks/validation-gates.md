@@ -97,6 +97,22 @@ curl -fsS --max-time 10 https://medgnosis.acumenus.net/health
 
 Both should return `status: healthy` before declaring a runtime release healthy.
 
+Public auth and docs exposure checks:
+
+```bash
+curl -fsS --max-time 10 https://medgnosis.acumenus.net/api/v1/auth/providers
+curl -sS -o /tmp/medgnosis-register-check -w '%{http_code}\n' \
+  -X POST https://medgnosis.acumenus.net/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"validation@example.invalid","firstName":"Validation","lastName":"Check"}'
+curl -sS -o /tmp/medgnosis-swagger-check -w '%{http_code}\n' \
+  http://127.0.0.1:3081/docs/json
+```
+
+Expected production defaults: `/auth/providers` reports
+`registration_enabled:false` and `demo_quick_fill_enabled:false`, public
+registration returns `403`, and the API Swagger route returns `404`.
+
 ## Web E2E
 
 Run:

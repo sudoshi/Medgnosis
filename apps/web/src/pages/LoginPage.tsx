@@ -244,6 +244,9 @@ export function LoginPage() {
     window.location.href = '/api/v1/auth/oidc/redirect';
   };
 
+  const showDemoQuickFill = Boolean(providers?.demo_quick_fill_enabled);
+  const showRegistrationLink = Boolean(providers?.registration_enabled);
+
   return (
     <div className="lpg">
 
@@ -995,7 +998,7 @@ export function LoginPage() {
           )}
 
           {/* Demo quick-fill */}
-          {!mfaToken && (
+          {!mfaToken && showDemoQuickFill && (
           <div className="lpg-demo">
             <span className="lpg-demo-lbl">Quick demo</span>
             <button type="button" className="lpg-demo-btn" onClick={fillDemo}>
@@ -1005,7 +1008,7 @@ export function LoginPage() {
           )}
 
           {/* Create account link */}
-          {!mfaToken && (
+          {!mfaToken && showRegistrationLink && (
           <div className="lpg-register">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="lpg-register-link">Create account</Link>

@@ -50,6 +50,8 @@ export const config = {
   jwtAccessExpiry: optional('JWT_ACCESS_EXPIRY', '15m'),
   jwtRefreshExpiry: optional('JWT_REFRESH_EXPIRY', '7d'),
   publicRegistrationEnabled: optionalBool('PUBLIC_REGISTRATION_ENABLED', false),
+  publicRegistrationAllowProduction: optionalBool('PUBLIC_REGISTRATION_ALLOW_PRODUCTION', false),
+  demoQuickFillEnabled: optionalBool('DEMO_QUICK_FILL_ENABLED', false),
   localAuthEnabled: optionalBool('LOCAL_AUTH_ENABLED', true),
   oidcEnabled: optionalBool('OIDC_ENABLED', false),
   oidcLabel: optional('OIDC_LABEL', 'Authentik'),

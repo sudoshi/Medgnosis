@@ -2,10 +2,11 @@
 // Medgnosis Web — Register Page (Clinical Obsidian v2 theme)
 // =============================================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api, apiErrorMessage } from '../services/api.js';
+import type { AuthProviderDiscovery } from '@medgnosis/shared';
 
 export function RegisterPage() {
   const [firstName, setFirstName] = useState('');
@@ -15,10 +16,34 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [policyLoaded, setPolicyLoaded] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<AuthProviderDiscovery>('/auth/providers')
+      .then((res) => {
+        if (!cancelled) setRegistrationEnabled(Boolean(res.data?.registration_enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setRegistrationEnabled(false);
+      })
+      .finally(() => {
+        if (!cancelled) setPolicyLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
+    if (!registrationEnabled) {
+      setError('Registration is invite-only. Contact an administrator for access.');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -196,6 +221,14 @@ export function RegisterPage() {
           line-height: 1.55;
           margin: 0;
         }
+        .rpg-policy {
+          padding: 24px 20px;
+          background: rgba(255,255,255,0.028);
+          border: 1px solid rgba(255,255,255,0.075);
+          border-radius: 12px;
+          text-align: center;
+          animation: rpg-rise 0.85s cubic-bezier(0.16,1,0.3,1) both;
+        }
 
         .rpg-submit {
           display: flex;
@@ -293,7 +326,21 @@ export function RegisterPage() {
       <div className="rpg-card">
         <div className="rpg-brand">Medgnosis</div>
 
-        {success ? (
+        {!policyLoaded ? (
+          <div className="rpg-policy" role="status">
+            <h3 className="rpg-success-title">Checking account access</h3>
+          </div>
+        ) : !registrationEnabled ? (
+          <div className="rpg-policy">
+            <h3 className="rpg-success-title">Account access is invite-only</h3>
+            <p className="rpg-success-text">
+              Contact an administrator for access to this Medgnosis workspace.
+            </p>
+            <div className="rpg-link" style={{ marginTop: 8 }}>
+              <Link to="/login">Back to Sign in</Link>
+            </div>
+          </div>
+        ) : success ? (
           <div className="rpg-success">
             <CheckCircle2 size={40} strokeWidth={1.5} className="rpg-success-icon" />
             <h3 className="rpg-success-title">Check your inbox</h3>
