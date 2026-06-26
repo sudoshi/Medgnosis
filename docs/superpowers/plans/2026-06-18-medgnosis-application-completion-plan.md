@@ -49,6 +49,7 @@ Validation performed:
 - Focused Bulk deleted-output validation confirmed that completed Bulk manifests process `manifest.deleted` Bundle NDJSON entries by `request.method=DELETE` and `request.url=ResourceType/id`, then soft-delete crosswalk-mapped EDW rows and stamp `ehr_resource_crosswalk.deleted_at/deleted_reason`: `npm run test --workspace=apps/api -- src/services/ehr/bulkData.test.ts src/services/ehr/edwHydration.test.ts` passed 2 files and 74 tests.
 - Production worker/CQL restart runbook validation confirmed the documented commands against the current systemd worker unit, deploy script, Docker CQL profile, and CQL smoke scripts. `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only slice.
 - Focused QRDA/QPP local validation after adding deterministic Cat I, Cat III, and QPP fixtures plus validation scripts: `./scripts/qrda-validate.sh` passed local XML structural checks and explicitly skipped external CVU+ because `QRDA_CVU_CAT1_CMD`/`QRDA_CVU_CAT3_CMD` were not configured; `./scripts/qpp-validate.sh` passed local JSON structural checks and explicitly skipped external QPP sandbox/API validation because `QPP_VALIDATE_CMD` was not configured; `npm run test --workspace=apps/api -- src/services/qrda/qrdaCat1.test.ts src/services/qrda/qrdaCat3.test.ts` passed 2 files and 12 tests.
+- Focused FHIR/DEQM CI stabilization after GitHub Actions run `28267861945` failed on `tx.fhir.org` timeout/cache-session errors rather than fixture/profile errors: `./scripts/fhir-validate.sh` and `./scripts/deqm-validate.sh` now default to offline terminology with no terminology cache, while explicit `FHIR_VALIDATOR_TX`/`FHIR_VALIDATOR_TX_CACHE` overrides remain available for live terminology evidence. Local deterministic runs passed for both scripts after the update.
 
 Areas examined:
 
@@ -148,6 +149,9 @@ Objective: keep the currently green build reliable while expanding tests from un
 - [ ] Add QRDA/Cypress and QPP validation jobs once Phase 5 reporting artifacts are ready.
   - [x] Add local structural QRDA Cat I/Cat III and QPP JSON validation to CI.
   - [ ] Wire official QRDA Cypress CVU+ and QPP sandbox/API validation once external tools/credentials are available.
+- [x] Keep FHIR/DEQM CI conformance deterministic by avoiding default live
+  `tx.fhir.org` terminology dependencies; require explicit env overrides for
+  operator-run live terminology evidence.
 - [ ] Decide whether Turbo cache replay is acceptable for local assessment commands or whether a no-cache command should be used in release checklists.
 
 Acceptance gate:

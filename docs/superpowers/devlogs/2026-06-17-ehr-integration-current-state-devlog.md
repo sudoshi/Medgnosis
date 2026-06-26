@@ -45,6 +45,8 @@ Follow-up CI release-smoke work on 2026-06-26 adds `npm run test:e2e:release --w
 
 Follow-up reporting-conformance work on 2026-06-26 adds a CI job for the existing QRDA/QPP local structural validators. The job runs deterministic QRDA Cat I/Cat III XML generation plus local XML checks and QPP JSON generation plus local schema-shape checks. Official Cypress CVU+ and QPP sandbox/API validation are still intentionally opt-in through `QRDA_CVU_CAT1_CMD`, `QRDA_CVU_CAT3_CMD`, and `QPP_VALIDATE_CMD`.
 
+Follow-up FHIR conformance CI stabilization on 2026-06-26 changes `./scripts/fhir-validate.sh` and `./scripts/deqm-validate.sh` to default to offline terminology with no terminology cache. The trigger was GitHub Actions run `28267861945`, where FHIR fixture validation failed after `tx.fhir.org` timeout and cache-session errors rather than fixture/profile errors. The deterministic local commands preserve US Core/QI-Core and DEQM profile/structure validation; live terminology checks now require explicit `FHIR_VALIDATOR_TX` and `FHIR_VALIDATOR_TX_CACHE` overrides.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
@@ -855,6 +857,12 @@ Focused QRDA/QPP local validation on 2026-06-26:
 - `./scripts/qrda-validate.sh` passed local XML structural checks for `apps/api/test-fixtures/quality/qrda-cat1-sample.xml` and `apps/api/test-fixtures/quality/qrda-cat3-sample.xml`; official Cypress CVU+ validation was explicitly skipped because external CVU+ commands were not configured.
 - `./scripts/qpp-validate.sh` passed local JSON structural checks for `apps/api/test-fixtures/quality/qpp-submission-sample.json`; official QPP sandbox/API validation was explicitly skipped because `QPP_VALIDATE_CMD` was not configured.
 - `npm run test --workspace=apps/api -- src/services/qrda/qrdaCat1.test.ts src/services/qrda/qrdaCat3.test.ts` passed 2 files and 12 tests.
+
+Focused FHIR/DEQM deterministic validation on 2026-06-26:
+
+- `./scripts/fhir-validate.sh` passed locally with offline terminology/no terminology cache after the script update.
+- `./scripts/deqm-validate.sh` passed locally with offline terminology/no terminology cache after the script update.
+- GitHub Actions run `28267861945` failed only in the pre-fix FHIR Conformance job because remote `tx.fhir.org` terminology validation timed out and then returned unknown cache-session errors.
 
 Focused EHR tests covered during the EHR foundation tranche:
 

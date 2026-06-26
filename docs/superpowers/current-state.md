@@ -219,6 +219,12 @@ devlogs do not override the current codebase state.
   `./scripts/qpp-validate.sh` for deterministic QRDA Cat I/Cat III XML and QPP
   JSON fixtures; official Cypress CVU+ and QPP sandbox/API validation remain
   opt-in until external tools and credentials are configured.
+- Follow-up continuation stabilized the existing FHIR Conformance CI job by
+  defaulting `./scripts/fhir-validate.sh` and `./scripts/deqm-validate.sh` to
+  offline terminology plus no terminology cache. The change preserves local
+  US Core/QI-Core and DEQM profile/structure gates while avoiding release
+  failures caused by transient `tx.fhir.org` timeout/cache-session errors; live
+  terminology validation remains available through explicit env overrides.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

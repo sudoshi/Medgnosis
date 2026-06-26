@@ -70,10 +70,13 @@ FHIR fixtures:
 ./scripts/fhir-validate.sh
 ```
 
-Expected result as of 2026-06-18:
+Expected result as of 2026-06-26:
 
 - 0 errors
 - 0 warnings
+- Runs with offline terminology by default (`FHIR_VALIDATOR_TX=n/a` and
+  `FHIR_VALIDATOR_TX_CACHE=n/a`) so CI is not blocked by transient
+  `tx.fhir.org` cache/session failures.
 
 DEQM Gaps-in-Care fixture:
 
@@ -81,10 +84,20 @@ DEQM Gaps-in-Care fixture:
 ./scripts/deqm-validate.sh
 ```
 
-Expected result as of 2026-06-18:
+Expected result as of 2026-06-26:
 
 - 0 errors
 - 0 warnings
+- Runs with offline terminology by default for the same deterministic CI
+  behavior as the FHIR fixture gate.
+
+To run a deliberate live terminology check, provide both a terminology server
+and an isolated cache path:
+
+```bash
+FHIR_VALIDATOR_TX=http://tx.fhir.org FHIR_VALIDATOR_TX_CACHE=/tmp/medgnosis-tx-cache ./scripts/fhir-validate.sh
+FHIR_VALIDATOR_TX=http://tx.fhir.org FHIR_VALIDATOR_TX_CACHE=/tmp/medgnosis-tx-cache ./scripts/deqm-validate.sh
+```
 
 QRDA Cat I/Cat III local structural fixtures:
 
@@ -186,6 +199,9 @@ Current scope:
   validation and QPP JSON structural validation. Official Cypress CVU+ and QPP
   sandbox/API checks remain opt-in through external command environment
   variables.
+- CI FHIR/DEQM conformance scripts run in offline terminology mode by default,
+  after a 2026-06-26 GitHub Actions run failed on `tx.fhir.org` timeout and
+  cache-session errors rather than fixture/profile errors.
 - API admin route contract coverage includes the non-EMPI OMOP de-identified
   cohort POST path with invalid-input rejection and PHI-safe aggregate audit
   details.
@@ -240,6 +256,9 @@ Before a release or handoff, record:
 - Local QRDA/QPP fixture and structural validation scripts now run in CI;
   official QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API
   validation still require the external validator/runtime and credentials.
+- Live FHIR terminology-server validation remains an operator-run evidence
+  item because the release CI intentionally uses offline terminology for
+  deterministic profile/structure validation.
 - Expand Playwright beyond current login, MFA, invite, settings,
   protected-route smoke, role-boundary, provider, analyst, admin, and
   super-admin workflows.
