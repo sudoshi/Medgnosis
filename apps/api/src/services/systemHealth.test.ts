@@ -53,7 +53,9 @@ import {
   getAuthHealth,
   getEhrBulkReadiness,
   getEhrTenantReadiness,
+  getMigrationHealth,
   getRedisHealth,
+  getSchedulerHealth,
   getSolrHealth,
   getStandardsReadiness,
   getWorkerQueueHealth,
@@ -428,19 +430,199 @@ describe('getWorkerQueueHealth', () => {
       status: 'degraded',
       total_workers: 3,
       counts: { waiting: 1, active: 1, delayed: 2, failed: 1 },
+      completed_recent: 1,
+      stalled_queues: 0,
     });
+    // failed=1, completed_recent=1 → 1 / (1 + 1) = 0.5
+    expect(health.failure_rate).toBe(0.5);
     expect(health.queues[0]).toMatchObject({
       name: 'nightly',
       status: 'ok',
       repeatable_jobs: 1,
       next_run_at: '2026-06-21T00:00:00.000Z',
       latest_completed_at: '2026-06-20T00:00:00.000Z',
+      stalled: false,
+      completed_recent: 1,
     });
     expect(health.queues[1]).toMatchObject({
       name: 'bulk',
       status: 'degraded',
       counts: { failed: 1 },
     });
+  });
+
+  it('flags a queue as stalled when it is paused or worker-starved with backlog', async () => {
+    mockQueueCtor.mockImplementation(function QueueMock(name: string) {
+      return {
+        getJobCounts: vi.fn().mockResolvedValue(
+          name === 'paused'
+            ? { waiting: 5, active: 0, delayed: 0, failed: 0 }
+            : { waiting: 3, active: 0, delayed: 0, failed: 0 },
+        ),
+        getWorkersCount: vi.fn().mockResolvedValue(0),
+        isPaused: vi.fn().mockResolvedValue(name === 'paused'),
+        getRepeatableJobs: vi.fn().mockResolvedValue([]),
+        getJobs: vi.fn().mockResolvedValue([]),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const health = await getWorkerQueueHealth([
+      { name: 'paused', label: 'Paused queue', role: 'clinical' },
+      { name: 'starved', label: 'Worker-starved queue', role: 'clinical' },
+    ]);
+
+    expect(health.stalled_queues).toBe(2);
+    expect(health.queues.every((queue) => queue.stalled === true)).toBe(true);
+  });
+});
+
+describe('getSchedulerHealth', () => {
+  it('reports a healthy nightly scheduler with a recent successful run', async () => {
+    const now = new Date('2026-06-26T08:00:00Z');
+    mockQueueCtor.mockImplementation(function QueueMock() {
+      return {
+        getWorkersCount: vi.fn().mockResolvedValue(1),
+        isPaused: vi.fn().mockResolvedValue(false),
+        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly', next: Date.parse('2026-06-27T02:00:00Z') }]),
+        getJobs: vi.fn().mockImplementation((types: string[]) =>
+          types.includes('completed')
+            ? Promise.resolve([{ finishedOn: Date.parse('2026-06-26T02:00:00Z') }])
+            : Promise.resolve([]),
+        ),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const health = await getSchedulerHealth('medgnosis-nightly', 36, now);
+
+    expect(health).toMatchObject({
+      status: 'ok',
+      repeatable_scheduled: true,
+      missed: false,
+      paused: false,
+      workers: 1,
+      last_success_at: '2026-06-26T02:00:00.000Z',
+      last_run_at: '2026-06-26T02:00:00.000Z',
+      hours_since_last_run: 6,
+    });
+    expect(health.issues).toEqual([]);
+  });
+
+  it('blocks when the nightly batch has not run within the staleness window', async () => {
+    const now = new Date('2026-06-26T08:00:00Z');
+    mockQueueCtor.mockImplementation(function QueueMock() {
+      return {
+        getWorkersCount: vi.fn().mockResolvedValue(1),
+        isPaused: vi.fn().mockResolvedValue(false),
+        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly', next: Date.parse('2026-06-27T02:00:00Z') }]),
+        getJobs: vi.fn().mockImplementation((types: string[]) =>
+          types.includes('completed')
+            ? Promise.resolve([{ finishedOn: Date.parse('2026-06-24T02:00:00Z') }])
+            : Promise.resolve([]),
+        ),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const health = await getSchedulerHealth('medgnosis-nightly', 36, now);
+
+    expect(health.status).toBe('blocked');
+    expect(health.missed).toBe(true);
+    expect(health.hours_since_last_run).toBe(54);
+    expect(health.issues.some((issue) => issue.includes('threshold 36h'))).toBe(true);
+  });
+
+  it('blocks when there is no registered repeatable schedule', async () => {
+    const now = new Date('2026-06-26T08:00:00Z');
+    mockQueueCtor.mockImplementation(function QueueMock() {
+      return {
+        getWorkersCount: vi.fn().mockResolvedValue(1),
+        isPaused: vi.fn().mockResolvedValue(false),
+        getRepeatableJobs: vi.fn().mockResolvedValue([]),
+        getJobs: vi.fn().mockResolvedValue([]),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const health = await getSchedulerHealth('medgnosis-nightly', 36, now);
+
+    expect(health.status).toBe('blocked');
+    expect(health.repeatable_scheduled).toBe(false);
+    expect(health.issues).toContain('Nightly scheduler has no registered repeatable schedule');
+  });
+
+  it('degrades when the most recent nightly run failed but is not stale', async () => {
+    const now = new Date('2026-06-26T08:00:00Z');
+    mockQueueCtor.mockImplementation(function QueueMock() {
+      return {
+        getWorkersCount: vi.fn().mockResolvedValue(1),
+        isPaused: vi.fn().mockResolvedValue(false),
+        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly', next: Date.parse('2026-06-27T02:00:00Z') }]),
+        getJobs: vi.fn().mockImplementation((types: string[]) =>
+          types.includes('completed')
+            ? Promise.resolve([{ finishedOn: Date.parse('2026-06-25T02:00:00Z') }])
+            : Promise.resolve([{ finishedOn: Date.parse('2026-06-26T02:00:00Z') }]),
+        ),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const health = await getSchedulerHealth('medgnosis-nightly', 36, now);
+
+    expect(health.status).toBe('degraded');
+    expect(health.missed).toBe(false);
+    expect(health.issues).toContain('Nightly scheduler most recent run failed');
+  });
+});
+
+describe('getMigrationHealth', () => {
+  it('reports applied migrations and populated materialized views', async () => {
+    mockSql
+      .mockResolvedValueOnce([
+        { applied: 92, pending: 0, latest_name: '092_observability.sql', latest_applied_at: '2026-06-26 00:00:00+00' },
+      ])
+      .mockResolvedValueOnce([
+        { name: 'phm_star.mv_patient_dashboard', is_populated: true },
+        { name: 'phm_star.mv_population_overview', is_populated: true },
+      ]);
+
+    const health = await getMigrationHealth();
+
+    expect(health).toMatchObject({
+      status: 'ok',
+      migrations: { applied: 92, pending: 0, latest_name: '092_observability.sql' },
+      materialized_views: { total: 2, populated: 2, unpopulated: 0, names_unpopulated: [] },
+    });
+    expect(health.issues).toEqual([]);
+  });
+
+  it('degrades when migrations are pending or materialized views are unpopulated', async () => {
+    mockSql
+      .mockResolvedValueOnce([
+        { applied: '90', pending: '2', latest_name: '090_x.sql', latest_applied_at: null },
+      ])
+      .mockResolvedValueOnce([
+        { name: 'phm_star.mv_patient_dashboard', is_populated: true },
+        { name: 'phm_star.mv_care_gap_worklist', is_populated: false },
+      ]);
+
+    const health = await getMigrationHealth();
+
+    expect(health.status).toBe('degraded');
+    expect(health.materialized_views.names_unpopulated).toEqual(['phm_star.mv_care_gap_worklist']);
+    expect(health.issues).toEqual([
+      '2 migration ledger row(s) are not marked applied',
+      '1 materialized view(s) are unpopulated and need a refresh',
+    ]);
+  });
+
+  it('returns an error section when the migration query fails', async () => {
+    mockSql.mockRejectedValueOnce(new Error('relation does not exist'));
+
+    const health = await getMigrationHealth();
+
+    expect(health).toMatchObject({ status: 'error', error: 'relation does not exist' });
   });
 });
 

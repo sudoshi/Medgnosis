@@ -28,6 +28,9 @@ export interface SystemHealth {
   solr: SolrHealth;
   auth: AuthHealth;
   workers: WorkerQueueHealth;
+  scheduler: SchedulerHealth;
+  migrations: MigrationHealth;
+  observability: SystemObservability;
   ehr_tenants: EhrTenantReadiness;
   ehr_bulk: EhrBulkReadiness;
   ehr_sync_alerts: EhrSyncAlertingStatus;
@@ -35,10 +38,113 @@ export interface SystemHealth {
   duration_ms: number;
 }
 
+/**
+ * Nightly scheduler run evidence derived from the BullMQ `medgnosis-nightly`
+ * repeatable queue. Captures last-run timing plus completion/failure history so
+ * the System Health surface (and {@link getSystemObservability}) can detect a
+ * missed or failing nightly batch without scraping logs.
+ */
+export interface SchedulerHealth {
+  status: HealthStatus;
+  queue: string;
+  workers: number;
+  paused: boolean;
+  repeatable_scheduled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  completed_recent: number;
+  failed_recent: number;
+  /** Whole hours since the most recent completed OR failed run, null if never run. */
+  hours_since_last_run: number | null;
+  /** True when a repeatable schedule exists but no run is recorded within the staleness window. */
+  missed: boolean;
+  /** Whole-hour staleness threshold used to compute {@link missed}. */
+  stale_after_hours: number;
+  issues: string[];
+  error?: string;
+}
+
+/**
+ * Schema-migration ledger health plus materialized-view refresh freshness.
+ * Computed read-only from `public._migrations` and `pg_matviews`; never runs a
+ * migration or a refresh.
+ */
+export interface MigrationHealth {
+  status: HealthStatus;
+  migrations: {
+    applied: number;
+    latest_name: string | null;
+    latest_applied_at: string | null;
+    /** Distinct migration names whose ledger rows were never marked applied_at. */
+    pending: number;
+  };
+  materialized_views: {
+    total: number;
+    populated: number;
+    unpopulated: number;
+    names_unpopulated: string[];
+  };
+  issues: string[];
+  error?: string;
+}
+
+/**
+ * Flat, alert-ready rollup of system-level operational metrics. Every value is
+ * derived from the richer sub-sections (workers/scheduler/EHR/standards) so the
+ * alerting layer and the web System Health surface read one stable contract.
+ */
+export interface SystemObservability {
+  status: HealthStatus;
+  worker_queue: {
+    depth: number;
+    failed: number;
+    /** failed / (failed + completed_recent), 0 when no terminal jobs observed. */
+    failure_rate: number;
+    completed_recent: number;
+    stalled_queues: number;
+  };
+  scheduler: {
+    last_run_at: string | null;
+    last_success_at: string | null;
+    missed: boolean;
+    hours_since_last_run: number | null;
+  };
+  ehr_launch: {
+    started_24h: number;
+    succeeded_24h: number;
+    failed_24h: number;
+    denied_24h: number;
+    success_rate_24h: number | null;
+  };
+  bulk_import: {
+    completed_24h: number;
+    failed_24h: number;
+    active: number;
+    failure_rate_24h: number | null;
+  };
+  cql_engine: {
+    status: HealthStatus;
+    runtime_configured: boolean;
+    available: boolean;
+  };
+  qdm_bridge: {
+    status: HealthStatus;
+    blocking_issues: number;
+  };
+}
+
 export interface WorkerQueueHealth {
   status: HealthStatus;
   total_workers: number;
   counts: QueueCounts;
+  /** Sum of recently completed jobs across queues (sampled from BullMQ history). */
+  completed_recent: number;
+  /** failed / (failed + completed_recent) across all queues; 0 when no terminal jobs. */
+  failure_rate: number;
+  /** Queues that are paused or have zero workers while carrying backlog. */
+  stalled_queues: number;
   queues: WorkerQueueStatus[];
 }
 
@@ -53,6 +159,10 @@ export interface WorkerQueueStatus {
   repeatable_jobs?: number;
   next_run_at?: string | null;
   latest_completed_at?: string | null;
+  /** Whether the queue is stalled: paused, or has zero workers with backlog. */
+  stalled?: boolean;
+  /** Recently completed jobs sampled from BullMQ history (additive). */
+  completed_recent?: number;
   error?: string;
 }
 
@@ -229,6 +339,18 @@ interface CompletedJobInfo {
   finishedOn?: number | string | null;
 }
 
+interface MigrationLedgerRow {
+  applied: number | string | null;
+  pending: number | string | null;
+  latest_name: string | null;
+  latest_applied_at: string | null;
+}
+
+interface MaterializedViewRow {
+  name: string;
+  is_populated: boolean | null;
+}
+
 interface EhrBulkReadinessRow {
   total_tenants: number | string | null;
   active_tenants: number | string | null;
@@ -294,6 +416,11 @@ interface EhrTenantReadinessRow {
 
 const QUEUE_JOB_TYPES: JobType[] = ['waiting', 'active', 'delayed', 'failed'];
 
+const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
+/** Nightly batch runs once daily; >36h with no run signals a missed schedule. */
+const SCHEDULER_STALE_AFTER_HOURS = 36;
+const MS_PER_HOUR = 3_600_000;
+
 const HEALTH_QUEUE_DEFINITIONS: QueueDefinition[] = [
   { name: 'medgnosis-rules', label: 'Rules engine', role: 'clinical' },
   { name: 'medgnosis-measure-calc', label: 'Measure refresh', role: 'quality' },
@@ -321,17 +448,28 @@ const REPO_ROOT_CANDIDATES = Array.from(new Set([
 
 export async function getSystemHealth(): Promise<SystemHealth> {
   const startedAt = Date.now();
-  const [database, redis, solr, auth, workers, ehrTenants, ehrBulk, ehrSyncAlerts, standards] = await Promise.all([
-    getDatabaseHealth(),
-    getRedisHealth(),
-    getSolrHealth(),
-    getAuthHealth(),
-    getWorkerQueueHealth(),
-    getEhrTenantReadiness(),
-    getEhrBulkReadiness(),
-    getEhrSyncAlertingStatus(),
-    getStandardsReadiness(),
-  ]);
+  const [database, redis, solr, auth, workers, scheduler, migrations, ehrTenants, ehrBulk, ehrSyncAlerts, standards] =
+    await Promise.all([
+      getDatabaseHealth(),
+      getRedisHealth(),
+      getSolrHealth(),
+      getAuthHealth(),
+      getWorkerQueueHealth(),
+      getSchedulerHealth(),
+      getMigrationHealth(),
+      getEhrTenantReadiness(),
+      getEhrBulkReadiness(),
+      getEhrSyncAlertingStatus(),
+      getStandardsReadiness(),
+    ]);
+
+  const observability = computeSystemObservability({
+    workers,
+    scheduler,
+    ehrTenants,
+    ehrBulk,
+    standards,
+  });
 
   return {
     api: { status: 'ok', node_env: config.nodeEnv },
@@ -340,6 +478,9 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     solr,
     auth,
     workers,
+    scheduler,
+    migrations,
+    observability,
     ehr_tenants: ehrTenants,
     ehr_bulk: ehrBulk,
     ehr_sync_alerts: ehrSyncAlerts,
@@ -356,20 +497,162 @@ export async function getWorkerQueueHealth(
     definitions.map((definition) => inspectQueue(definition, connection)),
   );
 
+  const counts = queues.reduce(
+    (sum, queue) => ({
+      waiting: sum.waiting + queue.counts.waiting,
+      active: sum.active + queue.counts.active,
+      delayed: sum.delayed + queue.counts.delayed,
+      failed: sum.failed + queue.counts.failed,
+    }),
+    emptyQueueCounts(),
+  );
+  const completedRecent = queues.reduce((sum, queue) => sum + (queue.completed_recent ?? 0), 0);
+  const stalledQueues = queues.filter((queue) => queue.stalled === true).length;
+
   return {
     status: aggregateQueueStatus(queues),
     total_workers: queues.reduce((sum, queue) => sum + queue.workers, 0),
-    counts: queues.reduce(
-      (sum, queue) => ({
-        waiting: sum.waiting + queue.counts.waiting,
-        active: sum.active + queue.counts.active,
-        delayed: sum.delayed + queue.counts.delayed,
-        failed: sum.failed + queue.counts.failed,
-      }),
-      emptyQueueCounts(),
-    ),
+    counts,
+    completed_recent: completedRecent,
+    failure_rate: ratio(counts.failed, counts.failed + completedRecent),
+    stalled_queues: stalledQueues,
     queues,
   };
+}
+
+/**
+ * Nightly scheduler run evidence from the BullMQ `medgnosis-nightly` queue.
+ * Reads completed/failed job history and the repeatable schedule to detect a
+ * missed or failing nightly batch. PHI-safe: only timings and counts.
+ */
+export async function getSchedulerHealth(
+  queueName: string = SCHEDULER_QUEUE_NAME,
+  staleAfterHours: number = SCHEDULER_STALE_AFTER_HOURS,
+  now: Date = new Date(),
+): Promise<SchedulerHealth> {
+  const connection = redisConnectionOptions(config.redisUrl);
+  const queue = new Queue(queueName, { connection });
+
+  try {
+    const [workers, paused, repeatableJobs, completed, failed] = await Promise.all([
+      queue.getWorkersCount(),
+      queue.isPaused(),
+      queue.getRepeatableJobs().catch(() => [] as RepeatableJobInfo[]),
+      queue.getJobs(['completed'], 0, 0, false).catch(() => []),
+      queue.getJobs(['failed'], 0, 0, false).catch(() => []),
+    ]);
+
+    const repeatableScheduled = repeatableJobs.length > 0;
+    const nextRunAt = earliestTimestamp(repeatableJobs.map((job) => (job as RepeatableJobInfo).next));
+    const lastSuccessAt = latestTimestamp(completed.map((job) => (job as CompletedJobInfo).finishedOn));
+    const lastFailureAt = latestTimestamp(failed.map((job) => (job as CompletedJobInfo).finishedOn));
+    const lastRunAt = latestTimestamp([lastSuccessAt, lastFailureAt]);
+    const hoursSinceLastRun = hoursSince(lastRunAt, now);
+    const missed = repeatableScheduled
+      && (lastRunAt === null || (hoursSinceLastRun !== null && hoursSinceLastRun >= staleAfterHours));
+
+    const issues: string[] = [];
+    if (!repeatableScheduled) {
+      issues.push('Nightly scheduler has no registered repeatable schedule');
+    }
+    if (paused) {
+      issues.push('Nightly scheduler queue is paused');
+    }
+    if (workers === 0) {
+      issues.push('Nightly scheduler has no active worker');
+    }
+    if (missed) {
+      issues.push(
+        lastRunAt === null
+          ? 'Nightly scheduler has never recorded a run'
+          : `Nightly scheduler last ran ${hoursSinceLastRun}h ago (threshold ${staleAfterHours}h)`,
+      );
+    }
+    if (lastFailureAt !== null && (lastSuccessAt === null || lastFailureAt >= lastSuccessAt)) {
+      issues.push('Nightly scheduler most recent run failed');
+    }
+
+    return {
+      status: schedulerStatus({ repeatableScheduled, paused, workers, missed, issues }),
+      queue: queueName,
+      workers,
+      paused,
+      repeatable_scheduled: repeatableScheduled,
+      next_run_at: nextRunAt,
+      last_run_at: lastRunAt,
+      last_success_at: lastSuccessAt,
+      last_failure_at: lastFailureAt,
+      completed_recent: completed.length,
+      failed_recent: failed.length,
+      hours_since_last_run: hoursSinceLastRun,
+      missed,
+      stale_after_hours: staleAfterHours,
+      issues,
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      queue: queueName,
+      workers: 0,
+      paused: false,
+      repeatable_scheduled: false,
+      next_run_at: null,
+      last_run_at: null,
+      last_success_at: null,
+      last_failure_at: null,
+      completed_recent: 0,
+      failed_recent: 0,
+      hours_since_last_run: null,
+      missed: false,
+      stale_after_hours: staleAfterHours,
+      issues: [errorMessage(err)],
+      error: errorMessage(err),
+    };
+  } finally {
+    await queue.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Migration ledger + materialized-view refresh health. Read-only against
+ * `public._migrations` and `pg_matviews`; never runs DDL or a REFRESH.
+ */
+export async function getMigrationHealth(): Promise<MigrationHealth> {
+  try {
+    const [migrationRow] = await sql<MigrationLedgerRow[]>`
+      SELECT
+        COUNT(*)::int AS applied,
+        COUNT(*) FILTER (WHERE applied_at IS NULL)::int AS pending,
+        (
+          SELECT name
+          FROM public._migrations
+          WHERE applied_at IS NOT NULL
+          ORDER BY applied_at DESC, id DESC
+          LIMIT 1
+        ) AS latest_name,
+        MAX(applied_at)::text AS latest_applied_at
+      FROM public._migrations
+    `;
+
+    const matviewRows = await sql<MaterializedViewRow[]>`
+      SELECT
+        schemaname || '.' || matviewname AS name,
+        ispopulated AS is_populated
+      FROM pg_matviews
+      WHERE schemaname IN ('phm_star', 'phm_edw', 'public')
+      ORDER BY 1
+    `;
+
+    return mapMigrationHealth(migrationRow, matviewRows);
+  } catch (err) {
+    return {
+      status: 'error',
+      migrations: { applied: 0, latest_name: null, latest_applied_at: null, pending: 0 },
+      materialized_views: { total: 0, populated: 0, unpopulated: 0, names_unpopulated: [] },
+      issues: [errorMessage(err)],
+      error: errorMessage(err),
+    };
+  }
 }
 
 export async function getEhrTenantReadiness(): Promise<EhrTenantReadiness> {
@@ -1084,6 +1367,8 @@ async function inspectQueue(
     const latestCompletedAt = latestTimestamp(
       completedJobs.map((job) => (job as CompletedJobInfo).finishedOn),
     );
+    const backlog = counts.waiting + counts.active + counts.delayed;
+    const stalled = paused || (workers === 0 && backlog > 0);
     return {
       ...definition,
       status: queueStatus({ counts, workers, paused, repeatableJobs, repeatable: definition.repeatable }),
@@ -1093,6 +1378,8 @@ async function inspectQueue(
       ...(repeatableJobs === undefined ? {} : { repeatable_jobs: repeatableJobs }),
       ...(nextRunAt === undefined ? {} : { next_run_at: nextRunAt }),
       latest_completed_at: latestCompletedAt,
+      stalled,
+      completed_recent: completedJobs.length,
     };
   } catch (err) {
     return {
@@ -1101,6 +1388,8 @@ async function inspectQueue(
       workers: 0,
       paused: false,
       counts: emptyQueueCounts(),
+      stalled: true,
+      completed_recent: 0,
       error: errorMessage(err),
     };
   } finally {
@@ -1126,6 +1415,157 @@ function aggregateQueueStatus(queues: WorkerQueueStatus[]): HealthStatus {
   if (queues.some((queue) => queue.status === 'error')) return 'error';
   if (queues.some((queue) => queue.status === 'degraded')) return 'degraded';
   return 'ok';
+}
+
+function schedulerStatus(input: {
+  repeatableScheduled: boolean;
+  paused: boolean;
+  workers: number;
+  missed: boolean;
+  issues: string[];
+}): HealthStatus {
+  // A missed nightly batch or an unregistered schedule blocks downstream care
+  // analytics; treat those as hard blockers rather than soft degradation.
+  if (input.missed || !input.repeatableScheduled) return 'blocked';
+  if (input.paused || input.workers === 0 || input.issues.length > 0) return 'degraded';
+  return 'ok';
+}
+
+function mapMigrationHealth(
+  migrationRow: MigrationLedgerRow | undefined,
+  matviewRows: MaterializedViewRow[],
+): MigrationHealth {
+  const applied = toNumber(migrationRow?.applied);
+  const pending = toNumber(migrationRow?.pending);
+  const unpopulated = matviewRows.filter((row) => row.is_populated === false);
+
+  const issues: string[] = [];
+  if (pending > 0) {
+    issues.push(`${pending} migration ledger row(s) are not marked applied`);
+  }
+  if (unpopulated.length > 0) {
+    issues.push(`${unpopulated.length} materialized view(s) are unpopulated and need a refresh`);
+  }
+
+  return {
+    status: pending > 0 || unpopulated.length > 0 ? 'degraded' : 'ok',
+    migrations: {
+      applied,
+      latest_name: migrationRow?.latest_name ?? null,
+      latest_applied_at: migrationRow?.latest_applied_at ?? null,
+      pending,
+    },
+    materialized_views: {
+      total: matviewRows.length,
+      populated: matviewRows.length - unpopulated.length,
+      unpopulated: unpopulated.length,
+      names_unpopulated: unpopulated.map((row) => row.name),
+    },
+    issues,
+  };
+}
+
+function computeSystemObservability(input: {
+  workers: WorkerQueueHealth;
+  scheduler: SchedulerHealth;
+  ehrTenants: EhrTenantReadiness;
+  ehrBulk: EhrBulkReadiness;
+  standards: StandardsReadiness;
+}): SystemObservability {
+  const { workers, scheduler, ehrTenants, ehrBulk, standards } = input;
+  const launch = ehrTenants.smart_launch;
+  const launchFailed = launch.callbacks_failed_24h + launch.launches_denied_24h;
+  const cqlCheck = standards.checks.find((check) => check.key === 'cql');
+  const cqlStatus: HealthStatus = cqlCheck?.status ?? 'disabled';
+
+  const workerQueueStatus: HealthStatus = workers.status === 'error'
+    ? 'error'
+    : workers.stalled_queues > 0
+      ? 'blocked'
+      : workers.failure_rate > 0
+        ? 'degraded'
+        : 'ok';
+
+  const sections: HealthStatus[] = [
+    workerQueueStatus,
+    scheduler.status,
+    cqlStatus,
+    ehrTenants.status,
+    ehrBulk.status,
+  ];
+
+  return {
+    status: rollupStatus(sections),
+    worker_queue: {
+      depth: workers.counts.waiting + workers.counts.active + workers.counts.delayed,
+      failed: workers.counts.failed,
+      failure_rate: workers.failure_rate,
+      completed_recent: workers.completed_recent,
+      stalled_queues: workers.stalled_queues,
+    },
+    scheduler: {
+      last_run_at: scheduler.last_run_at,
+      last_success_at: scheduler.last_success_at,
+      missed: scheduler.missed,
+      hours_since_last_run: scheduler.hours_since_last_run,
+    },
+    ehr_launch: {
+      started_24h: launch.launches_started_24h,
+      succeeded_24h: launch.callbacks_succeeded_24h,
+      failed_24h: launch.callbacks_failed_24h,
+      denied_24h: launch.launches_denied_24h,
+      success_rate_24h: launchRate(launch.callbacks_succeeded_24h, launchFailed),
+    },
+    bulk_import: {
+      completed_24h: ehrBulk.bulk_jobs.completed_24h,
+      failed_24h: ehrBulk.bulk_jobs.failed_24h,
+      active: ehrBulk.bulk_jobs.active,
+      failure_rate_24h: failureRate(ehrBulk.bulk_jobs.failed_24h, ehrBulk.bulk_jobs.completed_24h),
+    },
+    cql_engine: {
+      status: cqlStatus,
+      runtime_configured: cqlCheck?.runtime_configured ?? false,
+      available: cqlStatus === 'ok',
+    },
+    qdm_bridge: {
+      status: cqlStatus,
+      blocking_issues: (cqlCheck?.artifacts.missing.length ?? 0),
+    },
+  };
+}
+
+function rollupStatus(statuses: HealthStatus[]): HealthStatus {
+  if (statuses.includes('error')) return 'error';
+  if (statuses.includes('blocked')) return 'blocked';
+  if (statuses.includes('degraded')) return 'degraded';
+  if (statuses.length > 0 && statuses.every((status) => status === 'disabled')) return 'disabled';
+  return 'ok';
+}
+
+function ratio(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0;
+  return Math.round((numerator / denominator) * 10_000) / 10_000;
+}
+
+function launchRate(succeeded: number, failed: number): number | null {
+  const total = succeeded + failed;
+  if (total <= 0) return null;
+  return ratio(succeeded, total);
+}
+
+function failureRate(failed: number, completed: number): number | null {
+  const total = failed + completed;
+  if (total <= 0) return null;
+  return ratio(failed, total);
+}
+
+function hoursSince(timestamp: string | null, now: Date): number | null {
+  if (timestamp === null) return null;
+  const parsed = Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return null;
+  const diff = now.getTime() - parsed;
+  if (diff < 0) return 0;
+  return Math.floor(diff / MS_PER_HOUR);
 }
 
 function mapEhrTenantReadiness(row: EhrTenantReadinessRow | undefined): EhrTenantReadiness {
