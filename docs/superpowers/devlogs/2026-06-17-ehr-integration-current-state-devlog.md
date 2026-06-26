@@ -41,6 +41,8 @@ Follow-up admin release-smoke work on 2026-06-26 adds fully mocked Playwright co
 
 Follow-up admin contract work on 2026-06-26 hardens `POST /api/admin/omop/cohort`, a non-EMPI mutation-style extract route. The route now validates age and condition criteria before calling the OMOP export service, trims bounded condition filters, and records a PHI-safe aggregate audit event with only age-bound presence, condition count, and returned row count. Focused admin route tests prove valid response shape, invalid-input rejection before service/audit calls, and raw condition-code redaction from audit metadata.
 
+Follow-up CI release-smoke work on 2026-06-26 adds `npm run test:e2e:release --workspace=apps/web` for the role workflow and admin operational Playwright specs, then wires that command into `.github/workflows/ci.yml` before the full web E2E suite on `main` pushes. This makes the Phase 1 CI acceptance gate explicit: CI now proves at least one role-based happy path and one admin operational path without requiring production credentials or live vendor diagnostics.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:

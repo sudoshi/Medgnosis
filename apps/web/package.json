@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:release": "playwright test role-workflows.spec.ts admin-release-smoke.spec.ts",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {

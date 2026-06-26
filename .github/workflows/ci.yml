@@ -171,7 +171,10 @@ jobs:
         env:
           NODE_ENV: production
       - run: npx turbo run db:migrate && npx turbo run db:seed
-      - run: npm run test:e2e --workspace=apps/web
+      - name: Role/admin operational E2E release smoke
+        run: PLAYWRIGHT_PORT=5176 npm run test:e2e:release --workspace=apps/web
+      - name: Full web E2E suite
+        run: PLAYWRIGHT_PORT=5177 npm run test:e2e --workspace=apps/web
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

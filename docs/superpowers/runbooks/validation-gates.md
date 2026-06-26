@@ -153,6 +153,12 @@ Run:
 npm run test:e2e --workspace=apps/web
 ```
 
+For the focused release-smoke path that CI runs before the full suite:
+
+```bash
+PLAYWRIGHT_PORT=<free-port> npm run test:e2e:release --workspace=apps/web
+```
+
 The Playwright web server sets `VITE_REALTIME_ALERTS_ENABLED=false` because the
 frontend-only E2E suite does not start the API websocket endpoint.
 
@@ -173,6 +179,9 @@ Current scope:
 - Authenticated admin operational release smoke for System Health, EHR
   Integrations, and Measure Governance with fully mocked APIs and unhandled
   request detection.
+- CI runs `npm run test:e2e:release --workspace=apps/web`, which explicitly
+  covers `role-workflows.spec.ts` and `admin-release-smoke.spec.ts`, before the
+  full web E2E suite on `main` pushes.
 - API admin route contract coverage includes the non-EMPI OMOP de-identified
   cohort POST path with invalid-input rejection and PHI-safe aggregate audit
   details.
@@ -217,6 +226,7 @@ Before a release or handoff, record:
 - [ ] Admin System Health shows Redis pub/sub, Solr core, and scheduler queue timing details.
 - [ ] Admin System Health shows aggregate EHR/FHIR tenant readiness with disabled/degraded/blocked/healthy semantics and 24-hour FHIR/backend-token failure counts from stored evidence.
 - [ ] `npm run test:e2e --workspace=apps/web`
+- [ ] `PLAYWRIGHT_PORT=<free-port> npm run test:e2e:release --workspace=apps/web`
 - [ ] `PLAYWRIGHT_PORT=<free-port> npm run test:e2e --workspace=apps/web -- admin-release-smoke.spec.ts`
 - [ ] Local `/health`
 - [ ] Public `/health`

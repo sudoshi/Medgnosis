@@ -210,6 +210,10 @@ devlogs do not override the current codebase state.
   calls and emits only aggregate audit details for the generated extract:
   presence of age bounds, condition-filter count, and returned row count. Raw
   condition codes are not persisted in audit details.
+- Follow-up continuation made the role/admin E2E release-smoke path explicit in
+  CI. `npm run test:e2e:release --workspace=apps/web` runs the role workflow and
+  admin operational smoke specs before the full web E2E suite on `main` pushes,
+  proving at least one role-based happy path and one admin operational path.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password
