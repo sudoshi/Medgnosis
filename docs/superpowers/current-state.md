@@ -192,6 +192,13 @@ devlogs do not override the current codebase state.
   resource coverage evidence, plus PHI-safe 24-hour FHIR API and backend-token
   failure counts, without calling live vendor diagnostics or EMPI services
   during the health poll.
+- Follow-up continuation added release-evidence hardening for background workers
+  and migration checks. The worker entrypoint now uses an import-safe lazy
+  registry with focused boot/cleanup smoke tests, and `npm run release:migrations -- --env-file .env.production`
+  runs migration list plus dry-run with a parsed env file instead of
+  shell-sourcing production values.
+  The production check reported 91 applied migrations and no pending
+  migrations without the previous OIDC group shell warnings.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

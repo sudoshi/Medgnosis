@@ -1,6 +1,6 @@
 # Medgnosis Validation Gates Runbook
 
-Last updated: 2026-06-18
+Last updated: 2026-06-26
 
 ## Purpose
 
@@ -30,31 +30,30 @@ Expected result as of 2026-06-18:
 
 ## Database Migration Gates
 
-Migration commands require `DATABASE_URL` to be present in the shell
-environment. The scripts do not load `.env.production` automatically.
+Migration commands require `DATABASE_URL`. Prefer the release helper below so
+the env file is parsed once and passed to both migration commands without
+shell-sourcing fragile values.
 
 Production-style check:
 
 ```bash
-set -a
-. ./.env.production
-set +a
-npm run db:migrate:list
-npm run db:migrate:dry-run
+npm run release:migrations -- --env-file .env.production
 ```
 
-Expected result as of 2026-06-19:
+The helper runs `npm run db:migrate:list` and
+`npm run db:migrate:dry-run` with the parsed env file. It handles unquoted
+values with spaces, such as OIDC group names, without executing them as shell
+commands.
 
-- Applied migrations: 78
-- Pending migrations in this worktree before apply: `080_invite_activation_tokens.sql`, `081_password_reset_tokens.sql`, `082_refresh_token_session_metadata.sql`, `083_totp_mfa_lifecycle.sql`, and `084_smart_launch_handoff_binding.sql`
+Expected result as of 2026-06-26:
+
+- Applied migrations: 91
+- Pending migrations: none
 
 For local demo work, use the `.env` file that points at the local demo database:
 
 ```bash
-set -a
-. ./.env
-set +a
-npm run db:migrate:list
+npm run release:migrations
 ```
 
 ## Standards Validation
@@ -205,8 +204,7 @@ Before a release or handoff, record:
 - [ ] `npm run test`
 - [ ] `npm run build`
 - [ ] `git diff --check`
-- [ ] `npm run db:migrate:list` with explicit env
-- [ ] `npm run db:migrate:dry-run` with explicit env
+- [ ] `npm run release:migrations -- --env-file <target-env>`
 - [ ] `./scripts/fhir-validate.sh`
 - [ ] `./scripts/deqm-validate.sh`
 - [ ] Admin System Health shows Standards Readiness for CQL/FHIR/DEQM assets.
@@ -221,7 +219,9 @@ Before a release or handoff, record:
 - Local QRDA/QPP fixture and structural validation scripts now exist; official
   QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API validation
   still require the external validator/runtime and credentials.
-- Expand Playwright to authenticated role-based workflows.
+- Expand Playwright beyond current login, MFA, invite, settings,
+  protected-route smoke, role-boundary, provider, analyst, admin, and
+  super-admin workflows.
 - Add release smoke checks that assert the existing worker, queue, CQL/FHIR/DEQM,
   EHR/FHIR tenant readiness, EHR sync alerting, and Bulk Data health sections are
   visible after deployment.

@@ -35,6 +35,8 @@ Follow-up System Health runtime-detail work on 2026-06-26 adds Redis alert pub/s
 
 Follow-up System Health EHR/FHIR readiness work on 2026-06-26 adds a stored-evidence tenant readiness section to the admin health API and UI. The section distinguishes disabled, degraded, blocked, and healthy EHR/FHIR tenant states from aggregate SMART discovery, CapabilityStatement, backend-services credential/scope, token metadata, SMART launch audit/session, required Bulk resource coverage, and PHI-safe 24-hour FHIR API/backend-token failure evidence. It does not call live vendor diagnostics, request backend tokens, or touch the parallel EMPI/identity track during the 60-second health poll.
 
+Follow-up release-evidence hardening on 2026-06-26 makes the background worker entrypoint import-safe and testable through a lazy registry while preserving direct execution behavior for the production worker service. Focused tests prove the worker registry, startup handles, startup-failure cleanup, signal shutdown, and close path. A new `npm run release:migrations -- --env-file .env.production` helper parses the target env file and runs both migration list and dry-run, avoiding the older shell-source warnings from unquoted OIDC group names; the production check reported 91 applied migrations and no pending migrations.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
