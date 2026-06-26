@@ -61,15 +61,15 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
     '/callback',
     { config: { rateLimit: SMART_CALLBACK_RATE_LIMIT } },
     async (request, reply) => {
-      const { code, state, error, error_description: errorDescription } = request.query;
+      const { code, state, error } = request.query;
 
       if (error) {
         await auditSmartLaunch(request, 'ehr_smart_callback_failed', 'ehr_smart_launch', undefined, {
           status: 400,
           code: 'SMART_LAUNCH_DENIED',
-          smartError: error,
+          ...smartErrorAuditDetails(error),
         });
-        return sendError(reply, 400, 'SMART_LAUNCH_DENIED', errorDescription ?? error);
+        return sendError(reply, 400, 'SMART_LAUNCH_DENIED', 'SMART launch was denied by the EHR authorization server');
       }
       if (!code || !state) {
         await auditSmartLaunch(request, 'ehr_smart_callback_failed', 'ehr_smart_launch', undefined, {
@@ -275,7 +275,7 @@ export default async function ehrSmartLaunchRoutes(fastify: FastifyInstance): Pr
 
     await auditSmartLaunch(request, 'ehr_smart_launch_start', 'ehr_tenant', String(config.tenant.id), {
       launchMode: options.launchMode,
-      smartSessionId: created.session.id,
+      smartSessionCreated: true,
       orgId,
       userBound: Boolean(options.user?.sub),
       clientRegistrationId: config.clientRegistrationId,
@@ -398,6 +398,27 @@ function sendError(reply: FastifyReply, status: number, code: string, message: s
     success: false,
     error: { code, message },
   });
+}
+
+const ALLOWED_SMART_CALLBACK_ERRORS = new Set([
+  'access_denied',
+  'invalid_request',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
+  'unauthorized_client',
+  'unsupported_response_type',
+]);
+
+function smartErrorAuditDetails(error: string): Record<string, unknown> {
+  const normalized = error.trim().toLowerCase();
+  if (ALLOWED_SMART_CALLBACK_ERRORS.has(normalized)) {
+    return {
+      smartErrorKnown: true,
+      smartErrorCode: normalized,
+    };
+  }
+  return { smartErrorKnown: false };
 }
 
 function positiveInt(value: string): number | null {

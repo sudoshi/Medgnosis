@@ -150,12 +150,46 @@ describe('EHR SMART launch routes', () => {
       '42',
       expect.objectContaining({
         launchMode: 'ehr',
-        smartSessionId: session.id,
+        smartSessionCreated: true,
         orgId: 7,
         userBound: true,
         issuerValidated: true,
       }),
     );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain(session.id);
+    await app.close();
+  });
+
+  it('audits callback denials without persisting provider-supplied error text', async () => {
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ehr/launch/callback?error=patient_denied_with_context&error_description=Patient%20declined%20for%20private%20reason',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: {
+        code: 'SMART_LAUNCH_DENIED',
+        message: 'SMART launch was denied by the EHR authorization server',
+      },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'ehr_smart_callback_failed',
+      'ehr_smart_launch',
+      undefined,
+      {
+        status: 400,
+        code: 'SMART_LAUNCH_DENIED',
+        smartErrorKnown: false,
+      },
+    );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('patient_denied_with_context');
+    expect(auditDetails).not.toContain('private reason');
     await app.close();
   });
 

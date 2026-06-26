@@ -19,6 +19,8 @@ Auth/security continuation on 2026-06-26 tightened the route-level audit trail a
 
 Follow-up non-EMPI mutation audit hardening on 2026-06-26 closes another route-level discipline gap. CDS feedback now records aggregate accepted/overridden counts through the route audit helper; admin measure refresh no longer bypasses request audit metadata with a direct `audit_log` insert; and clinical-note, generated order, cohort message, population-finder accept, MTM advance, auto-order disenroll, invite, and refresh-token audit details have been reduced to aggregate/bound flags instead of patient, care-gap, order-set, provider, diagnosis, note-content, session, or invite identifiers. Focused regression coverage passes across orders, population finder, auth, clinical notes, CDS feedback, admin refresh, and the problem-list bulk service; full follow-up typecheck, lint, test, build, and diff-check gates pass.
 
+Follow-up EHR audit redaction on 2026-06-26 removes the remaining high-risk EHR audit payload fields identified in the current non-EMPI audit pass. Backend token checks and Bulk cancellations now audit token metadata presence instead of token metadata ids; SMART launch start audits session creation instead of a launch session id; SMART callback denial audit and response handling no longer persist provider-supplied denial text; and EHR sync alert dispatch audit details use endpoint/error presence flags instead of webhook endpoint hosts or raw webhook/network error strings. Focused EHR validation passes across admin, launch, sync-alert, and System Health tests; full root typecheck, lint, test, build, and diff-check gates pass.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
@@ -798,6 +800,12 @@ Focused non-EMPI mutation audit validation on 2026-06-26:
 - Coverage includes CDS feedback aggregate audit details, admin measure refresh request-helper audit use, generated-order and population-finder PHI-safe audit summaries, and the already hardened auth/session and clinical-note audit details.
 - Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 901 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests.
 - Release `0e82fb3` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, public health returned healthy, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, local `HEAD` matched `origin/main`, and production migration dry-run reported 91 applied migrations with none pending.
+
+Focused EHR audit redaction validation on 2026-06-26:
+
+- `npm run test --workspace=apps/api -- src/routes/ehr/admin.test.ts src/routes/ehr/launch.test.ts src/services/ehr/syncAlerts.test.ts src/services/systemHealth.test.ts` passed 4 files and 68 tests.
+- Coverage includes backend token-check audit details, Bulk cancel audit details, SMART launch-start and callback-denial audit details, and sync-alert dispatch audit details.
+- Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 903 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests.
 
 Focused EHR tests covered during the EHR foundation tranche:
 

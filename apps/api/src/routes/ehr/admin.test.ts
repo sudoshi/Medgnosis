@@ -811,9 +811,11 @@ describe('EHR admin routes', () => {
         scopeCount: 2,
         tokenType: 'Bearer',
         expiresAt: '2026-06-18T13:10:00.000Z',
-        tokenMetadataId: '00000000-0000-4000-8000-000000000088',
+        tokenMetadataPersisted: true,
       }),
     );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('00000000-0000-4000-8000-000000000088');
     const serialized = JSON.stringify(res.json());
     expect(serialized).not.toContain('raw-token-value');
     expect(serialized).not.toContain('EHR_BACKEND_PRIVATE_KEY_PEM');
@@ -888,10 +890,14 @@ describe('EHR admin routes', () => {
         orgId: 7,
         authMethod: 'client_secret_basic',
         errorCode: 'backend_token_request_failed',
+        errorPresent: true,
+        errorClass: 'BackendServicesError',
+        statusCode: 502,
       }),
     );
     const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
     expect(auditDetails).not.toContain('EHR_BACKEND_CLIENT_SECRET');
+    expect(auditDetails).not.toContain('Token endpoint rejected the request');
     await app.close();
   });
 
@@ -1327,11 +1333,14 @@ describe('EHR admin routes', () => {
         orgId: 7,
         vendor: 'epic',
         environment: 'sandbox',
+        errorPresent: true,
+        statusCode: 502,
       }),
     );
     const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
     expect(auditDetails).not.toContain('client-secret');
     expect(auditDetails).not.toContain('Bearer ');
+    expect(auditDetails).not.toContain('fetch');
     await app.close();
   });
 
@@ -2075,9 +2084,11 @@ describe('EHR admin routes', () => {
       expect.objectContaining({
         tenantId: 42,
         status: 'canceled',
-        tokenMetadataId: '00000000-0000-4000-8000-000000000087',
+        tokenMetadataPersisted: true,
       }),
     );
+    const auditDetails = JSON.stringify(mockAuditLog.mock.calls[0]?.[3]);
+    expect(auditDetails).not.toContain('00000000-0000-4000-8000-000000000087');
     await app.close();
   });
 

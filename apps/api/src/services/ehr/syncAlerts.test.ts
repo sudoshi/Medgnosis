@@ -32,6 +32,7 @@ vi.mock('./fhirRequestAudit.js', () => ({ getTenantFhirFailureEvidence: mockGetT
 import {
   buildEhrSyncAlertSnapshot,
   dispatchEhrSyncAlertSnapshot,
+  ehrSyncAlertAuditDetails,
   getEhrSyncAlertingStatus,
 } from './syncAlerts.js';
 
@@ -161,6 +162,44 @@ describe('dispatchEhrSyncAlertSnapshot', () => {
       statusCode: 503,
       error: 'Webhook returned HTTP 503',
     });
+  });
+
+  it('builds PHI-safe dispatch audit details without endpoint hosts or raw errors', () => {
+    const details = ehrSyncAlertAuditDetails(
+      {
+        status: 'failed',
+        reason: 'webhook_failed',
+        enabled: true,
+        configured: true,
+        endpointHost: 'ops.example',
+        generatedAt: '2026-06-25T22:00:00.000Z',
+        tenantCount: 1,
+        issueCount: 3,
+        criticalIssueCount: 1,
+        warningIssueCount: 2,
+        statusCode: 503,
+        error: 'Webhook returned HTTP 503',
+      },
+      'manual',
+    );
+
+    expect(details).toEqual({
+      status: 'failed',
+      reason: 'webhook_failed',
+      enabled: true,
+      configured: true,
+      endpointConfigured: true,
+      tenantCount: 1,
+      issueCount: 3,
+      criticalIssueCount: 1,
+      warningIssueCount: 2,
+      statusCode: 503,
+      errorPresent: true,
+      triggeredBy: 'manual',
+    });
+    const serialized = JSON.stringify(details);
+    expect(serialized).not.toContain('ops.example');
+    expect(serialized).not.toContain('Webhook returned');
   });
 });
 

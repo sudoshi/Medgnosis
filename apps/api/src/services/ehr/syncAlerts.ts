@@ -305,13 +305,13 @@ export function ehrSyncAlertAuditDetails(
     reason: result.reason,
     enabled: result.enabled,
     configured: result.configured,
-    endpointHost: result.endpointHost,
+    endpointConfigured: result.endpointHost !== null,
     tenantCount: result.tenantCount,
     issueCount: result.issueCount,
     criticalIssueCount: result.criticalIssueCount,
     warningIssueCount: result.warningIssueCount,
     ...(result.statusCode === undefined ? {} : { statusCode: result.statusCode }),
-    ...(result.error ? { error: result.error } : {}),
+    ...(result.error ? { errorPresent: true } : {}),
     triggeredBy,
   };
 }

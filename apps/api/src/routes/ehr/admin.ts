@@ -488,7 +488,7 @@ async function sendTenantBackendTokenCheck(
       scopeCount,
       tokenType: result.accessToken.tokenType,
       expiresAt: result.accessToken.expiresAt ?? null,
-      tokenMetadataId: result.tokenMetadata?.id ?? null,
+      tokenMetadataPersisted: Boolean(result.tokenMetadata?.id),
     });
 
     return reply.send({
@@ -514,7 +514,7 @@ async function sendTenantBackendTokenCheck(
       orgId: tenant.orgId,
       authMethod: config.authMethod,
       errorCode: code,
-      error: errorMessage(error),
+      ...safeErrorAuditDetails(error, statusCode),
     });
     return reply.status(statusCode).send({
       success: false,
@@ -611,7 +611,7 @@ async function sendTenantDiagnostics(
       orgId: tenant.orgId,
       vendor: tenant.vendor,
       environment: tenant.environment,
-      error: errorMessage(error),
+      ...safeErrorAuditDetails(error, 502),
     });
     return reply.status(502).send({
       success: false,
@@ -1139,7 +1139,7 @@ async function sendTenantBulkJobCancel(
     tenantId: tenant.id,
     orgId: tenant.orgId,
     status: bulkCancel.job.status,
-    tokenMetadataId: bulkCancel.tokenMetadataId ?? null,
+    tokenMetadataPersisted: Boolean(bulkCancel.tokenMetadataId),
   });
 
   return reply.send({
@@ -1992,4 +1992,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.length > 0
     ? error.message
     : 'Unable to run EHR discovery diagnostics';
+}
+
+function safeErrorAuditDetails(error: unknown, statusCode?: number): Record<string, unknown> {
+  const errorClass = error instanceof Error && error.name.length > 0
+    ? error.name
+    : typeof error;
+
+  return {
+    errorPresent: true,
+    errorClass,
+    ...(statusCode === undefined ? {} : { statusCode }),
+  };
 }

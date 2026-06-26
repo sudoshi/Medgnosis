@@ -184,6 +184,14 @@ devlogs do not override the current codebase state.
   files and 136 tests; full follow-up gates also passed with API 117 files/901
   tests, web 27 files/47 tests, shared 43 tests, Solr 18 tests, and one skipped
   API smoke.
+- Follow-up continuation tightened EHR-specific audit redaction. Backend token
+  checks and Bulk cancellations no longer persist token metadata ids in
+  `audit_log`; SMART launch start no longer persists launch session ids; SMART
+  callback denials no longer persist provider-supplied error text; and EHR sync
+  alert dispatch audit details no longer persist webhook endpoint hosts or raw
+  dispatch error strings. Focused EHR validation passed 4 API files and 68
+  tests; full follow-up gates passed with API 117 files/903 tests, web 27
+  files/47 tests, shared 43 tests, Solr 18 tests, and one skipped API smoke.
 - Follow-up production checkpoint on 2026-06-26 deployed non-EMPI mutation audit
   hardening release `0e82fb3`; the deploy script passed, all three production
   services were active, production migration dry-run reported 91 applied
