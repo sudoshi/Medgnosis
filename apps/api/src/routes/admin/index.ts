@@ -33,6 +33,7 @@ import {
   promoteMeasureToCqlAuthoritative,
   MeasurePromotionError,
   type MeasurePromotionMode,
+  type PromoteMeasureToCqlAuthoritativeResult,
 } from '../../services/measureReconciliation.js';
 import {
   generateMeasureSemanticDriftDossier,
@@ -176,7 +177,18 @@ function optionalEnum<T extends string>(
 }
 
 function mapMeasurePromotionError(err: unknown, reply: FastifyReply) {
-  if (err instanceof MeasurePromotionError || err instanceof MeasureSemanticDriftError) {
+  if (err instanceof MeasurePromotionError) {
+    const details = safePromotionErrorDetails(err.details);
+    return reply.status(err.statusCode).send({
+      success: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(Object.keys(details).length > 0 ? { details } : {}),
+      },
+    });
+  }
+  if (err instanceof MeasureSemanticDriftError) {
     return reply.status(err.statusCode).send({
       success: false,
       error: {
@@ -191,6 +203,173 @@ function mapMeasurePromotionError(err: unknown, reply: FastifyReply) {
     success: false,
     error: { code: 'PROMOTION_GOVERNANCE_FAILED', message },
   });
+}
+
+interface PromotionAttemptAuditInput {
+  measureCode: string;
+  reconciliationRunId: number;
+  measureReportId: number;
+  qdmRunId?: string | null;
+  dryRunRequested?: boolean;
+  requireFullPopulation?: boolean;
+  statementTimeoutMs?: number;
+}
+
+function promotionAttemptBaseAuditDetails(input: PromotionAttemptAuditInput): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    measureCode: input.measureCode,
+    reconciliationRunId: input.reconciliationRunId,
+    measureReportId: input.measureReportId,
+    qdmRunIdPresent: typeof input.qdmRunId === 'string' && input.qdmRunId.trim().length > 0,
+    dryRunRequested: input.dryRunRequested === true,
+    requireFullPopulation: input.requireFullPopulation !== false,
+  };
+  if (input.statementTimeoutMs !== undefined) details.statementTimeoutMs = input.statementTimeoutMs;
+  return details;
+}
+
+function promotionCoverageAuditDetails(
+  coverage: PromoteMeasureToCqlAuthoritativeResult['coverage'] | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!coverage) return undefined;
+  return {
+    evidenceRowsSeen: Number(coverage.evidenceRowsSeen ?? 0),
+    evidenceRowsPromotable: Number(coverage.evidenceRowsPromotable ?? 0),
+    distinctPatientKeys: Number(coverage.distinctPatientKeys ?? 0),
+    distinctMeasureKeys: Number(coverage.distinctMeasureKeys ?? 0),
+    expectedInitialPopulation: coverage.expectedInitialPopulation ?? null,
+  };
+}
+
+function promotionMaterializationAuditDetails(
+  materialization: PromoteMeasureToCqlAuthoritativeResult['materialization'] | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!materialization) return undefined;
+  return {
+    measureReportId: Number(materialization.measureReportId),
+    source: materialization.source,
+    evaluationScope: materialization.evaluationScope,
+    evidenceRowsSeen: Number(materialization.evidenceRowsSeen),
+    evidenceRowsPromoted: Number(materialization.evidenceRowsPromoted),
+    evidenceRowsSkipped: Number(materialization.evidenceRowsSkipped),
+    resultRowsUpserted: Number(materialization.resultRowsUpserted),
+    selectedEvidenceRows: Number(materialization.qdmEvidenceSelected),
+    bridgeRowsUpserted: Number(materialization.bridgeRowsUpserted),
+    factEvidenceRowsUpserted: Number(materialization.factEvidenceRowsUpserted),
+  };
+}
+
+function promotionSuccessAuditDetails(input: PromotionAttemptAuditInput & {
+  promotion: PromoteMeasureToCqlAuthoritativeResult;
+}): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    ...promotionAttemptBaseAuditDetails(input),
+    status: input.promotion.dryRun ? 'dry_run' : 'promoted',
+    rowsPromoted: input.promotion.rowsPromoted,
+    promotionMode: input.promotion.config?.promotionMode,
+    authoritativeSource: input.promotion.config?.authoritativeSource,
+    evaluatorSource: input.promotion.config?.evaluatorSource,
+  };
+  const coverage = promotionCoverageAuditDetails(input.promotion.coverage);
+  const materialization = promotionMaterializationAuditDetails(input.promotion.materialization);
+  if (coverage) details.coverage = coverage;
+  if (materialization) details.materialization = materialization;
+  return details;
+}
+
+function promotionFailureAuditDetails(input: PromotionAttemptAuditInput & {
+  err: unknown;
+}): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    ...promotionAttemptBaseAuditDetails(input),
+    status: 'failed',
+  };
+  if (input.err instanceof MeasurePromotionError || input.err instanceof MeasureSemanticDriftError) {
+    details.errorCode = input.err.code;
+    details.httpStatus = input.err.statusCode;
+    const errorDetails = safePromotionErrorDetails(input.err.details);
+    if (Object.keys(errorDetails).length > 0) details.errorDetails = errorDetails;
+  } else {
+    details.errorCode = 'PROMOTION_GOVERNANCE_FAILED';
+    details.httpStatus = 500;
+  }
+  return details;
+}
+
+function safePromotionErrorDetails(details?: Record<string, unknown>): Record<string, unknown> {
+  if (!details) return {};
+  const sanitized: Record<string, unknown> = {};
+  copyStringDetail(sanitized, details, 'evaluationScope');
+  copyStringDetail(sanitized, details, 'status');
+  copyStringDetail(sanitized, details, 'reportMeasureCode');
+  copyStringDetail(sanitized, details, 'measureCode');
+  copyStringDetail(sanitized, details, 'reportType');
+  copyBooleanDetail(sanitized, details, 'promotionEligible');
+  copyBooleanDetail(sanitized, details, 'agree');
+  copyNumberDetail(sanitized, details, 'configuredArtifactId');
+  copyNumberDetail(sanitized, details, 'latestArtifactId');
+  copyNumberDetail(sanitized, details, 'runArtifactId');
+  copyNumberDetail(sanitized, details, 'reconciliationMeasureReportId');
+  copyNumberDetail(sanitized, details, 'measureReportId');
+  copyNumberDetail(sanitized, details, 'tolerance');
+  copyNumberDetail(sanitized, details, 'evidenceRowsSeen');
+  copyNumberDetail(sanitized, details, 'evidenceRowsPromotable');
+  copyNumberDetail(sanitized, details, 'distinctPatientKeys');
+  copyNumberDetail(sanitized, details, 'distinctMeasureKeys');
+  copyNullableNumberDetail(sanitized, details, 'expectedInitialPopulation');
+  copyPopulationCountsDetail(sanitized, details, 'deltas');
+  copyPopulationCountsDetail(sanitized, details, 'reportCounts');
+  copyPopulationCountsDetail(sanitized, details, 'runCqlCounts');
+  copyPeriodDetail(sanitized, details, 'reportPeriod');
+  copyPeriodDetail(sanitized, details, 'reconciliationPeriod');
+  return sanitized;
+}
+
+function copyStringDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (typeof value === 'string') target[key] = value;
+}
+
+function copyBooleanDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (typeof value === 'boolean') target[key] = value;
+}
+
+function copyNumberDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (typeof value === 'number' && Number.isFinite(value)) target[key] = value;
+}
+
+function copyNullableNumberDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (value === null) {
+    target[key] = null;
+    return;
+  }
+  copyNumberDetail(target, source, key);
+}
+
+function copyPopulationCountsDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  const record = value as Record<string, unknown>;
+  const counts: Record<string, number> = {};
+  for (const countKey of ['denominator', 'numerator', 'exclusion'] as const) {
+    if (typeof record[countKey] === 'number' && Number.isFinite(record[countKey])) {
+      counts[countKey] = record[countKey];
+    }
+  }
+  if (Object.keys(counts).length > 0) target[key] = counts;
+}
+
+function copyPeriodDetail(target: Record<string, unknown>, source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  const record = value as Record<string, unknown>;
+  const period: Record<string, string> = {};
+  if (typeof record.start === 'string') period.start = record.start;
+  if (typeof record.end === 'string') period.end = record.end;
+  if (Object.keys(period).length > 0) target[key] = period;
 }
 
 async function isLastActiveSuperAdmin(userId: string): Promise<boolean> {
@@ -1038,6 +1217,15 @@ export default async function adminRoutes(app: FastifyInstance) {
         error: { code: 'BAD_REQUEST', message: 'statementTimeoutMs must be a positive integer' },
       });
     }
+    const attemptAuditInput: PromotionAttemptAuditInput = {
+      measureCode,
+      reconciliationRunId,
+      measureReportId,
+      qdmRunId: body.qdmRunId,
+      dryRunRequested: body.dryRun,
+      requireFullPopulation: body.requireFullPopulation,
+      statementTimeoutMs: parsedStatementTimeoutMs ?? undefined,
+    };
 
     try {
       const promotion = await promoteMeasureToCqlAuthoritative({
@@ -1050,6 +1238,12 @@ export default async function adminRoutes(app: FastifyInstance) {
         requireFullPopulation: body.requireFullPopulation,
         statementTimeoutMs: parsedStatementTimeoutMs ?? undefined,
       });
+      await req.auditLog(
+        'measure_promotion_cql_authoritative_attempt',
+        'measure_promotion_config',
+        measureCode,
+        promotionSuccessAuditDetails({ ...attemptAuditInput, promotion }),
+      );
       if (!promotion.dryRun) {
         await req.auditLog('measure_promotion_cql_authoritative', 'measure_promotion_config', measureCode, {
           reconciliationRunId,
@@ -1059,6 +1253,19 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
       return reply.send({ success: true, data: { promotion } });
     } catch (err) {
+      try {
+        await req.auditLog(
+          'measure_promotion_cql_authoritative_attempt',
+          'measure_promotion_config',
+          measureCode,
+          promotionFailureAuditDetails({ ...attemptAuditInput, err }),
+        );
+      } catch (auditErr) {
+        req.log.error(
+          { err: auditErr, measureCode, reconciliationRunId, measureReportId },
+          'Failed to write measure promotion failure audit',
+        );
+      }
       return mapMeasurePromotionError(err, reply);
     }
   });

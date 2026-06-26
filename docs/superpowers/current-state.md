@@ -108,14 +108,16 @@ devlogs do not override the current codebase state.
 - Follow-up continuation added PHI-safe failed FHIR read/search and backend-token
   request audit rows plus EHR sync-alert summaries for FHIR 401/403/429, backend
   token auth failures, rate-limit spikes, and repeated FHIR network failures.
+- This continuation adds PHI-safe QDM/CQL promotion attempt audits for validated
+  dry-run, promoted, and failed CQL-authoritative promotion requests, with
+  aggregate-only coverage, materialization, and guardrail-failure metadata.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
   for tenant-specific patient-detail needs, exercised Bulk replay/dead-letter
-  incident evidence, vendor sandbox evidence, QDM-promotion audit coverage, a
-  configured external alert destination, and live stale-data/Bulk incident
-  evidence using the new runbook.
+  incident evidence, vendor sandbox evidence, a configured external alert
+  destination, and live stale-data/Bulk incident evidence using the new runbook.
 
 ## First Implementation Priorities
 

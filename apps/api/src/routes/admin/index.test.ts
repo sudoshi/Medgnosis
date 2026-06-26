@@ -810,10 +810,39 @@ describe('admin measure promotion governance routes', () => {
   it('promotes a measure to CQL authoritative and audits non-dry runs', async () => {
     mockPromote.mockResolvedValueOnce({
       measureCode: 'CMS122v12',
+      measureArtifactId: 1201,
       reconciliationRunId: 7001,
       measureReportId: 9001,
       dryRun: false,
       rowsPromoted: 1,
+      coverage: {
+        evidenceRowsSeen: 4,
+        evidenceRowsPromotable: 4,
+        distinctPatientKeys: 4,
+        distinctMeasureKeys: 1,
+        expectedInitialPopulation: 4,
+      },
+      materialization: {
+        measureReportId: 9001,
+        source: 'qdm-cql',
+        evaluationScope: 'full_population',
+        evidenceRowsSeen: 4,
+        evidenceRowsPromoted: 4,
+        evidenceRowsSkipped: 0,
+        resultRowsUpserted: 1,
+        qdmEvidenceSelected: 8,
+        bridgeRowsUpserted: 4,
+        factEvidenceRowsUpserted: 8,
+      },
+      config: {
+        measureCode: 'CMS122v12',
+        measureArtifactId: 1201,
+        promotionMode: 'cql_authoritative',
+        tolerance: 0,
+        evaluatorSource: 'qdm-cql',
+        authoritativeSource: 'qdm-cql',
+        requireReconciliationAgreement: true,
+      },
     });
     const app = await buildApp();
 
@@ -843,11 +872,111 @@ describe('admin measure promotion governance routes', () => {
       statementTimeoutMs: undefined,
     });
     expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_promotion_cql_authoritative_attempt',
+      'measure_promotion_config',
+      'CMS122v12',
+      expect.objectContaining({
+        status: 'promoted',
+        reconciliationRunId: 7001,
+        measureReportId: 9001,
+        rowsPromoted: 1,
+        qdmRunIdPresent: false,
+        dryRunRequested: false,
+        requireFullPopulation: true,
+        coverage: expect.objectContaining({
+          evidenceRowsSeen: 4,
+          evidenceRowsPromotable: 4,
+          distinctPatientKeys: 4,
+          distinctMeasureKeys: 1,
+          expectedInitialPopulation: 4,
+        }),
+        materialization: expect.objectContaining({
+          evidenceRowsPromoted: 4,
+          resultRowsUpserted: 1,
+          factEvidenceRowsUpserted: 8,
+        }),
+      }),
+    );
+    const attemptAudit = mockAuditLog.mock.calls.find(
+      ([action]) => action === 'measure_promotion_cql_authoritative_attempt',
+    )?.[3] as Record<string, unknown>;
+    expect(JSON.stringify(attemptAudit)).not.toMatch(/qdmEvidence|fhirSubjectReport|qdmEventId|Patient\//);
+    expect(mockAuditLog).toHaveBeenCalledWith(
       'measure_promotion_cql_authoritative',
       'measure_promotion_config',
       'CMS122v12',
       expect.objectContaining({ reconciliationRunId: 7001, measureReportId: 9001, rowsPromoted: 1 }),
     );
+    await app.close();
+  });
+
+  it('audits CQL promotion dry-run attempts without legacy authoritative audit rows', async () => {
+    mockPromote.mockResolvedValueOnce({
+      measureCode: 'CMS122v12',
+      measureArtifactId: 1201,
+      reconciliationRunId: 7001,
+      measureReportId: 9001,
+      dryRun: true,
+      rowsPromoted: 0,
+      coverage: {
+        evidenceRowsSeen: 4,
+        evidenceRowsPromotable: 4,
+        distinctPatientKeys: 4,
+        distinctMeasureKeys: 1,
+        expectedInitialPopulation: 4,
+      },
+      materialization: null,
+      config: {
+        measureCode: 'CMS122v12',
+        measureArtifactId: 1201,
+        promotionMode: 'cql_shadow',
+        tolerance: 0,
+        evaluatorSource: 'qdm-cql',
+        authoritativeSource: 'sql_bundle',
+        requireReconciliationAgreement: true,
+      },
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/promote-cql-authoritative',
+      payload: {
+        reconciliationRunId: 7001,
+        measureReportId: 9001,
+        qdmRunId: '11111111-1111-4111-8111-111111111111',
+        dryRun: true,
+        statementTimeoutMs: 15_000,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { promotion: { measureCode: 'CMS122v12', dryRun: true, rowsPromoted: 0 } },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_promotion_cql_authoritative_attempt',
+      'measure_promotion_config',
+      'CMS122v12',
+      expect.objectContaining({
+        status: 'dry_run',
+        reconciliationRunId: 7001,
+        measureReportId: 9001,
+        qdmRunIdPresent: true,
+        dryRunRequested: true,
+        requireFullPopulation: true,
+        statementTimeoutMs: 15_000,
+        rowsPromoted: 0,
+      }),
+    );
+    const attemptAudit = mockAuditLog.mock.calls.find(
+      ([action]) => action === 'measure_promotion_cql_authoritative_attempt',
+    )?.[3] as Record<string, unknown>;
+    expect(JSON.stringify(attemptAudit)).not.toMatch(/qdmEvidence|fhirSubjectReport|qdmEventId|Patient\//);
+    expect(
+      mockAuditLog.mock.calls.some(([action]) => action === 'measure_promotion_cql_authoritative'),
+    ).toBe(false);
     await app.close();
   });
 
@@ -1179,9 +1308,18 @@ describe('admin measure promotion governance routes', () => {
   it('maps promotion governance errors into API error envelopes', async () => {
     mockPromote.mockRejectedValueOnce(
       new MockMeasurePromotionError(
-        'RECONCILIATION_NOT_ACCEPTED',
-        'Only accepted reconciliation runs can promote CQL results',
+        'INCOMPLETE_MEASURE_REPORT_EVIDENCE',
+        'All MeasureReport evidence rows must resolve patient, measure, and period dimensions before promotion',
         409,
+        {
+          evidenceRowsSeen: 4,
+          evidenceRowsPromotable: 3,
+          distinctPatientKeys: 4,
+          distinctMeasureKeys: 1,
+          expectedInitialPopulation: 4,
+          qdmEvidence: [{ patientId: 123, qdmEventId: 'secret-event' }],
+          fhirSubjectReport: { subject: 'Patient/secret' },
+        },
       ),
     );
     const app = await buildApp();
@@ -1195,9 +1333,83 @@ describe('admin measure promotion governance routes', () => {
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({
       success: false,
-      error: { code: 'RECONCILIATION_NOT_ACCEPTED' },
+      error: {
+        code: 'INCOMPLETE_MEASURE_REPORT_EVIDENCE',
+        details: {
+          evidenceRowsSeen: 4,
+          evidenceRowsPromotable: 3,
+          distinctPatientKeys: 4,
+          distinctMeasureKeys: 1,
+          expectedInitialPopulation: 4,
+        },
+      },
     });
-    expect(mockAuditLog).not.toHaveBeenCalled();
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_promotion_cql_authoritative_attempt',
+      'measure_promotion_config',
+      'CMS122v12',
+      expect.objectContaining({
+        status: 'failed',
+        reconciliationRunId: 7001,
+        measureReportId: 9001,
+        errorCode: 'INCOMPLETE_MEASURE_REPORT_EVIDENCE',
+        httpStatus: 409,
+        errorDetails: expect.objectContaining({
+          evidenceRowsSeen: 4,
+          evidenceRowsPromotable: 3,
+          distinctPatientKeys: 4,
+          distinctMeasureKeys: 1,
+          expectedInitialPopulation: 4,
+        }),
+      }),
+    );
+    const attemptAudit = mockAuditLog.mock.calls.find(
+      ([action]) => action === 'measure_promotion_cql_authoritative_attempt',
+    )?.[3] as Record<string, unknown>;
+    expect(JSON.stringify(attemptAudit)).not.toMatch(/qdmEvidence|fhirSubjectReport|qdmEventId|Patient\/|patientId/);
+    expect(JSON.stringify(res.json().error.details)).not.toMatch(
+      /qdmEvidence|fhirSubjectReport|qdmEventId|Patient\/|patientId/,
+    );
+    await app.close();
+  });
+
+  it('preserves promotion governance errors when failure audit logging fails', async () => {
+    mockPromote.mockRejectedValueOnce(
+      new MockMeasurePromotionError(
+        'RECONCILIATION_NOT_ACCEPTED',
+        'Only accepted reconciliation runs can promote CQL results',
+        409,
+        { status: 'drift', agree: false, deltas: { denominator: 1, numerator: 0, exclusion: 0 }, tolerance: 0 },
+      ),
+    );
+    mockAuditLog.mockRejectedValueOnce(new Error('audit store unavailable'));
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/promote-cql-authoritative',
+      payload: { reconciliationRunId: 7001, measureReportId: 9001 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: {
+        code: 'RECONCILIATION_NOT_ACCEPTED',
+        details: {
+          status: 'drift',
+          agree: false,
+          deltas: { denominator: 1, numerator: 0, exclusion: 0 },
+          tolerance: 0,
+        },
+      },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_promotion_cql_authoritative_attempt',
+      'measure_promotion_config',
+      'CMS122v12',
+      expect.objectContaining({ status: 'failed', errorCode: 'RECONCILIATION_NOT_ACCEPTED' }),
+    );
     await app.close();
   });
 
