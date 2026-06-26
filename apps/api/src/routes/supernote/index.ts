@@ -37,7 +37,15 @@ export default async function superNoteRoutes(fastify: FastifyInstance): Promise
       parsed.data.ap as ApEntry[],
     );
 
-    await request.auditLog('finalize', 'supernote', result.note_id, { coded: result.coded });
+    // Finalization here is an EXPLICIT clinician action (this POST route). Assembly
+    // (GET /:patientId) never reaches finalizeSuperNote, so a note can never auto-sign.
+    await request.auditLog('finalize', 'supernote', result.note_id, {
+      coded: result.coded,
+      patient_bound: true,
+      deterministic: true,
+      ai_generated: false,
+      finalized_by: 'clinician',
+    });
     return reply.send({ success: true, data: result });
   });
 }
