@@ -894,6 +894,68 @@ describe('admin user invitation routes', () => {
     expect(mockAuditLog).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it('audits admin user profile updates without email or name details', async () => {
+    const updatedUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'updated@example.test',
+      first_name: 'Updated',
+      last_name: 'User',
+      role: 'analyst',
+      is_active: true,
+    };
+    mockSql.mockResolvedValueOnce([updatedUser]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${updatedUser.id}`,
+      payload: { first_name: 'Updated' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'user_update',
+      'app_user',
+      updatedUser.id,
+      {
+        role_changed: false,
+        is_active_changed: false,
+        profile_changed: true,
+        role: 'analyst',
+        is_active: true,
+      },
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('updated@example.test');
+    await app.close();
+  });
+
+  it('audits admin user deactivation without email details', async () => {
+    const deactivatedUser = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'deactivated@example.test',
+      is_active: false,
+    };
+    mockSql
+      .mockResolvedValueOnce([{ role: 'analyst', is_active: true }])
+      .mockResolvedValueOnce([deactivatedUser]);
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/users/${deactivatedUser.id}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'user_deactivate',
+      'app_user',
+      deactivatedUser.id,
+      { is_active: false },
+    );
+    expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('deactivated@example.test');
+    await app.close();
+  });
 });
 
 describe('admin measure promotion governance routes', () => {

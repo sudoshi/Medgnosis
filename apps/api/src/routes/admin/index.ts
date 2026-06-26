@@ -937,6 +937,13 @@ export default async function adminRoutes(app: FastifyInstance) {
     `;
 
     if (!updated) return reply.status(404).send({ success: false, error: { message: 'User not found' } });
+    await req.auditLog('user_update', 'app_user', String(updated.id ?? id), {
+      role_changed: role !== undefined,
+      is_active_changed: is_active !== undefined,
+      profile_changed: first_name !== undefined || last_name !== undefined,
+      role: updated.role,
+      is_active: updated.is_active,
+    });
     return { success: true, data: { user: updated } };
   });
 
@@ -959,6 +966,9 @@ export default async function adminRoutes(app: FastifyInstance) {
     `;
 
     if (!updated) return reply.status(404).send({ success: false, error: { message: 'User not found' } });
+    await req.auditLog('user_deactivate', 'app_user', String(updated.id ?? id), {
+      is_active: updated.is_active,
+    });
     return { success: true, data: { user: updated } };
   });
 

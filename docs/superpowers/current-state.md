@@ -148,6 +148,9 @@ devlogs do not override the current codebase state.
   coverage for denied groups, active analyst/admin JIT creation, inactive mapped
   account denial, additive admin promotion, super-admin preservation, and email
   alias linking.
+- Follow-up continuation closed another admin audit gap: admin user profile
+  updates and user deactivation now emit PHI-light audit rows with role/active
+  state and changed-field categories rather than email or name details.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

@@ -148,7 +148,7 @@ Objective: make authentication and admin controls production-honest.
   - [x] Add explicit revoke-invite endpoint and pending invite status/admin UX.
   - [x] Add password reset and forced password-change workflows.
   - [x] Ensure admin-created users cannot log in until activation is complete.
-- [ ] Harden OIDC/provider admin.
+- [x] Harden OIDC/provider admin.
   - [x] Keep local login fallback unless explicitly disabled by env and documented.
   - [x] Either implement test flows for LDAP/OAuth2/SAML provider types or hide/disable those types until supported.
   - [x] Add provider health and last-test evidence to System Health.
@@ -172,6 +172,7 @@ Objective: make authentication and admin controls production-honest.
   - [x] Confirm EHR tenant mutation routes and worker-adjacent EHR controls emit PHI-safe audit rows.
   - [x] Add PHI-safe audit coverage for EHR QDM/CQL load actions and redaction proof for diagnostics/test-connection and patient-level Bulk controls.
   - [x] Add audit entries or coverage proof for auth provider changes.
+  - [x] Add PHI-light audit entries for admin user profile updates and deactivation.
   - [x] Add focused API PHI redaction regression tests for Pino structured logging and Sentry error telemetry paths.
 - [x] Tighten production headers and CSP.
   - [x] Review `apps/api/src/app.ts` CSP settings.
