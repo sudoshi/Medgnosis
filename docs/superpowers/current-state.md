@@ -214,6 +214,11 @@ devlogs do not override the current codebase state.
   CI. `npm run test:e2e:release --workspace=apps/web` runs the role workflow and
   admin operational smoke specs before the full web E2E suite on `main` pushes,
   proving at least one role-based happy path and one admin operational path.
+- Follow-up continuation added local structural reporting validation to CI. The
+  new Reporting Conformance job runs `./scripts/qrda-validate.sh` and
+  `./scripts/qpp-validate.sh` for deterministic QRDA Cat I/Cat III XML and QPP
+  JSON fixtures; official Cypress CVU+ and QPP sandbox/API validation remain
+  opt-in until external tools and credentials are configured.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

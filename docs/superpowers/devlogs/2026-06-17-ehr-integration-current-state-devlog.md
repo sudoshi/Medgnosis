@@ -43,6 +43,8 @@ Follow-up admin contract work on 2026-06-26 hardens `POST /api/admin/omop/cohort
 
 Follow-up CI release-smoke work on 2026-06-26 adds `npm run test:e2e:release --workspace=apps/web` for the role workflow and admin operational Playwright specs, then wires that command into `.github/workflows/ci.yml` before the full web E2E suite on `main` pushes. This makes the Phase 1 CI acceptance gate explicit: CI now proves at least one role-based happy path and one admin operational path without requiring production credentials or live vendor diagnostics.
 
+Follow-up reporting-conformance work on 2026-06-26 adds a CI job for the existing QRDA/QPP local structural validators. The job runs deterministic QRDA Cat I/Cat III XML generation plus local XML checks and QPP JSON generation plus local schema-shape checks. Official Cypress CVU+ and QPP sandbox/API validation are still intentionally opt-in through `QRDA_CVU_CAT1_CMD`, `QRDA_CVU_CAT3_CMD`, and `QPP_VALIDATE_CMD`.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:

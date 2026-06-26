@@ -110,6 +110,23 @@ jobs:
       - name: Validate DEQM Gaps-in-Care sample against DEQM 5.0.0 (errors fail the build)
         run: ./scripts/deqm-validate.sh
 
+  reporting-conformance:
+    name: Reporting Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Validate QRDA Cat I/Cat III local structural fixtures
+        run: ./scripts/qrda-validate.sh
+      - name: Validate QPP JSON local structural fixture
+        run: ./scripts/qpp-validate.sh
+
   build:
     name: Build
     runs-on: ubuntu-latest

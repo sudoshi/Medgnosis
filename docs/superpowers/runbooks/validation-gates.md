@@ -182,6 +182,10 @@ Current scope:
 - CI runs `npm run test:e2e:release --workspace=apps/web`, which explicitly
   covers `role-workflows.spec.ts` and `admin-release-smoke.spec.ts`, before the
   full web E2E suite on `main` pushes.
+- CI runs a Reporting Conformance job for local QRDA Cat I/Cat III structural
+  validation and QPP JSON structural validation. Official Cypress CVU+ and QPP
+  sandbox/API checks remain opt-in through external command environment
+  variables.
 - API admin route contract coverage includes the non-EMPI OMOP de-identified
   cohort POST path with invalid-input rejection and PHI-safe aggregate audit
   details.
@@ -233,9 +237,9 @@ Before a release or handoff, record:
 
 ## Known Gaps To Close
 
-- Local QRDA/QPP fixture and structural validation scripts now exist; official
-  QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API validation
-  still require the external validator/runtime and credentials.
+- Local QRDA/QPP fixture and structural validation scripts now run in CI;
+  official QRDA Cat I/Cat III Cypress CVU+ validation and QPP sandbox/API
+  validation still require the external validator/runtime and credentials.
 - Expand Playwright beyond current login, MFA, invite, settings,
   protected-route smoke, role-boundary, provider, analyst, admin, and
   super-admin workflows.
