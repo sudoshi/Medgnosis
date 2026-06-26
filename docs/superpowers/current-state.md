@@ -46,8 +46,9 @@ devlogs do not override the current codebase state.
   PHI-safe automated Bulk worker audit, automatic import enqueue on completion,
   manual completed-job import replay, failed-file-only resume, active-job
   cancellation, tenant-specific recurring Bulk schedules, optional manifest
-  checksum/size validation, Bulk Patient EMPI/crosswalk seeding, and admin Bulk
-  job/file/schedule visibility with worker failure/overdue-poll sync metrics.
+  checksum/size validation, Bulk deleted-output tombstone processing for
+  crosswalk-mapped EDW rows, Bulk Patient EMPI/crosswalk seeding, and admin
+  Bulk job/file/schedule visibility with worker failure/overdue-poll sync metrics.
   First-pass EDW hydration now includes `DocumentReference`, `DiagnosticReport`,
   `MedicationDispense`, and `MedicationAdministration` in addition to the core
   patient workspace resources.
@@ -218,8 +219,9 @@ devlogs do not override the current codebase state.
   has not been applied to production.
 - EHR production completion still requires remaining EDW/local-matching breadth
   for tenant-specific patient-detail needs, exercised Bulk replay/dead-letter
-  incident evidence, vendor sandbox evidence, a configured external alert
-  destination, and live stale-data/Bulk incident evidence using the new runbook.
+  incident evidence, vendor sandbox evidence, vendor tombstone edge-case
+  evidence, a configured external alert destination, and live stale-data/Bulk
+  incident evidence using the new runbook.
 
 ## First Implementation Priorities
 
