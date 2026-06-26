@@ -184,6 +184,13 @@ devlogs do not override the current codebase state.
   files and 136 tests; full follow-up gates also passed with API 117 files/901
   tests, web 27 files/47 tests, shared 43 tests, Solr 18 tests, and one skipped
   API smoke.
+- Follow-up production checkpoint on 2026-06-26 deployed non-EMPI mutation audit
+  hardening release `0e82fb3`; the deploy script passed, all three production
+  services were active, production migration dry-run reported 91 applied
+  migrations and no pending migrations, public health was healthy, and
+  `/api/v1/auth/providers` returned local plus Authentik enabled with public
+  registration and demo quick-fill disabled. Sourcing `.env.production` still
+  emits the existing lines 84/85 warnings.
 - Follow-up production checkpoint on 2026-06-26 deployed auth/session audit
   hardening release `8d6ee91`; full root gates passed, production migration
   list reported 91 applied migrations and no pending migrations, the deploy
