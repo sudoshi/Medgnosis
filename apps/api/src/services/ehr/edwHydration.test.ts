@@ -821,6 +821,24 @@ const coverage = {
   period: { start: '2026-01-01' },
 } as unknown as FhirResource;
 
+// PHQ-9 style QuestionnaireResponse: three numeric item answers (1+2+3) plus an
+// explicit total-score item; the hydrator should prefer the explicit total (8)
+// over the sum of items and carry the responses payload.
+const questionnaireResponse = {
+  resourceType: 'QuestionnaireResponse', id: 'qr-1',
+  questionnaire: 'http://example.org/Questionnaire/PHQ-9|1.0',
+  subject: { reference: 'Patient/pat-1' },
+  encounter: { reference: 'Encounter/enc-1' },
+  status: 'completed',
+  authored: '2026-06-08T08:00:00Z',
+  item: [
+    { linkId: 'q1', text: 'Little interest', answer: [{ valueInteger: 1 }] },
+    { linkId: 'q2', text: 'Feeling down', answer: [{ valueInteger: 2 }] },
+    { linkId: 'q3', text: 'Trouble sleeping', answer: [{ valueInteger: 3 }] },
+    { linkId: 'phq9-total-score', text: 'Total score', answer: [{ valueInteger: 8 }] },
+  ],
+} as unknown as FhirResource;
+
 describe('Phase C batch 2 hydrators', () => {
   it('hydrates a CarePlan into care_plan (insert)', async () => {
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
@@ -927,6 +945,75 @@ describe('Phase C batch 2 hydrators', () => {
     expect(result.rowsUpdated).toBe(1);
     expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.patient_insurance_coverage'))).toBe(true);
     expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.patient_insurance_coverage'))).toBe(false);
+  });
+});
+
+describe('QuestionnaireResponse normalization (PRO breadth)', () => {
+  it('normalizes a staged QuestionnaireResponse into patient_reported_outcome instead of leaving it staged', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'QuestionnaireResponse', 'qr-1', questionnaireResponse)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([]);
+      if (text.includes('INSERT INTO phm_edw.patient_reported_outcome')) return Promise.resolve([{ pro_id: 555 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+
+    expect(result.rowsInserted).toBe(1);
+    expect(result.resourcesSkipped).toBe(0);
+    expect(result.byResourceType['QuestionnaireResponse']).toMatchObject({ hydrated: 1, skipped: 0 });
+    const insert = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.patient_reported_outcome'));
+    expect(insert).toBeDefined();
+    const params = insert!.slice(1);
+    expect(params[0]).toBe(123); // patientId
+    expect(params[2]).toBe('PHQ-9'); // instrument_name derived from questionnaire canonical
+    expect(params[3]).toBe('1.0'); // instrument_version from canonical |version
+    expect(params[5]).toBe(8); // explicit total-score item wins over the 1+2+3 sum
+    // crosswalk points at the EDW PRO row, preserving provenance for the run
+    const crosswalk = mockSql.mock.calls.find(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.ehr_resource_crosswalk'));
+    expect(crosswalk?.[5]).toBe('phm_edw.patient_reported_outcome');
+    expect(crosswalk?.[6]).toBe(555);
+  });
+
+  it('updates an existing patient_reported_outcome on re-ingest', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('FROM phm_edw.fhir_ingest_staging')) return Promise.resolve([stagedRow(1, 'QuestionnaireResponse', 'qr-1', questionnaireResponse)]);
+      if (text.includes('SELECT COALESCE(patient_id')) return Promise.resolve([{ patient_id: 123 }]);
+      if (text.includes('SELECT local_table, local_id')) return Promise.resolve([{ local_table: 'phm_edw.patient_reported_outcome', local_id: 555 }]);
+      if (text.includes('UPDATE phm_edw.patient_reported_outcome')) return Promise.resolve([{ pro_id: 555 }]);
+      return Promise.resolve([]);
+    });
+
+    const result = await hydrateStagedRunToEdw({ ingestRunId });
+    expect(result.rowsUpdated).toBe(1);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.patient_reported_outcome'))).toBe(true);
+    expect(mockSql.mock.calls.some(([s]) => (s as TemplateStringsArray).join('').includes('INSERT INTO phm_edw.patient_reported_outcome'))).toBe(false);
+  });
+
+  it('tombstones a QuestionnaireResponse via softDeleteByCrosswalk, excluding it from active reads', async () => {
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const text = strings.join('');
+      if (text.includes('SELECT local_table, local_id FROM phm_edw.ehr_resource_crosswalk')) {
+        return Promise.resolve([{ local_table: 'phm_edw.patient_reported_outcome', local_id: 555 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const removed = await softDeleteByCrosswalk(42, 'QuestionnaireResponse', 'qr-1', 'bulk-deleted');
+    const calls = mockSql.mock.calls.map(([s]) => (s as TemplateStringsArray).join(''));
+
+    expect(removed).toBe(true);
+    // active_ind='N' is what the workspace/patient reads filter on (active_ind='Y'),
+    // so the tombstoned PRO row is excluded from active reads.
+    expect(calls.some((c) => c.includes('UPDATE phm_edw.patient_reported_outcome') && c.includes("active_ind='N'"))).toBe(true);
+    const xwalk = mockSql.mock.calls.find(([s]) =>
+      (s as TemplateStringsArray).join('').includes('UPDATE phm_edw.ehr_resource_crosswalk')
+      && (s as TemplateStringsArray).join('').includes('deleted_reason'),
+    );
+    expect(xwalk!.slice(1)).toEqual(expect.arrayContaining(['bulk-deleted']));
   });
 });
 

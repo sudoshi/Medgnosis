@@ -41,6 +41,7 @@ const SUPPORTED_RESOURCE_TYPES = [
   'Goal',
   'CareTeam',
   'Coverage',
+  'QuestionnaireResponse',
 ] as const;
 
 type SupportedResourceType = (typeof SUPPORTED_RESOURCE_TYPES)[number];
@@ -285,6 +286,7 @@ async function findHydratableStagedResources(
                WHEN 'Goal' THEN 17
                WHEN 'CareTeam' THEN 18
                WHEN 'Coverage' THEN 19
+               WHEN 'QuestionnaireResponse' THEN 20
                ELSE 90
              END,
              received_at ASC,
@@ -394,6 +396,7 @@ const SOFT_DELETE_PK: Record<string, string> = {
   'phm_edw.care_plan_item': 'item_id',
   'phm_edw.care_team': 'care_team_id',
   'phm_edw.patient_insurance_coverage': 'coverage_id',
+  'phm_edw.patient_reported_outcome': 'pro_id',
 };
 
 export async function softDeleteLocalRow(tx: Tx, localTable: string, localId: number): Promise<void> {
@@ -529,6 +532,8 @@ async function hydrateByResourceType(
       return hydrateCareTeam(tx, row, patientId, existing);
     case 'Coverage':
       return hydrateCoverage(tx, row, patientId, existing);
+    case 'QuestionnaireResponse':
+      return hydrateQuestionnaireResponse(tx, row, patientId, existing);
     default:
       return null;
   }
@@ -1599,6 +1604,173 @@ async function hydrateCoverage(
     [patientId, payerId, policyNumber, start, end, isPrimary],
   );
   return { localTable: 'phm_edw.patient_insurance_coverage', localId: Number(rows[0]!.coverage_id), operation: 'inserted' };
+}
+
+async function hydrateQuestionnaireResponse(
+  tx: Tx, row: StagedFhirResourceRow, patientId: number, existing: LocalTarget,
+): Promise<HydratedResourceTarget> {
+  const resource = row.resource;
+  const encounterId = await resolveEncounterId(
+    tx, row, referenceId(resource['encounter'] ?? record(resource['context'])?.['encounter'], 'Encounter'),
+  );
+  const instrumentName = truncate(questionnaireInstrumentName(resource, row.resource_id), 100);
+  const instrumentVersion = truncateNullable(questionnaireInstrumentVersion(resource), 20);
+  const completedAt = cleanString(resource['authored'])
+    ?? cleanString(record(resource['meta'])?.['lastUpdated'])
+    ?? row.source_last_updated
+    ?? row.received_at;
+  const flatItems = flattenQuestionnaireItems(recordArray(resource['item']));
+  const totalScore = questionnaireTotalScore(flatItems);
+  const interpretation = truncateNullable(questionnaireInterpretation(resource, flatItems), 100);
+  const status = truncateNullable(cleanString(resource['status']), 500);
+  const notes = truncateNullable(status, 500);
+  const responses = asUnsafeJson(questionnaireResponses(flatItems));
+
+  if (existing.localTable === 'phm_edw.patient_reported_outcome' && existing.localId !== null) {
+    const rows = await tx.unsafe<{ pro_id: number | string }[]>(
+      `UPDATE phm_edw.patient_reported_outcome
+       SET patient_id=$2, encounter_id=$3, instrument_name=$4, instrument_version=$5,
+           completed_datetime=$6::timestamp, total_score=$7, score_interpretation=$8,
+           responses=$9::jsonb, notes=$10, updated_date=NOW()
+       WHERE pro_id=$1 RETURNING pro_id`,
+      [existing.localId, patientId, encounterId, instrumentName, instrumentVersion, completedAt, totalScore, interpretation, responses, notes],
+    );
+    return { localTable: 'phm_edw.patient_reported_outcome', localId: Number(rows[0]?.pro_id ?? existing.localId), operation: 'updated' };
+  }
+
+  const rows = await tx.unsafe<{ pro_id: number | string }[]>(
+    `INSERT INTO phm_edw.patient_reported_outcome
+       (patient_id, encounter_id, instrument_name, instrument_version, completed_datetime,
+        total_score, score_interpretation, responses, notes, active_ind, created_date, updated_date)
+     VALUES ($1,$2,$3,$4,$5::timestamp,$6,$7,$8::jsonb,$9,'Y',NOW(),NOW())
+     RETURNING pro_id`,
+    [patientId, encounterId, instrumentName, instrumentVersion, completedAt, totalScore, interpretation, responses, notes],
+  );
+  return { localTable: 'phm_edw.patient_reported_outcome', localId: Number(rows[0]!.pro_id), operation: 'inserted' };
+}
+
+interface FlatQuestionnaireItem {
+  linkId: string | null;
+  text: string | null;
+  answers: Array<Record<string, unknown>>;
+}
+
+// QuestionnaireResponse.item nests recursively (item.item[]); flatten to a list
+// of leaf-ish question/answer entries so a PRO landing row can derive a total
+// score, an interpretation, and a compact responses payload.
+function flattenQuestionnaireItems(items: Array<Record<string, unknown>>): FlatQuestionnaireItem[] {
+  const flat: FlatQuestionnaireItem[] = [];
+  for (const item of items) {
+    flat.push({
+      linkId: cleanString(item['linkId']),
+      text: cleanString(item['text']),
+      answers: recordArray(item['answer']),
+    });
+    const nested = recordArray(item['item']);
+    if (nested.length > 0) flat.push(...flattenQuestionnaireItems(nested));
+  }
+  return flat;
+}
+
+function questionnaireInstrumentName(resource: FhirResource, resourceId: string): string {
+  const questionnaire = resource['questionnaire'];
+  const canonical = typeof questionnaire === 'string'
+    ? questionnaire
+    : cleanString(record(questionnaire)?.['reference']) ?? cleanString(record(questionnaire)?.['display']);
+  return cleanString(canonicalLastSegment(canonical))
+    ?? conceptLabel(firstConcept(resource['code']))
+    ?? `QuestionnaireResponse ${resourceId}`;
+}
+
+function questionnaireInstrumentVersion(resource: FhirResource): string | null {
+  const questionnaire = resource['questionnaire'];
+  const canonical = typeof questionnaire === 'string' ? questionnaire : cleanString(record(questionnaire)?.['reference']);
+  if (!canonical) return null;
+  const versionMark = canonical.indexOf('|');
+  return versionMark >= 0 ? canonical.slice(versionMark + 1) : null;
+}
+
+function canonicalLastSegment(value: string | null): string | null {
+  if (!value) return null;
+  const withoutVersion = value.split('|')[0] ?? value;
+  const segments = withoutVersion.split('/').filter(Boolean);
+  return segments.length > 0 ? (segments[segments.length - 1] ?? null) : null;
+}
+
+// A PRO total score is conventionally carried as the answer to a "score"/"total"
+// linkId or, failing that, the sum of numeric answers (PHQ-9/GAD-7 style).
+function questionnaireTotalScore(items: FlatQuestionnaireItem[]): number | null {
+  for (const item of items) {
+    const id = (item.linkId ?? '').toLowerCase();
+    const label = (item.text ?? '').toLowerCase();
+    if (id.includes('score') || id.includes('total') || label.includes('total score')) {
+      const value = firstNumericAnswer(item.answers);
+      if (value !== null) return value;
+    }
+  }
+  let sum = 0;
+  let counted = 0;
+  for (const item of items) {
+    const value = firstNumericAnswer(item.answers);
+    if (value !== null) {
+      sum += value;
+      counted += 1;
+    }
+  }
+  return counted > 0 ? sum : null;
+}
+
+function questionnaireInterpretation(resource: FhirResource, items: FlatQuestionnaireItem[]): string | null {
+  for (const item of items) {
+    const id = (item.linkId ?? '').toLowerCase();
+    const label = (item.text ?? '').toLowerCase();
+    if (id.includes('interpretation') || label.includes('interpretation') || label.includes('severity')) {
+      const answer = firstStringAnswer(item.answers);
+      if (answer) return answer;
+    }
+  }
+  return conceptLabel(firstConcept(resource['code']));
+}
+
+function questionnaireResponses(items: FlatQuestionnaireItem[]): Array<Record<string, unknown>> {
+  return items
+    .filter((item) => item.answers.length > 0 || item.text || item.linkId)
+    .map((item) => ({
+      linkId: item.linkId,
+      text: item.text,
+      answers: item.answers.map(questionnaireAnswerValue),
+    }));
+}
+
+function questionnaireAnswerValue(answer: Record<string, unknown>): unknown {
+  const numeric = optionalNumber(answer['valueInteger'] ?? answer['valueDecimal']);
+  if (numeric !== null) return numeric;
+  const coded = firstConcept(answer['valueCoding'] ?? answer['valueCodeableConcept']);
+  const codedLabel = conceptLabel(coded);
+  if (codedLabel) return codedLabel;
+  return cleanString(answer['valueString'])
+    ?? cleanString(answer['valueBoolean'])
+    ?? cleanString(answer['valueDate'])
+    ?? cleanString(answer['valueDateTime'])
+    ?? null;
+}
+
+function firstNumericAnswer(answers: Array<Record<string, unknown>>): number | null {
+  for (const answer of answers) {
+    const value = optionalNumber(answer['valueInteger'] ?? answer['valueDecimal']);
+    if (value !== null) return value;
+    const coded = optionalNumber(firstConcept(answer['valueCoding'] ?? answer['valueCodeableConcept']).code);
+    if (coded !== null) return coded;
+  }
+  return null;
+}
+
+function firstStringAnswer(answers: Array<Record<string, unknown>>): string | null {
+  for (const answer of answers) {
+    const value = cleanString(answer['valueString']) ?? conceptLabel(firstConcept(answer['valueCoding'] ?? answer['valueCodeableConcept']));
+    if (value) return value;
+  }
+  return null;
 }
 
 async function upsertPayer(tx: Tx, coverage: FhirResource): Promise<number> {
