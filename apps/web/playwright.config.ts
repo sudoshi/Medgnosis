@@ -4,6 +4,9 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 5176);
+const host = '127.0.0.1';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -12,7 +15,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 4,
   reporter: 'html',
   use: {
-    baseURL: 'http://127.0.0.1:5176',
+    baseURL: `http://${host}:${port}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -23,8 +26,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'VITE_REALTIME_ALERTS_ENABLED=false vite --host 127.0.0.1 --port 5176 --strictPort',
-    url: 'http://127.0.0.1:5176',
+    command: `VITE_REALTIME_ALERTS_ENABLED=false vite --host ${host} --port ${port} --strictPort`,
+    url: `http://${host}:${port}`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

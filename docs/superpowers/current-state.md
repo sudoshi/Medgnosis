@@ -162,6 +162,10 @@ devlogs do not override the current codebase state.
   surveillance tick runs. Audit details intentionally avoid endpoint URLs,
   provider test error text, SOAP note content, chief complaint text, and
   amendment reason text.
+- Follow-up continuation expanded Playwright coverage with configurable E2E
+  ports and a catch-all mocked authenticated protected-route smoke that walks
+  every top-level protected route in `apps/web/src/App.tsx` without production
+  credentials or API proxy leakage.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.
@@ -173,9 +177,9 @@ devlogs do not override the current codebase state.
 ## First Implementation Priorities
 
 1. Keep README, env docs, and validation runbooks truthful.
-2. Expand role-based Playwright coverage beyond the current login, MFA, password-reset, invite, settings, and admin smoke paths.
+2. Expand role-based Playwright workflow coverage beyond the current login, MFA, password-reset, invite, settings, admin smoke, and protected-route smoke paths.
 3. Keep MFA lifecycle coverage current as auth provider and session behavior evolves.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
 6. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
-7. Broaden role-based E2E beyond the current auth/admin/settings smoke paths.
+7. Broaden role-based E2E beyond the current auth/admin/settings/protected-route smoke paths.
