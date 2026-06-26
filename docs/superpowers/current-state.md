@@ -14,6 +14,7 @@ devlogs do not override the current codebase state.
 - [EHR integration current-state devlog](devlogs/2026-06-17-ehr-integration-current-state-devlog.md) - current EHR/SMART/Bulk/QDM integration status and gaps.
 - [FHIR/QDM bridge completion devlog](devlogs/2026-06-18-fhir-qdm-dimensional-bridge-completion.md) - completed QDM/CQL shadow-governance milestone and CMS122 promotion hold evidence.
 - [QDM bridge operations runbook](runbooks/qdm-bridge-operations.md) - how to run and monitor QDM/CQL shadow refreshes safely.
+- [Worker and CQL sidecar restart runbook](runbooks/worker-and-cql-sidecar-restart.md) - production worker restart, opt-in CQL sidecar recovery, and post-restart evidence.
 - [EHR Bulk replay and dead-letter runbook](runbooks/ehr-bulk-replay-dead-letter.md) - PHI-light Bulk import resume, QDM replay, and worker dead-letter triage.
 - [EHR sync alerts and stale-data incident runbook](runbooks/ehr-sync-alerts-stale-data.md) - PHI-safe external alert routing, stale-data triage, and Bulk incident rehearsal checklist.
 - [Role and permission matrix](runbooks/role-permission-matrix.md) - current route-family RBAC expectations and backend regression evidence.

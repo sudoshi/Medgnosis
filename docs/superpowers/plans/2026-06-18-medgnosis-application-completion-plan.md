@@ -38,6 +38,7 @@ Validation performed:
 - Focused non-EMPI mutation audit validation after adding CDS feedback audit rows, routing admin measure refresh through the request audit helper, and reducing clinical-note, order, cohort, population-finder, MTM, auto-order, invite, and refresh-token audit details to PHI-safe aggregate/bound flags: `npm run test --workspace=apps/api -- src/routes/orders/index.test.ts src/routes/population-finder/index.test.ts src/routes/auth/__tests__/auth.test.ts src/routes/clinical-notes/index.test.ts src/routes/cds-hooks/feedback.test.ts src/routes/admin/index.test.ts src/services/__tests__/problemListService.test.ts` passed 7 files and 136 tests. Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 901 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests. Commit `0e82fb3` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, production migration dry-run reported 91 applied migrations and no pending migrations, public `https://medgnosis.acumenus.net/health` returned healthy, and `/api/v1/auth/providers` returned local plus Authentik enabled with public registration and demo quick-fill disabled. Sourcing `.env.production` still emits the existing lines 84/85 warnings.
 - Focused EHR audit redaction validation after removing token metadata ids, launch session ids, provider-supplied SMART callback error text, webhook endpoint hosts, and raw webhook/error strings from audit details: `npm run test --workspace=apps/api -- src/routes/ehr/admin.test.ts src/routes/ehr/launch.test.ts src/services/ehr/syncAlerts.test.ts src/services/systemHealth.test.ts` passed 4 files and 68 tests. Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 903 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests. Commit `737dfde` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, production migration dry-run reported 91 applied migrations and no pending migrations, public `https://medgnosis.acumenus.net/health` returned healthy, and `/api/v1/auth/providers` returned local plus Authentik enabled with public registration and demo quick-fill disabled. Sourcing `.env.production` still emits the existing lines 84/85 warnings.
 - Focused Bulk deleted-output validation confirmed that completed Bulk manifests process `manifest.deleted` Bundle NDJSON entries by `request.method=DELETE` and `request.url=ResourceType/id`, then soft-delete crosswalk-mapped EDW rows and stamp `ehr_resource_crosswalk.deleted_at/deleted_reason`: `npm run test --workspace=apps/api -- src/services/ehr/bulkData.test.ts src/services/ehr/edwHydration.test.ts` passed 2 files and 74 tests.
+- Production worker/CQL restart runbook validation confirmed the documented commands against the current systemd worker unit, deploy script, Docker CQL profile, and CQL smoke scripts. `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only slice.
 
 Areas examined:
 
@@ -462,9 +463,9 @@ Objective: make production operation boring and auditable.
   - [ ] Normal deploy.
   - [ ] Rollback.
   - [ ] DB migration failure.
-  - [ ] Worker restart.
+  - [x] Worker restart.
   - [ ] Solr rebuild.
-  - [ ] CQL sidecar restart/reload.
+  - [x] CQL sidecar restart/reload.
   - [ ] EHR tenant incident.
   - [ ] Bulk import replay.
 - [ ] Verify backup and restore.
@@ -584,7 +585,7 @@ Recommended second sprint:
 - [ ] Expand role-based E2E coverage.
   - [x] Add authenticated admin protected-route smoke coverage across all top-level app routes.
 - [x] Add the EHR Bulk replay/dead-letter production runbook.
-- [ ] Add production runbooks for worker restart and CQL sidecar restart.
+- [x] Add production runbooks for worker restart and CQL sidecar restart.
 
 ## Key Risks
 

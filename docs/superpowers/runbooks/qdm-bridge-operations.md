@@ -146,7 +146,9 @@ If the sidecar is unavailable:
 
 1. The wrapper records the run as `failed`.
 2. Existing SQL-authoritative dashboards continue to read SQL bundle rows.
-3. Do not retry in a tight loop; use the run ledger to verify outage duration and
+3. Use `worker-and-cql-sidecar-restart.md` for sidecar restart and smoke
+   validation commands.
+4. Do not retry in a tight loop; use the run ledger to verify outage duration and
    last successful shadow refresh.
-4. After recovery, rerun the bounded shadow refresh and compare reconciliation
+5. After recovery, rerun the bounded shadow refresh and compare reconciliation
    deltas before taking governance action.

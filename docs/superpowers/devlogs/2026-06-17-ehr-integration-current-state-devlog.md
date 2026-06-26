@@ -23,6 +23,8 @@ Follow-up EHR audit redaction on 2026-06-26 removes the remaining high-risk EHR 
 
 Follow-up Bulk deleted-output verification on 2026-06-26 closes a stale planning gap rather than adding a new runtime path. The existing Bulk importer already processes `manifest.deleted` Bundle NDJSON entries with `DELETE ResourceType/id` requests, soft-deletes crosswalk-mapped EDW rows, and stamps `ehr_resource_crosswalk.deleted_at/deleted_reason`. Focused Bulk validation passes across `bulkData` and `edwHydration`; vendor sandbox evidence, incident rehearsal, configured external delivery, and tombstone edge cases remain open.
 
+Follow-up operations runbook work on 2026-06-26 adds a production worker and CQL sidecar restart runbook. The runbook reflects the current host-systemd production worker, the deploy script's worker restart behavior, the opt-in HAPI clinical-reasoning sidecar, and the smoke/shadow-refresh commands that prove CQL recovery without changing SQL-authoritative production behavior.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
@@ -593,6 +595,7 @@ Key implementation files:
 - `apps/api/src/scripts/qdm-bridge-shadow-run.ts`
 - `apps/web/src/pages/admin/MeasureGovernanceTab.tsx`
 - `docs/superpowers/runbooks/qdm-bridge-operations.md`
+- `docs/superpowers/runbooks/worker-and-cql-sidecar-restart.md`
 - `packages/db/migrations/068_qdm_bridge_foundation.sql`
 - `packages/db/migrations/079_qdm_bridge_operations.sql`
 
@@ -813,6 +816,12 @@ Focused EHR audit redaction validation on 2026-06-26:
 - Full follow-up gates passed: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `git diff --check`. Full test summary: API 117 files passed with 903 tests passed and 1 smoke test skipped; web 27 files passed with 47 tests; shared 43 tests; Solr 18 tests.
 - Release `737dfde` was pushed to `origin/main`, `./scripts/deploy-production.sh` passed, public health returned healthy, `medgnosis-api`, `medgnosis-worker`, and `medgnosis-auto-deploy` were active, local `HEAD` matched `origin/main`, and production migration dry-run reported 91 applied migrations with none pending.
 
+Focused worker/CQL restart runbook validation on 2026-06-26:
+
+- The documented worker commands were checked against `scripts/medgnosis-worker.service`, `scripts/medgnosis-api.service`, `scripts/deploy-production.sh`, and the live service model.
+- The documented CQL sidecar commands were checked against `docker-compose.yml`, `docker/cql-engine/README.md`, `scripts/cql-engine-smoke.sh`, `scripts/cql-qdm-smoke.sh`, and `scripts/cql-realmeasure-smoke.sh`.
+- `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only runbook slice.
+
 Focused EHR tests covered during the EHR foundation tranche:
 
 - `apps/api/src/routes/ehr/admin.test.ts`
@@ -938,6 +947,7 @@ Now partially covered outside the EHR-specific path:
 - QDM bridge operational status view exists.
 - Measure Governance raw evidence drilldown is audited.
 - QDM bridge operations runbook exists.
+- Worker and CQL sidecar restart runbook exists.
 
 ### Clinical Safety and Governance
 
@@ -1144,6 +1154,6 @@ Scripts:
 | Bulk Data | Partial | Kickoff/poll/manifest ledger, manual/admin kickoff, tenant recurring schedules, worker polling/import orchestration, PHI-safe automated worker audit, file-level import ledger, completed-manifest NDJSON import worker, completed-job import replay, failed-import resume, active-job cancel, optional checksum/size validation, Bulk deleted-output tombstone processing for crosswalk-mapped EDW rows, Bulk Patient EMPI/crosswalk seeding, manual-control audit, EDW hydration, QDM replay, Bulk import/QDM replay summaries, linked QDM replay controls, readiness diagnostics, bounded patient/resource rollups, bounded conflict/stale drilldowns, FHIR/token failure alert summaries, replay/dead-letter runbook, EHR sync alert runbook, and admin status UI present; vendor tombstone edge-case evidence, configured external delivery, incident rehearsal, and vendor sandbox evidence remain |
 | Epic readiness | Early | Requires real app registration and sandbox validation |
 | Oracle Cerner readiness | Early | Requires Code Console registration and sandbox validation |
-| Observability/runbooks | Partial | QDM bridge runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, configured external alert delivery, and incident rehearsal evidence remain |
+| Observability/runbooks | Partial | QDM bridge runbook, worker/CQL sidecar restart runbook, EHR Bulk replay/dead-letter runbook, EHR sync alerts/stale-data runbook, bridge ops ledgers, System Health worker/queue plus EHR Bulk readiness visibility, System Health EHR sync alert dispatch, tenant readiness capability/backend/Bulk diagnostics, FHIR/token failure alert summaries, and structured sync issue actions exist; deeper EHR launch/FHIR/CQL/DEQM dashboards, configured external alert delivery, and incident rehearsal evidence remain |
 
 Overall: the local platform can support the next engineering slices without needing vendor credentials, and the FHIR/QDM bridge now gives staged FHIR evidence a governed analytics path. Actual Epic/Cerner readiness still requires external sandbox and customer onboarding work.
