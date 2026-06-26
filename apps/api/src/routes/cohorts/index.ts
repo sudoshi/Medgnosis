@@ -87,7 +87,11 @@ export default async function cohortRoutes(fastify: FastifyInstance): Promise<vo
               ${parsed.data.subject}, ${parsed.data.body ?? null}, ${parsed.data.required_disposition ?? null})
       RETURNING message_id
     `;
-    await request.auditLog('message', 'cohort_message', String(row?.message_id), { patient_id: parsed.data.patient_id });
+    await request.auditLog('message', 'cohort_message', String(row?.message_id), {
+      to_provider_present: parsed.data.to_provider_id !== undefined,
+      body_present: Boolean(parsed.data.body?.trim()),
+      required_disposition_present: parsed.data.required_disposition !== undefined,
+    });
     return reply.send({ success: true, data: { message_id: row?.message_id, status: 'sent' } });
   });
 

@@ -82,7 +82,6 @@ export default async function autoOrdersRoutes(fastify: FastifyInstance): Promis
 
   // POST /auto-orders/enrollments/:id/disenroll
   fastify.post<{ Params: { id: string } }>('/enrollments/:id/disenroll', async (request, reply) => {
-    const actor = request.user.email ?? request.user.sub;
     const [row] = await sql<{ enrollment_id: number }[]>`
       UPDATE phm_edw.protocol_enrollment
       SET status = 'disenrolled'
@@ -92,7 +91,9 @@ export default async function autoOrdersRoutes(fastify: FastifyInstance): Promis
     if (!row) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Active enrollment not found' } });
     }
-    await request.auditLog('disenroll', 'protocol_enrollment', request.params.id, { by: actor });
+    await request.auditLog('disenroll', 'protocol_enrollment', request.params.id, {
+      status: 'disenrolled',
+    });
     return reply.send({ success: true, data: { enrollment_id: row.enrollment_id, status: 'disenrolled' } });
   });
 }

@@ -174,6 +174,16 @@ devlogs do not override the current codebase state.
   only. Anti-enumeration and untrusted-token branches carry explicit no-audit
   rationale comments, and OIDC callback success audit details no longer store raw
   email claims.
+- Follow-up continuation tightened non-EMPI mutation audit payloads. CDS feedback
+  now emits a PHI-safe route-level audit row, admin measure refresh uses the
+  request audit helper instead of a direct insert, and clinical-note, generated
+  order, cohort message, population-finder accept, MTM advance, auto-order
+  disenroll, invite, and refresh-token audit details use aggregate/bound flags
+  instead of patient, care-gap, order-set, provider, diagnosis, note-content,
+  session, or invite identifiers. Focused route/service validation passed 7 API
+  files and 136 tests; full follow-up gates also passed with API 117 files/901
+  tests, web 27 files/47 tests, shared 43 tests, Solr 18 tests, and one skipped
+  API smoke.
 - Follow-up production checkpoint on 2026-06-26 deployed auth/session audit
   hardening release `8d6ee91`; full root gates passed, production migration
   list reported 91 applied migrations and no pending migrations, the deploy

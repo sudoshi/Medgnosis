@@ -1687,15 +1687,10 @@ export default async function adminRoutes(app: FastifyInstance) {
     try {
       const result = await getMeasureEvaluator().refresh();
 
-      await sql`
-        INSERT INTO public.audit_log (user_id, action, resource_type, details)
-        VALUES (
-          ${req.user.sub}::UUID,
-          'measure_refresh',
-          'measure_result',
-          ${JSON.stringify({ rowCount: result.rowCount, durationMs: result.durationMs })}::jsonb
-        )
-      `;
+      await req.auditLog('measure_refresh', 'measure_result', undefined, {
+        rowCount: result.rowCount,
+        durationMs: result.durationMs,
+      });
 
       return reply.send({
         success: true,

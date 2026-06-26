@@ -317,7 +317,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }
 
     await request.auditLog('invite_accept', 'auth_invite', invite.id, {
-      user_id: invite.user_id,
+      user_bound: true,
     });
 
     return reply.send({
@@ -359,7 +359,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }
 
     await request.auditLog('invite_activate', 'auth_invite', activated.id, {
-      user_id: activated.user_id,
+      user_bound: true,
     });
 
     return reply.send({
@@ -1308,7 +1308,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
             resourceType: 'auth_session',
             resourceId: token.id,
             details: {
-              affected_user_id: token.user_id,
+              affected_user_bound: true,
               all_sessions_revoked: true,
             },
           },
@@ -1336,7 +1336,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
             action: 'refresh_token_expired',
             resourceType: 'auth_session',
             resourceId: token.id,
-            details: { affected_user_id: token.user_id },
+            details: { affected_user_bound: true },
           },
           body: {
             success: false,
@@ -1370,7 +1370,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
             action: 'refresh_token_user_missing',
             resourceType: 'auth_session',
             resourceId: token.id,
-            details: { affected_user_id: token.user_id },
+            details: { affected_user_bound: true },
           },
           body: {
             success: false,
@@ -1396,7 +1396,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
             action: 'refresh_token_mfa_required',
             resourceType: 'auth_session',
             resourceId: token.id,
-            details: { affected_user_id: token.user_id },
+            details: { affected_user_bound: true },
           },
           body: {
             success: false,
@@ -1475,7 +1475,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
           resourceType: 'auth_session',
           resourceId: session?.id,
           details: {
-            previous_session_id: token.id,
+            previous_session_present: true,
             mfa_verified: Boolean(user.mfa_enabled && token.mfa_verified_at),
             provider_resolved: refreshProviderId !== undefined,
           },

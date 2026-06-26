@@ -74,8 +74,8 @@ describe('clinical note authorization and authorship', () => {
       'clinical_note',
       'note-1',
       expect.objectContaining({
-        patient_id: 42,
-        encounter_id: null,
+        patient_bound: true,
+        encounter_bound: false,
         visit_type: 'followup',
         status: 'draft',
       }),
@@ -176,7 +176,7 @@ describe('clinical note authorization and authorship', () => {
       'clinical_note',
       '11111111-1111-4111-8111-111111111111',
       expect.objectContaining({
-        patient_id: 42,
+        patient_bound: true,
         status: 'draft',
         changed_fields: expect.objectContaining({
           subjective: true,
@@ -216,7 +216,7 @@ describe('clinical note authorization and authorship', () => {
       'clinical_note_finalize',
       'clinical_note',
       '11111111-1111-4111-8111-111111111111',
-      { patient_id: 42, from_status: 'draft', to_status: 'finalized' },
+      { patient_bound: true, from_status: 'draft', to_status: 'finalized' },
     );
     await app.close();
   });
@@ -248,7 +248,7 @@ describe('clinical note authorization and authorship', () => {
       'clinical_note_amend',
       'clinical_note',
       '11111111-1111-4111-8111-111111111111',
-      { patient_id: 42, from_status: 'finalized', to_status: 'amended', reason_present: true },
+      { patient_bound: true, from_status: 'finalized', to_status: 'amended', reason_present: true },
     );
     expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('Correcting dictated assessment text');
     await app.close();
@@ -280,7 +280,7 @@ describe('clinical note authorization and authorship', () => {
       'clinical_note_soft_delete',
       'clinical_note',
       '11111111-1111-4111-8111-111111111111',
-      { patient_id: 42, from_status: 'draft', active_ind: 'N' },
+      { patient_bound: true, from_status: 'draft', active_ind: 'N' },
     );
     await app.close();
   });

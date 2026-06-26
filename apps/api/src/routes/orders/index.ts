@@ -491,7 +491,10 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     });
 
     await request.auditLog('create', 'clinical_order', String(order.order_id), {
-      patient_id, care_gap_id, order_set_item_id, priority,
+      patient_bound: true,
+      care_gap_bound: true,
+      order_set_item_bound: true,
+      priority,
     });
 
     return reply.status(201).send({
@@ -642,8 +645,9 @@ export default async function orderRoutes(fastify: FastifyInstance): Promise<voi
     });
 
     await request.auditLog('create', 'clinical_order', `batch-${results.length}`, {
-      patient_id, order_count: results.length, priority,
-      order_ids: results.map((r) => r.order.order_id),
+      patient_bound: true,
+      order_count: results.length,
+      priority,
     });
 
     return reply.status(201).send({

@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from '@medgnosis/db';
 import { finderDismissSchema } from '@medgnosis/shared';
-import { applyBulk, type BulkAction } from '../../services/problemListService.js';
+import { applyBulk, type BulkAction, type PlanEntry } from '../../services/problemListService.js';
 
 interface CandidateRow {
   candidate_id: number;
@@ -110,7 +110,7 @@ export default async function populationFinderRoutes(fastify: FastifyInstance): 
       SET status = 'accepted', resolved_by = ${actor}, resolved_at = NOW()
       WHERE candidate_id = ${candidate.candidate_id}
     `;
-    await request.auditLog('accept', 'finder_candidate', request.params.id, { plan });
+    await request.auditLog('accept', 'finder_candidate', request.params.id, summarizePlanForAudit(plan));
 
     return reply.send({ success: true, data: { candidate_id: candidate.candidate_id, status: 'accepted', plan } });
   });
@@ -160,4 +160,23 @@ export default async function populationFinderRoutes(fastify: FastifyInstance): 
 
     return reply.send({ success: true, data: { candidate_id: candidate.candidate_id, dismissed: parsed.data.reason } });
   });
+}
+
+function summarizePlanForAudit(plan: PlanEntry[]): Record<string, unknown> {
+  const actionCounts: Record<string, number> = {};
+  const statusCounts: Record<string, number> = {};
+
+  for (const entry of plan) {
+    actionCounts[entry.action] = (actionCounts[entry.action] ?? 0) + 1;
+    statusCounts[entry.status] = (statusCounts[entry.status] ?? 0) + 1;
+  }
+
+  return {
+    plan_entry_count: plan.length,
+    applied_count: statusCounts.applied ?? 0,
+    skipped_count: statusCounts.skipped ?? 0,
+    planned_count: statusCounts.planned ?? 0,
+    action_counts: actionCounts,
+    status_counts: statusCounts,
+  };
 }

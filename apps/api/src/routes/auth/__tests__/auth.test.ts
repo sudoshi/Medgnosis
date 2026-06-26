@@ -1380,7 +1380,7 @@ describe('POST /auth/refresh', () => {
       'auth_session',
       '22222222-2222-4222-8222-222222222222',
       {
-        previous_session_id: '11111111-1111-4111-8111-111111111111',
+        previous_session_present: true,
         mfa_verified: false,
         provider_resolved: false,
       },
@@ -1428,7 +1428,7 @@ describe('POST /auth/refresh', () => {
       'auth_session',
       '11111111-1111-4111-8111-111111111111',
       {
-        affected_user_id: MOCK_USER.id,
+        affected_user_bound: true,
         all_sessions_revoked: true,
       },
     );
@@ -1484,7 +1484,7 @@ describe('POST /auth/refresh', () => {
       'refresh_token_mfa_required',
       'auth_session',
       '11111111-1111-4111-8111-111111111111',
-      { affected_user_id: MOCK_USER.id },
+      { affected_user_bound: true },
     );
   });
 

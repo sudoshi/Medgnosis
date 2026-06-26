@@ -28,6 +28,7 @@ const {
   mockFetchOidcDiscovery,
   mockGetOidcProviderConfig,
   mockRecordAuthProviderTestEvent,
+  mockRefreshMeasures,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
     readonly code: string;
@@ -65,6 +66,7 @@ const {
     mockFetchOidcDiscovery: vi.fn(),
     mockGetOidcProviderConfig: vi.fn(),
     mockRecordAuthProviderTestEvent: vi.fn(),
+    mockRefreshMeasures: vi.fn(),
   };
 });
 
@@ -93,7 +95,7 @@ vi.mock('../../services/omopExport.js', () => ({
   generateDeidentifiedCohort: vi.fn(),
 }));
 vi.mock('../../services/measureEvaluator.js', () => ({
-  getMeasureEvaluator: vi.fn(() => ({ refresh: vi.fn() })),
+  getMeasureEvaluator: vi.fn(() => ({ refresh: mockRefreshMeasures })),
 }));
 vi.mock('../../plugins/solr.js', () => ({
   getSolrClient: vi.fn(() => null),
@@ -187,6 +189,7 @@ beforeEach(() => {
     redirectUri: 'https://medgnosis.example.test/api/v1/auth/oidc/callback',
   });
   mockRecordAuthProviderTestEvent.mockResolvedValue(undefined);
+  mockRefreshMeasures.mockResolvedValue({ rowCount: 42, durationMs: 1234 });
   mockDispatchEhrSyncAlertSnapshot.mockResolvedValue({
     status: 'sent',
     reason: 'sent',
@@ -1402,6 +1405,40 @@ describe('admin FHIR endpoint mutation audit routes', () => {
         all_ok: true,
       }),
     );
+    await app.close();
+  });
+
+  it('audits measure refresh through the request audit helper', async () => {
+    mockRefreshMeasures.mockResolvedValueOnce({ rowCount: 17, durationMs: 250 });
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/refresh-measures',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        rows_refreshed: 17,
+        duration_ms: 250,
+      },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_refresh',
+      'measure_result',
+      undefined,
+      {
+        rowCount: 17,
+        durationMs: 250,
+      },
+    );
+    expect(
+      mockSql.mock.calls.some(([strings]) =>
+        (strings as TemplateStringsArray).join('').includes('INSERT INTO public.audit_log'),
+      ),
+    ).toBe(false);
     await app.close();
   });
 });

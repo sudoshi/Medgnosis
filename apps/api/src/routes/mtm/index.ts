@@ -40,7 +40,6 @@ export default async function mtmRoutes(fastify: FastifyInstance): Promise<void>
   // POST /mtm/:id/advance — advance the state machine (atGoal supplied by reviewer)
   fastify.post<{ Params: { id: string }; Body: { at_goal?: boolean } }>('/:id/advance', async (request, reply) => {
     const atGoal = (request.body as { at_goal?: boolean })?.at_goal === true;
-    const actor = request.user.email ?? request.user.sub;
 
     const [current] = await sql<{ mtm_status: MtmStatus }[]>`
       SELECT mtm_status FROM phm_edw.mtm_referral WHERE mtm_id = ${request.params.id}::int AND active_ind = 'Y' LIMIT 1
@@ -56,7 +55,11 @@ export default async function mtmRoutes(fastify: FastifyInstance): Promise<void>
           repatriated_at = CASE WHEN ${next} = 'repatriated' THEN CURRENT_DATE ELSE repatriated_at END
       WHERE mtm_id = ${request.params.id}::int
     `;
-    await request.auditLog('advance', 'mtm_referral', request.params.id, { from: current.mtm_status, to: next, by: actor });
+    await request.auditLog('advance', 'mtm_referral', request.params.id, {
+      from: current.mtm_status,
+      to: next,
+      at_goal: atGoal,
+    });
     return reply.send({ success: true, data: { mtm_id: Number(request.params.id), mtm_status: next } });
   });
 }

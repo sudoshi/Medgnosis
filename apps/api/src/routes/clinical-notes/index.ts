@@ -55,8 +55,8 @@ export default async function clinicalNoteRoutes(
                 chief_complaint, created_date
     `;
     await request.auditLog('clinical_note_create', 'clinical_note', String(note.note_id), {
-      patient_id,
-      encounter_id: encounter_id ?? null,
+      patient_bound: true,
+      encounter_bound: encounter_id !== undefined,
       visit_type,
       status: note.status ?? 'draft',
     });
@@ -180,7 +180,7 @@ export default async function clinicalNoteRoutes(
         RETURNING note_id, updated_date
       `;
       await request.auditLog('clinical_note_update', 'clinical_note', String(updated.note_id ?? noteId), {
-        patient_id: existing.patient_id,
+        patient_bound: true,
         changed_fields: {
           chief_complaint: data.chief_complaint !== undefined,
           subjective: data.subjective !== undefined,
@@ -231,7 +231,7 @@ export default async function clinicalNoteRoutes(
         RETURNING note_id, status, finalized_at
       `;
       await request.auditLog('clinical_note_finalize', 'clinical_note', String(updated.note_id ?? noteId), {
-        patient_id: note.patient_id,
+        patient_bound: true,
         from_status: note.status,
         to_status: updated.status ?? 'finalized',
       });
@@ -289,7 +289,7 @@ export default async function clinicalNoteRoutes(
         RETURNING note_id, status, amended_at, amendment_reason
       `;
       await request.auditLog('clinical_note_amend', 'clinical_note', String(updated.note_id ?? noteId), {
-        patient_id: note.patient_id,
+        patient_bound: true,
         from_status: note.status,
         to_status: updated.status ?? 'amended',
         reason_present: true,
@@ -333,7 +333,7 @@ export default async function clinicalNoteRoutes(
         WHERE note_id = ${noteId}::uuid
       `;
       await request.auditLog('clinical_note_soft_delete', 'clinical_note', noteId, {
-        patient_id: note.patient_id,
+        patient_bound: true,
         from_status: note.status,
         active_ind: 'N',
       });
