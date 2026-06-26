@@ -170,6 +170,9 @@ Current scope:
 - Settings Security active-session/device list and per-session revoke path.
 - Settings Security TOTP setup, recovery-code display, and disable path.
 - Authenticated admin dashboard, Users tab, and invite revoke smoke paths.
+- Authenticated admin operational release smoke for System Health, EHR
+  Integrations, and Measure Governance with fully mocked APIs and unhandled
+  request detection.
 - SMART launch completion path for resolved Patient, dashboard fallback, invalid
   handoff, and preserved login return.
 - API SMART launch regression coverage includes missing-crosswalk Patient
@@ -191,8 +194,8 @@ Current scope:
 Important limitation:
 
 - Current E2E remains a shallow frontend suite. It does not yet prove
-  authenticated provider workflows, full admin workflows, EHR admin workflows, measure
-  governance, or patient workspace behavior.
+  complete write-path admin workflows, live EHR admin workflows, live measure
+  governance, or full patient workspace behavior.
 
 ## Release Evidence Checklist
 
@@ -211,6 +214,7 @@ Before a release or handoff, record:
 - [ ] Admin System Health shows Redis pub/sub, Solr core, and scheduler queue timing details.
 - [ ] Admin System Health shows aggregate EHR/FHIR tenant readiness with disabled/degraded/blocked/healthy semantics and 24-hour FHIR/backend-token failure counts from stored evidence.
 - [ ] `npm run test:e2e --workspace=apps/web`
+- [ ] `PLAYWRIGHT_PORT=<free-port> npm run test:e2e --workspace=apps/web -- admin-release-smoke.spec.ts`
 - [ ] Local `/health`
 - [ ] Public `/health`
 

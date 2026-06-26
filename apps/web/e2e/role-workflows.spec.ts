@@ -53,7 +53,7 @@ test.describe('Role-based workflows', () => {
 
     await page.goto('/measures');
     await expect(page.getByRole('heading', { name: 'Quality Measures' })).toBeVisible();
-    await expect(page.getByText('CMS122')).toBeVisible();
+    await expect(page.getByRole('button', { name: /CMS122 Diabetes: Hemoglobin/ })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
 
     await page.goto('/population-finder');

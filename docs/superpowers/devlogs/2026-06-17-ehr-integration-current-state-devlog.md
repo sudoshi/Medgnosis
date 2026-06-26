@@ -37,6 +37,8 @@ Follow-up System Health EHR/FHIR readiness work on 2026-06-26 adds a stored-evid
 
 Follow-up release-evidence hardening on 2026-06-26 makes the background worker entrypoint import-safe and testable through a lazy registry while preserving direct execution behavior for the production worker service. Focused tests prove the worker registry, startup handles, startup-failure cleanup, signal shutdown, and close path. A new `npm run release:migrations -- --env-file .env.production` helper parses the target env file and runs both migration list and dry-run, avoiding the older shell-source warnings from unquoted OIDC group names; the production check reported 91 applied migrations and no pending migrations.
 
+Follow-up admin release-smoke work on 2026-06-26 adds fully mocked Playwright coverage for the operational admin tabs that carry EHR readiness evidence: System Health, EHR Integrations, and Measure Governance. The spec seeds a local admin session, dispatches the EHR sync alert snapshot, asserts the EHR/FHIR tenant, Bulk, standards, sync-status, readiness-evidence, and QDM dossier panels render, and fails on any unhandled `/api/v1/**` request. It does not use production credentials, call live vendor diagnostics, or advance EMPI/identity work.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:

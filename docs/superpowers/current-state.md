@@ -199,6 +199,12 @@ devlogs do not override the current codebase state.
   shell-sourcing production values.
   The production check reported 91 applied migrations and no pending
   migrations without the previous OIDC group shell warnings.
+- Follow-up continuation added a fully mocked admin operational Playwright
+  release smoke that loads System Health, EHR Integrations, and Measure
+  Governance under a seeded admin session, dispatches the EHR sync alert
+  snapshot, and fails on any unhandled `/api/v1/**` request. This is local
+  frontend release evidence only; it does not use production credentials, call
+  live vendor diagnostics, or touch the parallel EMPI track.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

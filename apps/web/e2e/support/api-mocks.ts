@@ -627,6 +627,644 @@ export async function mockSettingsApis(page: Page): Promise<void> {
   });
 }
 
+const releaseSmokeNow = '2026-06-26T20:00:00.000Z';
+
+const releaseSmokeTenant = {
+  id: 42,
+  orgId: 7,
+  vendor: 'epic',
+  name: 'Epic Sandbox Smoke',
+  environment: 'sandbox',
+  fhirBaseUrl: 'https://fhir.epic.example.test/interconnect-fhir-oauth/api/FHIR/R4',
+  smartConfigUrl: 'https://fhir.epic.example.test/.well-known/smart-configuration',
+  issuer: 'https://fhir.epic.example.test/interconnect-fhir-oauth/api/FHIR/R4',
+  audience: 'https://fhir.epic.example.test/interconnect-fhir-oauth/api/FHIR/R4',
+  status: 'testing',
+  createdAt: releaseSmokeNow,
+  updatedAt: releaseSmokeNow,
+};
+
+function releaseSmokeHealth() {
+  return {
+    api: { status: 'ok', node_env: 'test' },
+    database: { status: 'ok' },
+    redis: {
+      status: 'ok',
+      endpoint: 'localhost:6379/0',
+      pubsub: {
+        alert_pattern: 'medgnosis:alerts:*',
+        patterns: 1,
+        alert_channels: 2,
+      },
+    },
+    solr: {
+      status: 'ok',
+      enabled: true,
+      url: 'http://localhost:8984/solr',
+      cores: [
+        { role: 'search', name: 'search', healthy: true, status: { name: 'search' } },
+        { role: 'clinical', name: 'clinical', healthy: true, status: { name: 'clinical' } },
+      ],
+    },
+    auth: {
+      status: 'ok',
+      local_enabled: true,
+      oidc_enabled: true,
+      providers: [
+        {
+          provider_type: 'local',
+          display_name: 'Email and password',
+          enabled: true,
+          status: 'ok',
+          updated_at: releaseSmokeNow,
+          last_test: null,
+          issues: [],
+        },
+      ],
+    },
+    workers: {
+      status: 'ok',
+      total_workers: 4,
+      counts: { waiting: 0, active: 0, delayed: 1, failed: 0 },
+      queues: [
+        {
+          name: 'medgnosis-ehr-bulk-import',
+          label: 'EHR Bulk import',
+          role: 'ehr_bulk',
+          status: 'ok',
+          workers: 1,
+          paused: false,
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        },
+        {
+          name: 'medgnosis-nightly',
+          label: 'Nightly scheduler',
+          role: 'scheduler',
+          status: 'ok',
+          workers: 1,
+          paused: false,
+          counts: { waiting: 0, active: 0, delayed: 1, failed: 0 },
+          repeatable_jobs: 1,
+          next_run_at: '2026-06-27T02:00:00.000Z',
+          latest_completed_at: releaseSmokeNow,
+        },
+      ],
+    },
+    ehr_tenants: {
+      status: 'ok',
+      tenants: {
+        total: 1,
+        active: 1,
+        disabled: 0,
+        healthy: 1,
+        degraded: 0,
+        blocked: 0,
+        production: 0,
+        sandbox: 1,
+        staging: 0,
+      },
+      discovery: {
+        with_snapshots: 1,
+        smart_ok: 1,
+        capability_ok: 1,
+        with_resource_support: 1,
+        issuer_mismatches: 0,
+        missing_authorization_endpoint: 0,
+        missing_token_endpoint: 0,
+        latest_snapshot_at: releaseSmokeNow,
+      },
+      backend_services: {
+        tenants_with_enabled_clients: 1,
+        enabled_clients: 1,
+        ready_for_token_exchange: 1,
+        credentials_incomplete: 0,
+        scopes_missing: 0,
+        token_requests_24h: 1,
+        latest_token_issued_at: releaseSmokeNow,
+        latest_token_expired: 0,
+      },
+      smart_launch: {
+        launches_started_24h: 2,
+        launches_denied_24h: 0,
+        callbacks_succeeded_24h: 2,
+        callbacks_failed_24h: 0,
+        handoffs_completed_24h: 2,
+        expired_pending_launches: 0,
+        latest_success_at: releaseSmokeNow,
+      },
+      fhir_api: {
+        failed_requests_24h: 0,
+        auth_failures_24h: 0,
+        rate_limit_failures_24h: 0,
+        network_failures_24h: 0,
+        backend_token_failures_24h: 0,
+        backend_token_auth_failures_24h: 0,
+        latest_failure_at: null,
+        affected_resource_types: [],
+      },
+      resource_coverage: {
+        required_resource_types: ['Patient', 'Observation', 'Condition', 'Encounter'],
+        tenants_with_required_bulk_coverage: 1,
+        tenants_missing_required_bulk_coverage: 0,
+        average_required_bulk_coverage: 1,
+      },
+      issues: [],
+    },
+    ehr_bulk: {
+      status: 'ok',
+      queue_enabled: true,
+      tenants: {
+        total: 1,
+        active: 1,
+        with_backend_services: 1,
+        with_capability_snapshots: 1,
+        ready_for_bulk: 1,
+      },
+      schedules: {
+        enabled: 1,
+        due: 0,
+        failed_24h: 0,
+        next_run_at: '2026-06-27T02:00:00.000Z',
+      },
+      bulk_jobs: {
+        active: 0,
+        failed_24h: 0,
+        completed_24h: 1,
+        latest_completed_at: releaseSmokeNow,
+      },
+      issues: [],
+    },
+    ehr_sync_alerts: {
+      status: 'ok',
+      enabled: true,
+      configured: true,
+      nightly_enabled: true,
+      endpoint_host: 'ops.example.test',
+      last_dispatch_at: releaseSmokeNow,
+      last_dispatch_status: 'sent',
+      last_dispatch_reason: 'sent',
+      last_issue_count: 3,
+      last_critical_issue_count: 1,
+      last_warning_issue_count: 2,
+    },
+    standards: {
+      status: 'ok',
+      checks: [
+        {
+          key: 'cql',
+          label: 'CQL Engine',
+          status: 'ok',
+          runtime_configured: true,
+          detail: 'CQL smoke assets and runtime are configured',
+          commands: ['bash scripts/cql-engine-smoke.sh'],
+          artifacts: { present: 4, total: 4, missing: [] },
+        },
+        {
+          key: 'fhir',
+          label: 'FHIR US Core / QI-Core',
+          status: 'ok',
+          runtime_configured: true,
+          detail: 'FHIR validator and golden fixtures are available',
+          commands: ['./scripts/fhir-validate.sh'],
+          artifacts: { present: 5, total: 5, missing: [] },
+        },
+        {
+          key: 'deqm',
+          label: 'Da Vinci DEQM',
+          status: 'ok',
+          runtime_configured: true,
+          detail: 'DEQM validator and fixture are available',
+          commands: ['./scripts/deqm-validate.sh'],
+          artifacts: { present: 3, total: 3, missing: [] },
+        },
+      ],
+      issues: [],
+    },
+    duration_ms: 9,
+  };
+}
+
+function releaseSmokeTenantDetail() {
+  return {
+    tenant: releaseSmokeTenant,
+    clientRegistrations: [
+      {
+        id: 101,
+        ehrTenantId: releaseSmokeTenant.id,
+        clientType: 'smart_launch',
+        clientSlot: 'default',
+        clientId: 'smart-launch-client',
+        jwksUrl: null,
+        redirectUris: ['http://127.0.0.1:5176/ehr/launch/complete'],
+        launchUrl: 'https://medgnosis.example.test/ehr/launch',
+        scopesRequested: 'openid fhirUser launch patient/Patient.r',
+        scopesGranted: 'openid fhirUser launch patient/Patient.r',
+        authMethod: 'public_pkce',
+        profileId: null,
+        profileVersion: null,
+        portalAppId: null,
+        approvalStatus: 'approved',
+        approvalEvidence: {},
+        enabled: true,
+        hasClientSecretRef: false,
+        hasPrivateKeyRef: false,
+        createdAt: releaseSmokeNow,
+        updatedAt: releaseSmokeNow,
+      },
+      {
+        id: 102,
+        ehrTenantId: releaseSmokeTenant.id,
+        clientType: 'backend_services',
+        clientSlot: 'default',
+        clientId: 'backend-services-client',
+        jwksUrl: 'https://medgnosis.example.test/.well-known/jwks.json',
+        redirectUris: [],
+        launchUrl: null,
+        scopesRequested: 'system/Patient.rs system/Observation.rs',
+        scopesGranted: 'system/Patient.rs system/Observation.rs',
+        authMethod: 'private_key_jwt',
+        profileId: null,
+        profileVersion: null,
+        portalAppId: null,
+        approvalStatus: 'approved',
+        approvalEvidence: {},
+        enabled: true,
+        hasClientSecretRef: false,
+        hasPrivateKeyRef: true,
+        createdAt: releaseSmokeNow,
+        updatedAt: releaseSmokeNow,
+      },
+    ],
+    latestCapabilitySnapshot: null,
+    readiness: {
+      clients: [
+        {
+          clientSlot: 'default',
+          clientType: 'smart_launch',
+          clientId: 'smart-launch-client',
+          authMethod: 'public_pkce',
+          status: 'ready',
+          missing: [],
+        },
+        {
+          clientSlot: 'default',
+          clientType: 'backend_services',
+          clientId: 'backend-services-client',
+          authMethod: 'private_key_jwt',
+          status: 'ready',
+          missing: [],
+        },
+      ],
+    },
+  };
+}
+
+function releaseSmokeSyncStatus() {
+  return {
+    ehrTenantId: releaseSmokeTenant.id,
+    generatedAt: releaseSmokeNow,
+    crosswalk: {
+      totalResources: 4,
+      localTargetResources: 4,
+      unmappedLocalResources: 0,
+      patientLinkedResources: 4,
+      missingPatientResources: 0,
+      staleResources: 0,
+      collisionResources: 0,
+      collisionTargets: 0,
+      patientCrosswalks: 1,
+      resourceTypes: 4,
+      lastSeenAt: releaseSmokeNow,
+      staleAfterDays: 7,
+    },
+    resources: [],
+    bulkSchedule: {
+      enabledSchedules: 1,
+      dueSchedules: 0,
+      nextBulkScheduleAt: '2026-06-27T02:00:00.000Z',
+      lastBulkScheduleSuccessAt: releaseSmokeNow,
+      lastBulkScheduleFailureAt: null,
+    },
+    bulkWorker: {
+      lastEventAt: releaseSmokeNow,
+      latestAction: 'ehr_bulk_worker_import',
+      lastFailureAt: null,
+      failures24h: 0,
+      incompleteImports24h: 0,
+      activeOverdueJobs: 0,
+      oldestOverdueJobAt: null,
+    },
+    patientSync: {
+      totalPatients: 1,
+      displayedPatients: 0,
+      stalePatients: 0,
+      lastPatientSeenAt: releaseSmokeNow,
+      staleAfterDays: 7,
+    },
+    lastSuccessfulIngestAt: releaseSmokeNow,
+    lastSuccessfulBulkExportAt: releaseSmokeNow,
+    lastSuccessfulBulkImportAt: releaseSmokeNow,
+    lastSeenAt: releaseSmokeNow,
+    issues: [],
+    patientResources: [],
+    conflictTargets: [],
+    stalePatientResources: [],
+  };
+}
+
+function releaseSmokeReadinessEvidence() {
+  return {
+    ehrTenantId: releaseSmokeTenant.id,
+    generatedAt: releaseSmokeNow,
+    discovery: {
+      latestSnapshotId: 12,
+      capturedAt: releaseSmokeNow,
+      smartConfigurationUrl: 'https://fhir.epic.example.test/.well-known/smart-configuration',
+      capabilityStatementUrl: 'https://fhir.epic.example.test/metadata',
+      smartOk: true,
+      capabilityOk: true,
+      registeredIssuer: releaseSmokeTenant.issuer,
+      discoveredIssuer: releaseSmokeTenant.issuer,
+      issuerMatches: true,
+      authorizationEndpointPresent: true,
+      tokenEndpointPresent: true,
+      fhirVersion: '4.0.1',
+      resourceCount: 4,
+      drift: [],
+    },
+    capability: {
+      previousSnapshotId: 11,
+      previousCapturedAt: '2026-06-25T20:00:00.000Z',
+      addedResourceTypes: [],
+      removedResourceTypes: [],
+      changedResourceTypes: [],
+      changedResourceCount: 0,
+      requiredBulkResourceTypes: ['Patient', 'Observation', 'Condition', 'Encounter'],
+      supportedRequiredBulkResourceTypes: ['Patient', 'Observation', 'Condition', 'Encounter'],
+      missingRequiredBulkResourceTypes: [],
+      bulkResourceCoverageRatio: 1,
+    },
+    backendServices: {
+      enabledClientCount: 1,
+      authMethods: ['private_key_jwt'],
+      credentialStatus: 'ready',
+      hasClientSecretRef: false,
+      hasPrivateKeyRef: true,
+      hasJwksUrl: true,
+      scopesRequestedCount: 2,
+      scopesGrantedCount: 2,
+      tokenEndpointPresent: true,
+      readyForTokenExchange: true,
+      latestTokenIssuedAt: releaseSmokeNow,
+      latestTokenExpiresAt: '2026-06-26T21:00:00.000Z',
+      latestTokenExpired: false,
+      tokenRequests24h: 1,
+    },
+    launch: {
+      latestLaunchStartedAt: releaseSmokeNow,
+      latestLaunchDeniedAt: null,
+      latestCallbackSucceededAt: releaseSmokeNow,
+      latestCallbackFailedAt: null,
+      latestHandoffCompletedAt: releaseSmokeNow,
+      latestSessionCreatedAt: releaseSmokeNow,
+      latestSessionConsumedAt: releaseSmokeNow,
+      latestSessionHandoffConsumedAt: releaseSmokeNow,
+      activePendingLaunches: 0,
+      expiredPendingLaunches: 0,
+      launchesStarted24h: 2,
+      launchesDenied24h: 0,
+      callbacksSucceeded24h: 2,
+      callbacksFailed24h: 0,
+      handoffsCompleted24h: 2,
+    },
+    bulkDiagnostics: {
+      readyForManualKickoff: true,
+      activeJobs: 0,
+      failedJobs24h: 0,
+      completedJobs24h: 1,
+      latestJobRequestedAt: releaseSmokeNow,
+      latestCompletedAt: releaseSmokeNow,
+      enabledScheduleCount: 1,
+      overdueScheduleCount: 0,
+      nextScheduledAt: '2026-06-27T02:00:00.000Z',
+    },
+    issues: [],
+  };
+}
+
+function releaseSmokeWorklist() {
+  return {
+    measureCode: 'CMS122v12',
+    dossierId: 122,
+    sourceMeasureCode: null,
+    reconciliationRunId: null,
+    measureReportId: null,
+    period: { start: '2026-01-01', end: '2026-12-31' },
+    semanticRelationship: 'cql_shadow_review',
+    generatedAt: releaseSmokeNow,
+    filters: {
+      denominatorDrift: 'residual_cql_or_qicore_semantic_gap',
+      numeratorDrift: null,
+      exclusionDrift: null,
+      patientId: null,
+    },
+    pagination: {
+      limit: 25,
+      offset: 0,
+      total: 0,
+      returned: 0,
+      hasMore: false,
+    },
+    classificationCounts: {},
+    rows: [],
+  };
+}
+
+function releaseSmokeDossier() {
+  return {
+    measureCode: 'CMS122v12',
+    binding: null,
+    components: {
+      fhirLibraryUrl: null,
+      fhirMeasureUrl: null,
+      elm: null,
+      testDeckCoverage: null,
+      measureReport: null,
+    },
+  };
+}
+
+export async function mockAdminReleaseSmokeApis(page: Page, unhandledRequests: string[] = []): Promise<void> {
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const apiPath = url.pathname.replace(/^\/api\/v1/, '') || '/';
+    const method = request.method();
+
+    if (apiPath === '/dashboard') {
+      return fulfillJson(route, successBody({
+        stats: {
+          total_patients: { value: 0, trend: 0 },
+          active_patients: 0,
+          care_gaps: { value: 0, trend: 0 },
+          risk_score: { high_risk_count: 0, high_risk_percentage: 0, trend: 0 },
+          encounters: { value: 0, trend: 0 },
+        },
+        analytics: {
+          care_gap_summary: { total: 0, by_priority: { high: 0, medium: 0, low: 0 } },
+          risk_stratification: { distribution: [] },
+          recent_encounters: [],
+        },
+        clinician: {
+          todays_schedule: [],
+          urgent_alerts: [],
+          critical_alert_count: 0,
+          abby_briefing: { enabled: true, message: 'Ask me about your patients or care gaps.' },
+        },
+      }));
+    }
+
+    if (apiPath === '/alerts') {
+      return fulfillJson(route, successBody([], { page: 1, per_page: 50, total: 0, total_pages: 1 }));
+    }
+
+    if (apiPath === '/admin/stats') {
+      return fulfillJson(route, successBody({
+        total_providers: 12,
+        active_patients: 2475,
+        open_care_gaps: 31,
+        star_bundle_rows: 2475,
+        star_composite_rows: 2475,
+        last_etl_status: 'success',
+        last_etl_at: releaseSmokeNow,
+      }));
+    }
+
+    if (apiPath === '/admin/audit-log') {
+      return fulfillJson(route, successBody({
+        logs: [
+          {
+            audit_id: 'audit-1',
+            event_type: 'login',
+            target_type: 'app_user',
+            target_id: adminUser.id,
+            description: 'Admin signed in',
+            user_email: adminUser.email,
+            user_first_name: adminUser.first_name,
+            user_last_name: adminUser.last_name,
+            created_at: releaseSmokeNow,
+          },
+        ],
+        total: 1,
+      }));
+    }
+
+    if (method === 'GET' && apiPath === '/admin/system-health') {
+      return fulfillJson(route, successBody(releaseSmokeHealth()));
+    }
+
+    if (method === 'POST' && apiPath === '/admin/system-health/ehr-sync-alerts/dispatch') {
+      return fulfillJson(route, successBody({
+        ehrSyncAlertDispatch: {
+          status: 'sent',
+          reason: 'sent',
+          enabled: true,
+          configured: true,
+          endpointHost: 'ops.example.test',
+          generatedAt: releaseSmokeNow,
+          tenantCount: 1,
+          issueCount: 3,
+          criticalIssueCount: 1,
+          warningIssueCount: 2,
+          statusCode: 202,
+        },
+      }));
+    }
+
+    if (method === 'GET' && apiPath === '/ehr/admin/tenants') {
+      return fulfillJson(route, successBody({ tenants: [releaseSmokeTenant], count: 1 }));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}`) {
+      return fulfillJson(route, successBody(releaseSmokeTenantDetail()));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}/ingest-runs`) {
+      return fulfillJson(route, successBody({
+        tenant: releaseSmokeTenant,
+        ingestRuns: [],
+        latest: null,
+        count: 0,
+      }));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}/bulk-jobs`) {
+      return fulfillJson(route, successBody({
+        tenant: releaseSmokeTenant,
+        bulkJobs: [],
+        latest: null,
+        count: 0,
+      }));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}/bulk-schedules`) {
+      return fulfillJson(route, successBody({
+        tenant: releaseSmokeTenant,
+        bulkSchedules: [],
+        latest: null,
+        count: 0,
+      }));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}/sync-status`) {
+      return fulfillJson(route, successBody({
+        tenant: releaseSmokeTenant,
+        syncStatus: releaseSmokeSyncStatus(),
+      }));
+    }
+
+    if (method === 'GET' && apiPath === `/ehr/admin/tenants/${releaseSmokeTenant.id}/readiness-evidence`) {
+      return fulfillJson(route, successBody({
+        tenant: releaseSmokeTenant,
+        readinessEvidence: releaseSmokeReadinessEvidence(),
+      }));
+    }
+
+    if (method === 'GET' && apiPath === '/admin/measure-promotion-configs') {
+      return fulfillJson(route, successBody({ configs: [] }));
+    }
+
+    if (
+      method === 'GET' &&
+      apiPath === '/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist'
+    ) {
+      return fulfillJson(route, successBody({ worklist: releaseSmokeWorklist() }));
+    }
+
+    if (method === 'GET' && apiPath === '/admin/qdm-bridge/status') {
+      return fulfillJson(route, successBody({ status: [] }));
+    }
+
+    if (method === 'GET' && apiPath === '/admin/qdm-bridge/issues') {
+      return fulfillJson(route, successBody({ issues: [] }));
+    }
+
+    if (method === 'GET' && apiPath === '/measures/CMS122v12/dossier') {
+      return fulfillJson(route, successBody(releaseSmokeDossier()));
+    }
+
+    const label = `${method} ${apiPath}${url.search}`;
+    unhandledRequests.push(label);
+    return fulfillJson(route, {
+      success: false,
+      error: {
+        code: 'E2E_UNHANDLED_ADMIN_RELEASE_SMOKE_API',
+        message: `Unhandled admin release-smoke API request: ${label}`,
+      },
+    }, 500);
+  });
+}
+
 export async function mockProtectedRouteSmokeApis(page: Page, unhandledRequests: string[] = []): Promise<void> {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
