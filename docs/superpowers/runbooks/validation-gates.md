@@ -20,13 +20,23 @@ npm run build
 git diff --check
 ```
 
-Expected result as of 2026-06-18:
+Expected result as of 2026-06-26:
 
 - Typecheck passes across API, DB, shared, Solr, and web packages.
 - Lint passes for API and web targets.
 - Unit tests pass across API, web, shared, and Solr.
 - Production build passes across all packages.
 - `git diff --check` reports no whitespace errors.
+
+For release evidence, use the no-cache aggregate gate:
+
+```bash
+npm run verify:release
+```
+
+That command forces Turbo to execute `typecheck`, `lint`, `test`, and `build`
+instead of replaying cached task logs. Keep the shorter baseline commands for
+day-to-day local assessment.
 
 ## Database Migration Gates
 
@@ -234,10 +244,7 @@ Important limitation:
 Before a release or handoff, record:
 
 - [ ] Commit or diff under review.
-- [ ] `npm run typecheck`
-- [ ] `npm run lint`
-- [ ] `npm run test`
-- [ ] `npm run build`
+- [ ] `npm run verify:release`
 - [ ] `git diff --check`
 - [ ] `npm run release:migrations -- --env-file <target-env>`
 - [ ] `./scripts/fhir-validate.sh`

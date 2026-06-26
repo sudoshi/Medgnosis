@@ -47,6 +47,8 @@ Follow-up reporting-conformance work on 2026-06-26 adds a CI job for the existin
 
 Follow-up FHIR conformance CI stabilization on 2026-06-26 changes `./scripts/fhir-validate.sh` and `./scripts/deqm-validate.sh` to default to offline terminology with no terminology cache. The trigger was GitHub Actions run `28267861945`, where FHIR fixture validation failed after `tx.fhir.org` timeout and cache-session errors rather than fixture/profile errors. The deterministic local commands preserve US Core/QI-Core and DEQM profile/structure validation; live terminology checks now require explicit `FHIR_VALIDATOR_TX` and `FHIR_VALIDATOR_TX_CACHE` overrides.
 
+Follow-up release-evidence hardening on 2026-06-26 adds `npm run verify:release`, a no-cache Turbo aggregate for root typecheck, lint, test, and build. Normal cached root commands remain useful for local assessment, but release checklists now require the forced-execution gate plus `git diff --check`, migration dry-run, and standards validators.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:

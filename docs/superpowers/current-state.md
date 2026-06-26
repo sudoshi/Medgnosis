@@ -225,6 +225,11 @@ devlogs do not override the current codebase state.
   US Core/QI-Core and DEQM profile/structure gates while avoiding release
   failures caused by transient `tx.fhir.org` timeout/cache-session errors; live
   terminology validation remains available through explicit env overrides.
+- Follow-up continuation resolved the Turbo cache release-evidence decision by
+  adding `npm run verify:release`, which forces root typecheck, lint, test, and
+  build tasks to execute. The shorter root commands remain acceptable for fast
+  local assessment, but release checklists now point at the no-cache aggregate
+  gate.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password

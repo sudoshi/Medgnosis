@@ -121,12 +121,9 @@ Acceptance gate:
 
 Objective: keep the currently green build reliable while expanding tests from unit coverage into real product workflows.
 
-- [ ] Keep the current root gates mandatory:
-  - [ ] `npm run typecheck`
-  - [ ] `npm run lint`
-  - [ ] `npm run test`
-  - [ ] `npm run build`
-  - [ ] `git diff --check`
+- [x] Keep the current root gates mandatory:
+  - [x] Add `npm run verify:release` as the no-cache release evidence gate for root typecheck, lint, test, and build.
+  - [x] Keep `git diff --check` in the release checklist.
 - [x] Add a CI job or documented local script for migration list and dry-run with explicit `DATABASE_URL`.
 - [ ] Improve E2E so it proves real authenticated workflows.
   - [x] Start an API server for Playwright or mock all required API bootstrap calls intentionally for protected-route smoke coverage.
@@ -152,7 +149,8 @@ Objective: keep the currently green build reliable while expanding tests from un
 - [x] Keep FHIR/DEQM CI conformance deterministic by avoiding default live
   `tx.fhir.org` terminology dependencies; require explicit env overrides for
   operator-run live terminology evidence.
-- [ ] Decide whether Turbo cache replay is acceptable for local assessment commands or whether a no-cache command should be used in release checklists.
+- [x] Decide whether Turbo cache replay is acceptable for local assessment commands or whether a no-cache command should be used in release checklists.
+  - Normal local commands may use Turbo cache for speed; release evidence now uses `npm run verify:release`, which forces TypeScript, lint, test, and build tasks to execute.
 
 Acceptance gate:
 
