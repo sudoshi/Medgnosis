@@ -22,6 +22,11 @@ import {
   ehrSyncAlertAuditDetails,
   isEhrSyncAlertNightlyEnabled,
 } from '../services/ehr/syncAlerts.js';
+import {
+  dispatchSystemAlertSnapshot,
+  systemAlertAuditDetails,
+  isSystemAlertNightlyEnabled,
+} from '../services/systemAlerts.js';
 import { writeSystemAuditLog } from '../services/auditLog.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
@@ -139,6 +144,25 @@ async function processNightlyJob(): Promise<void> {
       );
     } catch (err) {
       console.error('[nightly] EHR sync alert dispatch failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // 11. System-level operational alert snapshot to an external channel.
+  if (isSystemAlertNightlyEnabled()) {
+    try {
+      const systemAlertDispatch = await dispatchSystemAlertSnapshot();
+      await writeSystemAuditLog(
+        'system_alert_dispatch',
+        'system_alert',
+        'nightly',
+        systemAlertAuditDetails(systemAlertDispatch, 'nightly'),
+      );
+      console.info(
+        '[nightly] System alerts: ' +
+          `status=${systemAlertDispatch.status} reason=${systemAlertDispatch.reason} issues=${systemAlertDispatch.issueCount}`,
+      );
+    } catch (err) {
+      console.error('[nightly] System alert dispatch failed:', err instanceof Error ? err.message : String(err));
     }
   }
 

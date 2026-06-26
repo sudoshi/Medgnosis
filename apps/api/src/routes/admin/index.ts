@@ -32,6 +32,11 @@ import {
   ehrSyncAlertAuditDetails,
 } from '../../services/ehr/syncAlerts.js';
 import {
+  dispatchSystemAlertSnapshot,
+  systemAlertAuditDetails,
+  getSystemAlertingStatus,
+} from '../../services/systemAlerts.js';
+import {
   listMeasurePromotionConfigs,
   updateMeasurePromotionConfig,
   promoteMeasureToCqlAuthoritative,
@@ -757,6 +762,27 @@ export default async function adminRoutes(app: FastifyInstance) {
     return {
       success: true,
       data: { ehrSyncAlertDispatch: result },
+    };
+  });
+
+  app.get('/system-health/system-alerts/status', { preHandler: app.requirePermission('admin:system-health') }, async () => {
+    return {
+      success: true,
+      data: { systemAlertingStatus: await getSystemAlertingStatus() },
+    };
+  });
+
+  app.post('/system-health/system-alerts/dispatch', { preHandler: app.requirePermission('admin:system-health') }, async (req) => {
+    const result = await dispatchSystemAlertSnapshot();
+    await req.auditLog(
+      'system_alert_dispatch',
+      'system_alert',
+      'manual',
+      systemAlertAuditDetails(result, 'manual'),
+    );
+    return {
+      success: true,
+      data: { systemAlertDispatch: result },
     };
   });
 

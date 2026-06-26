@@ -25,6 +25,9 @@ const {
   mockSendInviteEmail,
   mockDispatchEhrSyncAlertSnapshot,
   mockEhrSyncAlertAuditDetails,
+  mockDispatchSystemAlertSnapshot,
+  mockSystemAlertAuditDetails,
+  mockGetSystemAlertingStatus,
   mockFetchOidcDiscovery,
   mockGetOidcProviderConfig,
   mockRecordAuthProviderTestEvent,
@@ -64,6 +67,9 @@ const {
     mockSendInviteEmail: vi.fn(),
     mockDispatchEhrSyncAlertSnapshot: vi.fn(),
     mockEhrSyncAlertAuditDetails: vi.fn(),
+    mockDispatchSystemAlertSnapshot: vi.fn(),
+    mockSystemAlertAuditDetails: vi.fn(),
+    mockGetSystemAlertingStatus: vi.fn(),
     mockFetchOidcDiscovery: vi.fn(),
     mockGetOidcProviderConfig: vi.fn(),
     mockRecordAuthProviderTestEvent: vi.fn(),
@@ -131,6 +137,11 @@ vi.mock('../../services/systemHealth.js', () => ({
 vi.mock('../../services/ehr/syncAlerts.js', () => ({
   dispatchEhrSyncAlertSnapshot: mockDispatchEhrSyncAlertSnapshot,
   ehrSyncAlertAuditDetails: mockEhrSyncAlertAuditDetails,
+}));
+vi.mock('../../services/systemAlerts.js', () => ({
+  dispatchSystemAlertSnapshot: mockDispatchSystemAlertSnapshot,
+  systemAlertAuditDetails: mockSystemAlertAuditDetails,
+  getSystemAlertingStatus: mockGetSystemAlertingStatus,
 }));
 vi.mock('../../services/auth/invites.js', () => ({
   createPendingPasswordHash: mockCreatePendingPasswordHash,
@@ -226,6 +237,34 @@ beforeEach(() => {
     warningIssueCount: 2,
     statusCode: 202,
     triggeredBy: 'manual',
+  });
+  mockDispatchSystemAlertSnapshot.mockResolvedValue({
+    status: 'sent',
+    reason: 'sent',
+    enabled: true,
+    configured: true,
+    endpointHost: 'ops.example',
+    generatedAt: '2026-06-25T22:30:00Z',
+    overallStatus: 'degraded',
+    severity: 'warning',
+    issueCount: 2,
+    criticalIssueCount: 0,
+    warningIssueCount: 2,
+    statusCode: 202,
+  });
+  mockSystemAlertAuditDetails.mockReturnValue({
+    status: 'sent',
+    reason: 'sent',
+    issueCount: 2,
+    triggeredBy: 'manual',
+  });
+  mockGetSystemAlertingStatus.mockResolvedValue({
+    enabled: false,
+    configured: false,
+    nightlyEnabled: false,
+    endpointHost: null,
+    lastDispatchAt: null,
+    lastDispatchStatus: null,
   });
 });
 
@@ -498,6 +537,57 @@ describe('admin system health route', () => {
       }),
     );
     expect(JSON.stringify(mockAuditLog.mock.calls)).not.toContain('https://ops.example/hooks');
+    await app.close();
+  });
+
+  it('dispatches an audited PHI-safe system alert snapshot', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/system-health/system-alerts/dispatch',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        systemAlertDispatch: {
+          status: 'sent',
+          reason: 'sent',
+          overallStatus: 'degraded',
+          issueCount: 2,
+        },
+      },
+    });
+    expect(mockDispatchSystemAlertSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockSystemAlertAuditDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'sent', issueCount: 2 }),
+      'manual',
+    );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'system_alert_dispatch',
+      'system_alert',
+      'manual',
+      expect.objectContaining({ status: 'sent', triggeredBy: 'manual' }),
+    );
+    await app.close();
+  });
+
+  it('returns system alerting status', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/system-health/system-alerts/status',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { systemAlertingStatus: { enabled: false, configured: false } },
+    });
+    expect(mockGetSystemAlertingStatus).toHaveBeenCalledTimes(1);
     await app.close();
   });
 });
