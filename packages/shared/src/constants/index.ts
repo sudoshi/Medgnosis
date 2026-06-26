@@ -27,6 +27,10 @@ export const ALERT_RULE_KEYS = {
   ENCOUNTER_FOLLOWUP: 'RULE-006',
   POPULATION_DRIFT: 'RULE-007',
   AI_ANOMALY: 'RULE-008',
+  // Phase 6 — expanded clinical rules engine
+  ABNORMAL_VITALS: 'RULE-009',
+  LAB_CRITICAL_VALUE: 'RULE-010',
+  MEDICATION_DUPLICATE_THERAPY: 'RULE-011',
 } as const;
 
 export type AlertRuleKey = (typeof ALERT_RULE_KEYS)[keyof typeof ALERT_RULE_KEYS];
@@ -51,6 +55,34 @@ export const ALERT_THRESHOLDS = {
   FOLLOWUP_OVERDUE_DAYS: 7,
   // RULE-007: Population drift
   POPULATION_DRIFT_THRESHOLD: 0.05,
+  // ---------------------------------------------------------------------------
+  // Phase 6 — expanded clinical rules engine
+  // ---------------------------------------------------------------------------
+  // RULE-009: Abnormal vitals — critical physiological boundaries.
+  // Only the most recent vital_sign reading per patient is evaluated; readings
+  // older than the lookback window are ignored (a stale reading is not an
+  // actionable real-time alert).
+  VITALS_LOOKBACK_DAYS: 30,
+  VITALS_SBP_CRITICAL_HIGH: 180, // systolic BP, mmHg (hypertensive crisis)
+  VITALS_SBP_CRITICAL_LOW: 90, // systolic BP, mmHg (hypotension)
+  VITALS_DBP_CRITICAL_HIGH: 120, // diastolic BP, mmHg (hypertensive crisis)
+  VITALS_HR_CRITICAL_HIGH: 130, // heart rate, bpm (tachycardia)
+  VITALS_HR_CRITICAL_LOW: 40, // heart rate, bpm (bradycardia)
+  VITALS_SPO2_CRITICAL_LOW: 88, // oxygen saturation, % (hypoxemia)
+  VITALS_RR_CRITICAL_HIGH: 30, // respiratory rate, /min (tachypnea)
+  VITALS_TEMP_CRITICAL_HIGH: 103.0, // temperature, °F (high fever)
+  // RULE-010: High-risk lab result — critical value beyond a safe boundary.
+  // Evaluated against the most recent observation per LOINC within the window.
+  LAB_LOOKBACK_DAYS: 90,
+  LAB_POTASSIUM_CRITICAL_HIGH: 6.0, // serum potassium, mmol/L (hyperkalemia)
+  LAB_POTASSIUM_CRITICAL_LOW: 2.5, // serum potassium, mmol/L (hypokalemia)
+  LAB_GLUCOSE_CRITICAL_HIGH: 400.0, // glucose, mg/dL (severe hyperglycemia)
+  LAB_GLUCOSE_CRITICAL_LOW: 50.0, // glucose, mg/dL (severe hypoglycemia)
+  LAB_CREATININE_CRITICAL_HIGH: 4.0, // serum creatinine, mg/dL (acute kidney injury)
+  // RULE-011: Medication safety — duplicate active therapy.
+  // Two or more concurrently-active orders for the same medication is a
+  // recognized medication-safety signal (duplicate therapy / order error).
+  MED_DUPLICATE_THERAPY_MIN_ORDERS: 2,
 } as const;
 
 /** Risk scoring bands */
