@@ -4,14 +4,23 @@ const {
   mockQueueCtor,
   mockSql,
   mockConfig,
+  mockRedisCtor,
+  mockGetSolrClient,
+  mockIsSolrAvailable,
   mockGetOidcProviderConfig,
   mockListAuthProviderHealth,
 } = vi.hoisted(() => ({
   mockQueueCtor: vi.fn(),
   mockSql: vi.fn(),
+  mockRedisCtor: vi.fn(),
+  mockGetSolrClient: vi.fn(),
+  mockIsSolrAvailable: vi.fn(),
   mockConfig: {
     redisUrl: 'redis://localhost:6379/0',
     solrEnabled: false,
+    solrUrl: 'http://localhost:8984/solr',
+    solrSearchCore: 'search',
+    solrClinicalCore: 'clinical',
     nodeEnv: 'test',
     localAuthEnabled: true,
   },
@@ -23,12 +32,15 @@ vi.mock('bullmq', () => ({
   Queue: mockQueueCtor,
 }));
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
+vi.mock('ioredis', () => ({
+  Redis: mockRedisCtor,
+}));
 vi.mock('../config.js', () => ({
   config: mockConfig,
 }));
 vi.mock('../plugins/solr.js', () => ({
-  getSolrClient: vi.fn(() => null),
-  isSolrAvailable: vi.fn(() => false),
+  getSolrClient: mockGetSolrClient,
+  isSolrAvailable: mockIsSolrAvailable,
 }));
 vi.mock('./auth/oidc/providerConfig.js', () => ({
   getOidcProviderConfig: mockGetOidcProviderConfig,
@@ -40,6 +52,8 @@ vi.mock('./auth/providerHealth.js', () => ({
 import {
   getAuthHealth,
   getEhrBulkReadiness,
+  getRedisHealth,
+  getSolrHealth,
   getStandardsReadiness,
   getWorkerQueueHealth,
 } from './systemHealth.js';
@@ -50,6 +64,24 @@ beforeEach(() => {
   delete process.env['CQL_ENGINE_URL'];
   process.env['VALIDATOR_JAR'] = 'package.json';
   mockConfig.localAuthEnabled = true;
+  mockConfig.solrEnabled = false;
+  mockConfig.solrUrl = 'http://localhost:8984/solr';
+  mockConfig.solrSearchCore = 'search';
+  mockConfig.solrClinicalCore = 'clinical';
+  mockRedisCtor.mockImplementation(function RedisMock() {
+    return {
+      connect: vi.fn().mockResolvedValue(undefined),
+      ping: vi.fn().mockResolvedValue('PONG'),
+      call: vi.fn().mockImplementation((command: string, subcommand: string) => {
+        if (command === 'PUBSUB' && subcommand === 'NUMPAT') return Promise.resolve(1);
+        if (command === 'PUBSUB' && subcommand === 'CHANNELS') return Promise.resolve(['medgnosis:alerts:org-1']);
+        return Promise.resolve(null);
+      }),
+      disconnect: vi.fn(),
+    };
+  });
+  mockGetSolrClient.mockReturnValue(null);
+  mockIsSolrAvailable.mockReturnValue(false);
   mockGetOidcProviderConfig.mockResolvedValue({ enabled: false });
   mockListAuthProviderHealth.mockResolvedValue([
     {
@@ -127,6 +159,47 @@ describe('getStandardsReadiness', () => {
   });
 });
 
+describe('getRedisHealth', () => {
+  it('reports Redis endpoint and alert pub/sub counts', async () => {
+    const health = await getRedisHealth();
+
+    expect(health).toEqual({
+      status: 'ok',
+      endpoint: 'localhost:6379/0',
+      pubsub: {
+        alert_pattern: 'medgnosis:alerts:*',
+        patterns: 1,
+        alert_channels: 1,
+      },
+    });
+  });
+});
+
+describe('getSolrHealth', () => {
+  it('reports configured Solr cores and per-core health', async () => {
+    mockConfig.solrEnabled = true;
+    mockIsSolrAvailable.mockReturnValue(true);
+    mockGetSolrClient.mockReturnValue({
+      searchCore: 'search',
+      clinicalCore: 'clinical',
+      ping: vi.fn().mockImplementation((core: string) => Promise.resolve(core === 'search')),
+      coreStatus: vi.fn().mockImplementation((core: string) => Promise.resolve({ status: { [core]: { name: core } } })),
+    });
+
+    const health = await getSolrHealth();
+
+    expect(health).toEqual({
+      status: 'degraded',
+      enabled: true,
+      url: 'http://localhost:8984/solr',
+      cores: [
+        { role: 'search', name: 'search', healthy: true, status: { status: { search: { name: 'search' } } } },
+        { role: 'clinical', name: 'clinical', healthy: false, status: { status: { clinical: { name: 'clinical' } } } },
+      ],
+    });
+  });
+});
+
 describe('getWorkerQueueHealth', () => {
   it('aggregates queue counts and repeatable scheduler readiness', async () => {
     mockQueueCtor.mockImplementation(function QueueMock(name: string) {
@@ -138,7 +211,12 @@ describe('getWorkerQueueHealth', () => {
         ),
         getWorkersCount: vi.fn().mockResolvedValue(name === 'nightly' ? 1 : 2),
         isPaused: vi.fn().mockResolvedValue(false),
-        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly-repeat' }]),
+        getRepeatableJobs: vi.fn().mockResolvedValue([{ key: 'nightly-repeat', next: 1_782_000_000_000 }]),
+        getJobs: vi.fn().mockResolvedValue(
+          name === 'nightly'
+            ? [{ finishedOn: 1_781_913_600_000 }]
+            : [],
+        ),
         close: vi.fn().mockResolvedValue(undefined),
       };
     });
@@ -157,6 +235,8 @@ describe('getWorkerQueueHealth', () => {
       name: 'nightly',
       status: 'ok',
       repeatable_jobs: 1,
+      next_run_at: '2026-06-21T00:00:00.000Z',
+      latest_completed_at: '2026-06-20T00:00:00.000Z',
     });
     expect(health.queues[1]).toMatchObject({
       name: 'bulk',

@@ -42,8 +42,28 @@ export interface AuthProviderSetting {
 export interface SystemHealth {
   api: { status: string; node_env: string };
   database: { status: string; error?: string };
-  redis: { status: string; error?: string };
-  solr: { status: string; enabled: boolean };
+  redis: {
+    status: string;
+    endpoint: string;
+    pubsub?: {
+      alert_pattern: string;
+      patterns: number;
+      alert_channels: number;
+    };
+    error?: string;
+  };
+  solr: {
+    status: string;
+    enabled: boolean;
+    url: string;
+    cores: Array<{
+      role: 'search' | 'clinical';
+      name: string;
+      healthy: boolean;
+      status: Record<string, unknown> | null;
+    }>;
+    error?: string;
+  };
   auth: {
     status: string;
     local_enabled: boolean;
@@ -165,6 +185,8 @@ export interface WorkerQueueStatus {
   paused: boolean;
   counts: QueueCounts;
   repeatable_jobs?: number;
+  next_run_at?: string | null;
+  latest_completed_at?: string | null;
   error?: string;
 }
 

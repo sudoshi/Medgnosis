@@ -222,8 +222,24 @@ function systemHealthPayload() {
   return {
     api: { status: 'ok', node_env: 'test' },
     database: { status: 'ok' },
-    redis: { status: 'ok' },
-    solr: { status: 'disabled', enabled: false },
+    redis: {
+      status: 'ok',
+      endpoint: 'localhost:6379/0',
+      pubsub: {
+        alert_pattern: 'medgnosis:alerts:*',
+        patterns: 1,
+        alert_channels: 2,
+      },
+    },
+    solr: {
+      status: 'degraded',
+      enabled: true,
+      url: 'http://localhost:8984/solr',
+      cores: [
+        { role: 'search', name: 'search', healthy: true, status: { name: 'search' } },
+        { role: 'clinical', name: 'clinical', healthy: false, status: { name: 'clinical' } },
+      ],
+    },
     auth: { local_enabled: true, oidc_enabled: false },
     workers: {
       status: 'degraded',
@@ -234,11 +250,12 @@ function systemHealthPayload() {
           name: 'medgnosis-ehr-bulk-import',
           label: 'EHR Bulk import',
           role: 'ehr_bulk',
-          status: 'ok',
-          workers: 1,
-          paused: false,
-          counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
-        },
+            status: 'ok',
+            workers: 1,
+            paused: false,
+            counts: { waiting: 2, active: 1, delayed: 0, failed: 0 },
+            latest_completed_at: '2026-06-20T02:00:00Z',
+          },
       ],
     },
     ehr_bulk: {
@@ -330,7 +347,17 @@ describe('admin system health route', () => {
       data: {
         workers: {
           total_workers: 3,
-          queues: [{ name: 'medgnosis-ehr-bulk-import', status: 'ok' }],
+          queues: [{ name: 'medgnosis-ehr-bulk-import', status: 'ok', latest_completed_at: '2026-06-20T02:00:00Z' }],
+        },
+        redis: {
+          endpoint: 'localhost:6379/0',
+          pubsub: { patterns: 1, alert_channels: 2 },
+        },
+        solr: {
+          cores: [
+            { role: 'search', name: 'search', healthy: true },
+            { role: 'clinical', name: 'clinical', healthy: false },
+          ],
         },
         ehr_bulk: {
           status: 'ok',

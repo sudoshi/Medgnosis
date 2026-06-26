@@ -210,6 +210,7 @@ Before a release or handoff, record:
 - [ ] `./scripts/fhir-validate.sh`
 - [ ] `./scripts/deqm-validate.sh`
 - [ ] Admin System Health shows Standards Readiness for CQL/FHIR/DEQM assets.
+- [ ] Admin System Health shows Redis pub/sub, Solr core, and scheduler queue timing details.
 - [ ] `npm run test:e2e --workspace=apps/web`
 - [ ] Local `/health`
 - [ ] Public `/health`

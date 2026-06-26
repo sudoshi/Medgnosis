@@ -52,6 +52,26 @@ function queueCounts(counts: SystemHealth['workers']['counts']) {
   return `W ${counts.waiting} / A ${counts.active} / D ${counts.delayed} / F ${counts.failed}`;
 }
 
+function redisDetail(redis: SystemHealth['redis']): string {
+  if (redis.error) return `${redis.endpoint} / ${redis.error}`;
+  if (!redis.pubsub) return redis.endpoint;
+  return `${redis.endpoint} / alerts ${redis.pubsub.alert_channels} channels / ${redis.pubsub.patterns} patterns`;
+}
+
+function solrDetail(solr: SystemHealth['solr']): string {
+  const coreSummary = solr.cores
+    .map((core) => `${core.name} ${core.healthy ? 'ok' : 'down'}`)
+    .join(' / ');
+  return `${solr.enabled ? 'Enabled' : 'Disabled'} / ${coreSummary || solr.url}`;
+}
+
+function queueTiming(queue: SystemHealth['workers']['queues'][number]): string | null {
+  const parts = [];
+  if (queue.next_run_at) parts.push(`Next ${fmtDateTime(queue.next_run_at)}`);
+  if (queue.latest_completed_at) parts.push(`Last complete ${fmtDateTime(queue.latest_completed_at)}`);
+  return parts.length > 0 ? parts.join(' / ') : null;
+}
+
 type AuthProviderHealth = SystemHealth['auth']['providers'][number];
 
 function authProviderLastTest(provider: AuthProviderHealth): string {
@@ -110,8 +130,8 @@ export function SystemHealthTab() {
           <>
             <HealthRow icon={Server} label="API" status={health.api.status} detail={health.api.node_env} />
             <HealthRow icon={Database} label="Database" status={health.database.status} detail={health.database.error} />
-            <HealthRow icon={Wifi} label="Redis" status={health.redis.status} detail={health.redis.error} />
-            <HealthRow icon={Search} label="Solr" status={health.solr.status} detail={health.solr.enabled ? 'Enabled' : 'Disabled'} />
+            <HealthRow icon={Wifi} label="Redis" status={health.redis.status} detail={redisDetail(health.redis)} />
+            <HealthRow icon={Search} label="Solr" status={health.solr.status} detail={solrDetail(health.solr)} />
             <HealthRow
               icon={KeyRound}
               label="Authentication"
@@ -141,6 +161,7 @@ export function SystemHealthTab() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-bright">{queue.label}</p>
                     <p className="truncate font-data text-xs text-ghost">{queue.name}</p>
+                    {queueTiming(queue) && <p className="mt-1 truncate text-xs text-ghost">{queueTiming(queue)}</p>}
                     {queue.error && <p className="mt-1 truncate text-xs text-crimson">{queue.error}</p>}
                   </div>
                   <p className="font-data text-xs text-dim md:text-right">{queueCounts(queue.counts)}</p>

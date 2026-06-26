@@ -24,8 +24,8 @@ export type HealthStatus = 'ok' | 'degraded' | 'error' | 'disabled';
 export interface SystemHealth {
   api: { status: HealthStatus; node_env: string };
   database: { status: HealthStatus; error?: string };
-  redis: { status: HealthStatus; error?: string };
-  solr: { status: HealthStatus; enabled: boolean };
+  redis: RedisHealth;
+  solr: SolrHealth;
   auth: AuthHealth;
   workers: WorkerQueueHealth;
   ehr_bulk: EhrBulkReadiness;
@@ -50,6 +50,8 @@ export interface WorkerQueueStatus {
   paused: boolean;
   counts: QueueCounts;
   repeatable_jobs?: number;
+  next_run_at?: string | null;
+  latest_completed_at?: string | null;
   error?: string;
 }
 
@@ -94,6 +96,32 @@ export interface AuthHealth {
   error?: string;
 }
 
+export interface RedisHealth {
+  status: HealthStatus;
+  endpoint: string;
+  pubsub?: {
+    alert_pattern: string;
+    patterns: number;
+    alert_channels: number;
+  };
+  error?: string;
+}
+
+export interface SolrHealth {
+  status: HealthStatus;
+  enabled: boolean;
+  url: string;
+  cores: SolrCoreHealth[];
+  error?: string;
+}
+
+export interface SolrCoreHealth {
+  role: 'search' | 'clinical';
+  name: string;
+  healthy: boolean;
+  status: Record<string, unknown> | null;
+}
+
 export interface StandardsReadiness {
   status: HealthStatus;
   checks: StandardsReadinessCheck[];
@@ -128,6 +156,14 @@ interface RedisConnectionOptions {
   password?: string;
   db?: number;
   maxRetriesPerRequest?: number;
+}
+
+interface RepeatableJobInfo {
+  next?: number | string | null;
+}
+
+interface CompletedJobInfo {
+  finishedOn?: number | string | null;
 }
 
 interface EhrBulkReadinessRow {
@@ -333,31 +369,60 @@ async function getDatabaseHealth(): Promise<SystemHealth['database']> {
   );
 }
 
-async function getRedisHealth(): Promise<SystemHealth['redis']> {
+export async function getRedisHealth(): Promise<SystemHealth['redis']> {
+  const endpoint = redisEndpoint(config.redisUrl);
   const redis = new Redis(config.redisUrl, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
   });
 
-  return redis.connect()
-    .then(() => redis.ping())
-    .then(() => ({ status: 'ok' as const }))
-    .catch((err: unknown) => ({ status: 'error' as const, error: errorMessage(err) }))
-    .finally(() => redis.disconnect());
+  try {
+    await redis.connect();
+    await redis.ping();
+    const [patterns, channels] = await Promise.all([
+      redis.call('PUBSUB', 'NUMPAT'),
+      redis.call('PUBSUB', 'CHANNELS', 'medgnosis:alerts:*'),
+    ]);
+
+    return {
+      status: 'ok',
+      endpoint,
+      pubsub: {
+        alert_pattern: 'medgnosis:alerts:*',
+        patterns: toNumber(patterns as number | string | null),
+        alert_channels: Array.isArray(channels) ? channels.length : 0,
+      },
+    };
+  } catch (err) {
+    return { status: 'error', endpoint, error: errorMessage(err) };
+  } finally {
+    redis.disconnect();
+  }
 }
 
-async function getSolrHealth(): Promise<SystemHealth['solr']> {
+export async function getSolrHealth(): Promise<SystemHealth['solr']> {
   const solr = getSolrClient();
   if (solr) {
+    const cores = await Promise.all([
+      inspectSolrCore('search', solr.searchCore, solr),
+      inspectSolrCore('clinical', solr.clinicalCore, solr),
+    ]);
     return {
-      status: isSolrAvailable() ? 'ok' : 'degraded',
+      status: cores.every((core) => core.healthy) && isSolrAvailable() ? 'ok' : 'degraded',
       enabled: config.solrEnabled,
+      url: config.solrUrl,
+      cores,
     };
   }
 
   return {
     status: config.solrEnabled ? 'error' : 'disabled',
     enabled: config.solrEnabled,
+    url: config.solrUrl,
+    cores: [
+      { role: 'search', name: config.solrSearchCore, healthy: false, status: null },
+      { role: 'clinical', name: config.solrClinicalCore, healthy: false, status: null },
+    ],
   };
 }
 
@@ -521,6 +586,18 @@ async function repoArtifactExists(path: string): Promise<boolean> {
   return false;
 }
 
+async function inspectSolrCore(
+  role: SolrCoreHealth['role'],
+  coreName: string,
+  solr: { ping(core: string): Promise<boolean>; coreStatus(core: string): Promise<Record<string, unknown>> },
+): Promise<SolrCoreHealth> {
+  const [healthy, status] = await Promise.all([
+    solr.ping(coreName).catch(() => false),
+    solr.coreStatus(coreName).catch(() => null),
+  ]);
+  return { role, name: coreName, healthy, status };
+}
+
 async function inspectQueue(
   definition: QueueDefinition,
   connection: RedisConnectionOptions,
@@ -528,13 +605,21 @@ async function inspectQueue(
   const queue = new Queue(definition.name, { connection });
 
   try {
-    const [rawCounts, workers, paused, repeatableJobs] = await Promise.all([
+    const [rawCounts, workers, paused, repeatableJobInfos, completedJobs] = await Promise.all([
       queue.getJobCounts(...QUEUE_JOB_TYPES),
       queue.getWorkersCount(),
       queue.isPaused(),
-      definition.repeatable ? queue.getRepeatableJobs().then((jobs) => jobs.length) : Promise.resolve(undefined),
+      definition.repeatable ? queue.getRepeatableJobs() : Promise.resolve(undefined),
+      queue.getJobs(['completed'], 0, 0, false).catch(() => []),
     ]);
     const counts = normalizeQueueCounts(rawCounts);
+    const repeatableJobs = repeatableJobInfos?.length;
+    const nextRunAt = repeatableJobInfos
+      ? earliestTimestamp(repeatableJobInfos.map((job) => (job as RepeatableJobInfo).next))
+      : undefined;
+    const latestCompletedAt = latestTimestamp(
+      completedJobs.map((job) => (job as CompletedJobInfo).finishedOn),
+    );
     return {
       ...definition,
       status: queueStatus({ counts, workers, paused, repeatableJobs, repeatable: definition.repeatable }),
@@ -542,6 +627,8 @@ async function inspectQueue(
       paused,
       counts,
       ...(repeatableJobs === undefined ? {} : { repeatable_jobs: repeatableJobs }),
+      ...(nextRunAt === undefined ? {} : { next_run_at: nextRunAt }),
+      latest_completed_at: latestCompletedAt,
     };
   } catch (err) {
     return {
@@ -673,6 +760,29 @@ function emptyQueueCounts(): QueueCounts {
   return { waiting: 0, active: 0, delayed: 0, failed: 0 };
 }
 
+function earliestTimestamp(values: Array<number | string | null | undefined>): string | null {
+  const timestamps = values.map(toTimestamp).filter((value): value is number => value !== null);
+  if (timestamps.length === 0) return null;
+  return new Date(Math.min(...timestamps)).toISOString();
+}
+
+function latestTimestamp(values: Array<number | string | null | undefined>): string | null {
+  const timestamps = values.map(toTimestamp).filter((value): value is number => value !== null);
+  if (timestamps.length === 0) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function toTimestamp(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? date : null;
+  }
+  return null;
+}
+
 function redisConnectionOptions(redisUrl: string): RedisConnectionOptions {
   const url = new URL(redisUrl);
   const db = Number(url.pathname.replace('/', ''));
@@ -684,6 +794,15 @@ function redisConnectionOptions(redisUrl: string): RedisConnectionOptions {
     ...(Number.isInteger(db) && db >= 0 ? { db } : {}),
     maxRetriesPerRequest: 1,
   };
+}
+
+function redisEndpoint(redisUrl: string): string {
+  try {
+    const url = new URL(redisUrl);
+    return `${url.hostname}:${url.port || '6379'}/${url.pathname.replace('/', '') || '0'}`;
+  } catch {
+    return 'localhost:6379/0';
+  }
 }
 
 function envBool(key: string, fallback: boolean): boolean {

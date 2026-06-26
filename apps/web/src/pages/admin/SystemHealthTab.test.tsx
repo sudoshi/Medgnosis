@@ -36,8 +36,24 @@ function renderHealthTab() {
 const health: SystemHealth = {
   api: { status: 'ok', node_env: 'test' },
   database: { status: 'ok' },
-  redis: { status: 'ok' },
-  solr: { status: 'disabled', enabled: false },
+  redis: {
+    status: 'ok',
+    endpoint: 'localhost:6379/0',
+    pubsub: {
+      alert_pattern: 'medgnosis:alerts:*',
+      patterns: 1,
+      alert_channels: 2,
+    },
+  },
+  solr: {
+    status: 'degraded',
+    enabled: true,
+    url: 'http://localhost:8984/solr',
+    cores: [
+      { role: 'search', name: 'search', healthy: true, status: { name: 'search' } },
+      { role: 'clinical', name: 'clinical', healthy: false, status: { name: 'clinical' } },
+    ],
+  },
   auth: {
     status: 'ok',
     local_enabled: true,
@@ -94,6 +110,8 @@ const health: SystemHealth = {
         paused: false,
         counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
         repeatable_jobs: 0,
+        next_run_at: '2026-06-21T02:00:00Z',
+        latest_completed_at: '2026-06-20T02:00:00Z',
       },
     ],
   },
@@ -199,8 +217,11 @@ describe('SystemHealthTab', () => {
 
     expect(await screen.findByText('Workers & Queues')).toBeInTheDocument();
     expect(screen.getByText('3 workers / W 2 / A 1 / D 0 / F 0')).toBeInTheDocument();
+    expect(screen.getByText('localhost:6379/0 / alerts 2 channels / 1 patterns')).toBeInTheDocument();
+    expect(screen.getByText('Enabled / search ok / clinical down')).toBeInTheDocument();
     expect(screen.getByText('EHR Bulk import')).toBeInTheDocument();
     expect(screen.getByText('medgnosis-ehr-bulk-import')).toBeInTheDocument();
+    expect(screen.getByText(/Next .* Last complete/)).toBeInTheDocument();
     expect(screen.getByText('EHR Bulk Readiness')).toBeInTheDocument();
     expect(screen.getByText('1/1 active tenants ready')).toBeInTheDocument();
     expect(screen.getByText('2 enabled / 0 due')).toBeInTheDocument();
