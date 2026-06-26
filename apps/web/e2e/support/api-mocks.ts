@@ -56,6 +56,43 @@ export const invitedAuthTokens = {
   expires_in: 900,
 };
 
+export const providerUser = {
+  ...invitedUser,
+  id: '00000000-0000-4000-8000-000000000121',
+  email: 'provider@example.test',
+  first_name: 'Priya',
+  last_name: 'Provider',
+  permissions: ['patients:read', 'patients:write'],
+};
+
+export const providerAuthTokens = {
+  access_token: 'e2e-provider-access-token',
+  refresh_token: 'e2e-provider-refresh-token',
+  expires_in: 900,
+};
+
+export const analystUser = {
+  id: '00000000-0000-4000-8000-000000000131',
+  email: 'analyst@example.test',
+  first_name: 'Alex',
+  last_name: 'Analyst',
+  role: 'analyst',
+  roles: ['analyst'],
+  permissions: ['patients:read'],
+  org_id: invitedUser.org_id,
+  provider_id: null,
+  mfa_enabled: false,
+  must_change_password: false,
+  created_at: '2026-06-18T12:00:00.000Z',
+  updated_at: '2026-06-18T12:00:00.000Z',
+};
+
+export const analystAuthTokens = {
+  access_token: 'e2e-analyst-access-token',
+  refresh_token: 'e2e-analyst-refresh-token',
+  expires_in: 900,
+};
+
 export const adminUser = {
   id: '00000000-0000-4000-8000-000000000010',
   email: 'admin@example.test',
@@ -84,6 +121,35 @@ export const adminUser = {
 export const adminAuthTokens = {
   access_token: 'e2e-admin-access-token',
   refresh_token: 'e2e-admin-refresh-token',
+  expires_in: 900,
+};
+
+export const superAdminUser = adminUser;
+export const superAdminAuthTokens = adminAuthTokens;
+
+export const standardAdminUser = {
+  ...adminUser,
+  id: '00000000-0000-4000-8000-000000000141',
+  email: 'standard.admin@example.test',
+  first_name: 'Anika',
+  last_name: 'Admin',
+  role: 'admin',
+  roles: ['admin'],
+  permissions: [
+    'admin:access',
+    'admin:users',
+    'admin:audit',
+    'admin:system-health',
+    'admin:etl',
+    'admin:ehr',
+    'patients:read',
+    'patients:write',
+  ],
+};
+
+export const standardAdminAuthTokens = {
+  access_token: 'e2e-standard-admin-access-token',
+  refresh_token: 'e2e-standard-admin-refresh-token',
   expires_in: 900,
 };
 

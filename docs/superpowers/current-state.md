@@ -169,6 +169,12 @@ devlogs do not override the current codebase state.
   ports and a catch-all mocked authenticated protected-route smoke that walks
   every top-level protected route in `apps/web/src/App.tsx` without production
   credentials or API proxy leakage.
+- Follow-up continuation added role-based Playwright workflow coverage with
+  provider, analyst, normal-admin, and super-admin session fixtures. The focused
+  spec proves provider patient-detail access, analyst measure/population access,
+  non-admin Admin nav suppression and `/admin` redirect, normal-admin operations
+  without the super-admin-only Auth Providers tab, and super-admin Auth
+  Providers visibility.
 - Follow-up continuation added PHI-safe auth/session audit hardening. Known-user
   local login failures, MFA verification and disable failures, refresh-token
   rotation/replay/expiry/MFA-gate/user-missing branches, rejected password
@@ -228,10 +234,10 @@ devlogs do not override the current codebase state.
 ## First Implementation Priorities
 
 1. Keep README, env docs, and validation runbooks truthful.
-2. Expand role-based Playwright workflow coverage beyond the current login, MFA, password-reset, invite, settings, admin smoke, and protected-route smoke paths.
+2. Continue expanding role-based Playwright workflow coverage beyond the current login, MFA, password-reset, invite, settings, protected-route smoke, role-boundary, provider, analyst, and admin/super-admin paths.
 3. Keep MFA/session audit lifecycle coverage current as auth provider and session behavior evolves.
 4. Capture vendor sandbox evidence and exercise the new ingest-run detail panel against sandbox or failed-file replay incidents.
 5. Exercise the Bulk replay/dead-letter and EHR sync alert runbooks against a failed-file, stale-data, or sandbox replay incident.
 6. Run official Cypress CVU+ and QPP sandbox validation once the external validator/runtime and credentials are available.
 7. Extend the worker/EHR/Bulk System Health visibility with CQL, FHIR, and DEQM readiness.
-8. Broaden role-based E2E beyond the current auth/admin/settings/protected-route smoke paths.
+8. Broaden role-based E2E into write-path and incident-path workflows for EHR, Measure Governance, alerts, and clinical worklists.

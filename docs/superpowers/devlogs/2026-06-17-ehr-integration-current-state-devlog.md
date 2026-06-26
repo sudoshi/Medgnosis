@@ -27,6 +27,8 @@ Follow-up operations runbook work on 2026-06-26 adds a production worker and CQL
 
 Follow-up QRDA/QPP validation work on 2026-06-26 adds deterministic QRDA Cat I, QRDA Cat III, and QPP JSON fixtures, local structural validation scripts, and an external-validator handoff runbook. The local gates now prove well-formed CDA XML and the expected QPP performance-data shape; official Cypress CVU+ and QPP sandbox/API validation remain external gates and are not marked complete.
 
+Follow-up role-based E2E work on 2026-06-26 adds provider, analyst, normal-admin, and super-admin Playwright session fixtures plus a focused role workflow spec. The spec proves provider patient-detail access, analyst measure and population-finder access, non-admin Admin nav suppression and direct `/admin` redirect, normal-admin access to admin operations without the super-admin-only Auth Providers tab, and super-admin Auth Providers visibility. This expands the prior admin-only protected-route smoke without touching the parallel EMPI/identity track.
+
 Earlier EMPI continuation work added an operator-run EMPI backfill script for pre-EMPI legacy patients. Local dry-run evidence showed 1,005,791 existing `phm_edw.patient` rows were unlinked and linkable into `phm_edw.person`/`phm_edw.patient_link`. This refresh does not advance EMPI; that work remains owned by the parallel EMPI/identity track.
 
 Current completion estimate:
