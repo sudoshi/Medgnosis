@@ -144,6 +144,10 @@ devlogs do not override the current codebase state.
   Health. OIDC provider tests now write PHI-free success/failure evidence, auth
   health aggregates provider status, and the admin System Health tab shows
   provider availability, issuer/error detail, and latest test timing.
+- Follow-up continuation added OIDC JIT and group reconciliation regression
+  coverage for denied groups, active analyst/admin JIT creation, inactive mapped
+  account denial, additive admin promotion, super-admin preservation, and email
+  alias linking.
 - EMPI Phase 0 schema is deployed. Legacy patient identity backfill is available
   as an explicit operator script, `npm run db:backfill-empi -- --dry-run`, but
   has not been applied to production.

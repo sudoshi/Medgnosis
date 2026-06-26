@@ -152,7 +152,7 @@ Objective: make authentication and admin controls production-honest.
   - [x] Keep local login fallback unless explicitly disabled by env and documented.
   - [x] Either implement test flows for LDAP/OAuth2/SAML provider types or hide/disable those types until supported.
   - [x] Add provider health and last-test evidence to System Health.
-  - [ ] Add JIT provisioning and group reconciliation tests for role mapping edge cases.
+  - [x] Add JIT provisioning and group reconciliation tests for role mapping edge cases.
 - [ ] Finish role and permission matrix documentation.
   - [x] List route families and allowed roles.
   - [x] Add tests for admin-only and super-admin-only route behavior.
