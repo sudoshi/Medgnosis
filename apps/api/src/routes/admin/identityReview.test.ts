@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 
 const { mockSql } = vi.hoisted(() => {
   const fn = vi.fn();
