@@ -108,8 +108,8 @@ Objective: make the repo's documentation, env instructions, and current-state in
 - [x] Add a short operator note for migration commands:
   - [x] Example: `npm run release:migrations -- --env-file .env.production`.
   - [x] Explain which env file is safe for local, staging, and production.
-- [ ] Review `docs/DESIGNLOG.md` and mark old audit findings as resolved, still-open, or superseded.
-- [ ] Mark older phase plans as current, superseded, or completed so future work does not chase stale tasks.
+- [x] Review `docs/DESIGNLOG.md` and mark old audit findings as resolved, still-open, or superseded.
+- [x] Mark older phase plans as current, superseded, or completed so future work does not chase stale tasks.
 - [x] Add a `docs/superpowers/runbooks/validation-gates.md` runbook with the exact command matrix from this assessment.
 
 Acceptance gate:
@@ -189,7 +189,7 @@ Objective: make authentication and admin controls production-honest.
     - [x] Scope admin-user listing/mutations/invite controls and actor-user audit-log reads by org for normal admins; keep `super_admin` global.
   - [x] Decide and document global-admin versus org-scoped audit-log visibility before marking audit views complete.
 - [ ] Strengthen audit coverage.
-  - [ ] Confirm every mutation route calls audit logging.
+  - [x] Confirm every mutation route calls audit logging.
   - [x] Add audit entries for admin invite create/resend/revoke.
   - [x] Add audit entries for password reset request/completion.
   - [x] Add audit entries for MFA setup start, enable, verify, and disable.
@@ -255,7 +255,7 @@ Objective: turn the current EHR foundation into a safe EHR-launched application 
   - [ ] Add tenant policy for provider access/PCP attribution after imported Patient creation.
 - [ ] Complete tenant readiness gates.
   - [x] Expose tenant readiness evidence API/UI for SMART discovery, launch, callback, and handoff health.
-  - [ ] Enforce HTTPS and known vendor metadata for production tenants.
+  - [x] Enforce HTTPS and known vendor metadata for production tenants.
   - [x] Detect drift between registered tenant values and discovered SMART/CapabilityStatement metadata.
   - [x] Surface last successful discovery, launch, callback, and handoff evidence from capability snapshots, launch sessions, and audit rows.
   - [x] Store or surface backend token-refresh timestamps.
@@ -384,26 +384,26 @@ Acceptance gate:
 Objective: replace narrow/demo clinical behavior with workflows that can survive real clinical use.
 
 - [ ] Expand rules engine coverage.
-  - [ ] Move beyond only care-gap-overdue in `apps/api/src/workers/rules-engine.ts`.
+  - [x] Move beyond only care-gap-overdue in `apps/api/src/workers/rules-engine.ts`.
   - [ ] Add rule families for high-risk labs, medication safety, referral leakage, abnormal vitals, no-show risk, and unresolved critical alerts.
-  - [ ] Add rule-specific duplicate suppression and auto-resolution logic.
-  - [ ] Add tests for each rule family.
-- [ ] Implement `population_summary` in the AI insights worker or remove the job type.
-  - [ ] Define input shape, cohort scope, output JSON schema, storage target, and PHI policy.
-  - [ ] Add BAA/consent gating behavior for cloud providers.
-- [ ] Replace synthetic surveillance with a real feed path.
-  - [ ] Keep simulated streamer as a demo-only mode.
-  - [ ] Add an HL7 v2 MLLP, FHIR Subscription, or vendor event ingestion adapter.
-  - [ ] Add replay fixtures and operator-visible source status.
-- [ ] Complete SuperNote AI narrative decision.
-  - [ ] Either wire LLM narrative with strict clinical safety gates or keep deterministic assembly and remove deferred claims.
-  - [ ] Add provenance, clinician review, edit tracking, and no-autosign policy.
-- [ ] Harden orders/writeback workflows.
-  - [ ] Define which order actions are internal recommendations versus EHR writeback.
-  - [ ] Keep writeback behind tenant and role feature flags.
-  - [ ] Add audit and clinical review for all generated orders.
+  - [x] Add rule-specific duplicate suppression and auto-resolution logic.
+  - [x] Add tests for each rule family.
+- [x] Implement `population_summary` in the AI insights worker or remove the job type.
+  - [x] Define input shape, cohort scope, output JSON schema, storage target, and PHI policy.
+  - [x] Add BAA/consent gating behavior for cloud providers.
+- [x] Replace synthetic surveillance with a real feed path.
+  - [x] Keep simulated streamer as a demo-only mode.
+  - [x] Add an HL7 v2 MLLP, FHIR Subscription, or vendor event ingestion adapter.
+  - [x] Add replay fixtures and operator-visible source status.
+- [x] Complete SuperNote AI narrative decision.
+  - [x] Either wire LLM narrative with strict clinical safety gates or keep deterministic assembly and remove deferred claims.
+  - [x] Add provenance, clinician review, edit tracking, and no-autosign policy.
+- [x] Harden orders/writeback workflows.
+  - [x] Define which order actions are internal recommendations versus EHR writeback.
+  - [x] Keep writeback behind tenant and role feature flags.
+  - [x] Add audit and clinical review for all generated orders.
 - [ ] Close the loop on clinical outcomes.
-  - [ ] Track gap closure, order completion, referral completion, alert acknowledgment, and patient outreach outcomes.
+  - [x] Track gap closure, order completion, referral completion, alert acknowledgment, and patient outreach outcomes.
   - [ ] Add outcome dashboards with real denominators and time windows.
 
 Acceptance gate:
@@ -452,13 +452,13 @@ Objective: expose the production-critical back-end state to users and operators.
   - [x] Add active sessions and device/session revoke list.
   - [ ] Add password change/reset state clarity.
 - [ ] Raise route-level UX quality.
-  - [ ] Audit loading, empty, error, and permission-denied states on every route.
+  - [x] Audit loading, empty, error, and permission-denied states on every route.
   - [ ] Add responsive checks for admin tables and patient workspace.
   - [ ] Add keyboard/focus coverage for dense clinical tables.
   - [ ] Use consistent icons and buttons for actions.
-- [ ] Audit design-system drift.
-  - [ ] Resolve stale raw class findings in `docs/DESIGNLOG.md`.
-  - [ ] Check raw color usage, dark/light token consistency, focus rings, and accessible contrast.
+- [x] Audit design-system drift.
+  - [x] Resolve stale raw class findings in `docs/DESIGNLOG.md`.
+  - [x] Check raw color usage, dark/light token consistency, focus rings, and accessible contrast.
 
 Acceptance gate:
 
@@ -472,48 +472,48 @@ Objective: make production operation boring and auditable.
 
 - [ ] Add operational dashboards.
   - [ ] API latency/error rate.
-  - [ ] Worker queue depth and failure rate.
-  - [ ] Nightly scheduler success/failure.
-  - [ ] EHR launch success/failure.
-  - [ ] Bulk import throughput/failure.
-  - [ ] CQL engine availability and measure evaluation failures.
-  - [ ] DB migration and materialized-view refresh status.
-- [ ] Add alerting.
-  - [ ] Health degraded.
-  - [ ] Worker queue stalled.
-  - [ ] Nightly job missed.
+  - [x] Worker queue depth and failure rate.
+  - [x] Nightly scheduler success/failure.
+  - [x] EHR launch success/failure.
+  - [x] Bulk import throughput/failure.
+  - [x] CQL engine availability and measure evaluation failures.
+  - [x] DB migration and materialized-view refresh status.
+- [x] Add alerting.
+  - [x] Health degraded.
+  - [x] Worker queue stalled.
+  - [x] Nightly job missed.
   - [x] EHR token refresh/readiness failures through PHI-safe EHR sync alert snapshots.
   - [x] FHIR 401/403/429 and backend token auth/rate-limit spikes through PHI-safe EHR sync alert snapshots.
   - [x] Bulk job stuck past vendor polling window through PHI-safe EHR sync alert snapshots.
-  - [ ] QDM bridge blocking issues.
-  - [ ] CQL engine unavailable.
-- [ ] Finish deployment runbooks.
-  - [ ] Normal deploy.
-  - [ ] Rollback.
-  - [ ] DB migration failure.
+  - [x] QDM bridge blocking issues.
+  - [x] CQL engine unavailable.
+- [x] Finish deployment runbooks.
+  - [x] Normal deploy.
+  - [x] Rollback.
+  - [x] DB migration failure.
   - [x] Worker restart.
-  - [ ] Solr rebuild.
+  - [x] Solr rebuild.
   - [x] CQL sidecar restart/reload.
-  - [ ] EHR tenant incident.
-  - [ ] Bulk import replay.
+  - [x] EHR tenant incident.
+  - [x] Bulk import replay.
 - [ ] Verify backup and restore.
   - [ ] Database restore drill.
   - [ ] Solr/index rebuild from DB.
   - [ ] Measure artifact and report retention.
   - [ ] Audit log retention and export.
 - [ ] Finalize environment separation.
-  - [ ] Local, demo, staging, production env templates.
-  - [ ] Secret reference strategy for EHR client secrets and private keys.
+  - [x] Local, demo, staging, production env templates.
+  - [x] Secret reference strategy for EHR client secrets and private keys.
   - [ ] No demo credentials in production.
   - [x] Explicit public registration, demo quick-fill, and Swagger policy.
-- [ ] Add release checklist.
-  - [ ] Validation gates.
-  - [ ] Migration state.
-  - [ ] Health checks.
-  - [ ] E2E.
-  - [ ] Standards validators.
-  - [ ] Smoke tests against public hostname.
-  - [ ] Rollback readiness.
+- [x] Add release checklist.
+  - [x] Validation gates.
+  - [x] Migration state.
+  - [x] Health checks.
+  - [x] E2E.
+  - [x] Standards validators.
+  - [x] Smoke tests against public hostname.
+  - [x] Rollback readiness.
 
 Acceptance gate:
 
