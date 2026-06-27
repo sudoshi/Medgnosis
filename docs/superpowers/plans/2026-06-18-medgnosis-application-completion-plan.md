@@ -370,8 +370,8 @@ Objective: make quality measurement standards work governable, reproducible, and
 - [ ] Add reporting admin UX.
   - [x] Surface per-measure dossier artifact binding, version, latest MeasureReport summary, and structured test-deck status in Measure Governance.
   - [x] Add value-set drilldown, latest SQL/CQL count comparison, promotion mode actions, and drift summary controls.
-  - [ ] Export controls for QRDA Cat I/III, QPP JSON, DEQM, and FHIR MeasureReport.
-  - [ ] Clear "not submission-ready" warnings until external validation passes.
+  - [x] Export controls for QRDA Cat I/III, QPP JSON, DEQM, and FHIR MeasureReport.
+  - [x] Clear "not submission-ready" warnings until external validation passes.
 
 Acceptance gate:
 
