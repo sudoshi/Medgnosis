@@ -351,15 +351,15 @@ Objective: make quality measurement standards work governable, reproducible, and
   - [ ] Start with a small portfolio: CMS122, CMS165, CMS130, CMS125, and one non-diabetes measure.
   - [ ] Add known MADiE test-deck subjects and expected MeasureReports for each.
   - [x] Surface `testDeckCoverage` in `MeasureDossier` instead of returning `null`.
-- [ ] Operationalize CQL engine loading.
-  - [ ] Define bounded cohort export limits.
-  - [ ] Add scheduled or operator-triggered QI-Core/QDM loading jobs with row counts and last-success timestamps.
-  - [ ] Add engine health, loaded artifact count, and loaded patient count to admin health.
-  - [ ] Capture engine version in measure reports and reconciliation runs.
-- [ ] Schedule QDM bridge operations.
-  - [ ] Add nightly or tenant-triggered QDM shadow refresh where safe.
-  - [ ] Add backpressure and limits for large populations.
-  - [ ] Add issue triage states for `qdm_bridge_issue` beyond open issue listing.
+- [x] Operationalize CQL engine loading.
+  - [x] Define bounded cohort export limits.
+  - [x] Add scheduled or operator-triggered QI-Core/QDM loading jobs with row counts and last-success timestamps.
+  - [x] Add engine health, loaded artifact count, and loaded patient count to admin health.
+  - [x] Capture engine version in measure reports and reconciliation runs.
+- [x] Schedule QDM bridge operations.
+  - [x] Add nightly or tenant-triggered QDM shadow refresh where safe.
+  - [x] Add backpressure and limits for large populations.
+  - [x] Add issue triage states for `qdm_bridge_issue` beyond open issue listing.
 - [ ] Complete reporting artifact validation.
   - [x] Add deterministic QRDA Cat I, QRDA Cat III, and QPP sample fixtures plus local structural validation scripts and external validator handoff hooks.
   - [ ] QRDA Cat I: fill complete QDM patient data entries and validate with Cypress/CVU for the target reporting year.
