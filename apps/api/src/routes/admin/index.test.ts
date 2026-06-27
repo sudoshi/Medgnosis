@@ -17,6 +17,7 @@ const {
   mockGetQdmBridgeOperationalStatus,
   mockListQdmBridgeRuns,
   mockListQdmBridgeIssues,
+  mockSetQdmBridgeIssueTriageState,
   mockAuditLog,
   mockSql,
   mockGetSystemHealth,
@@ -59,6 +60,7 @@ const {
     mockGetQdmBridgeOperationalStatus: vi.fn(),
     mockListQdmBridgeRuns: vi.fn(),
     mockListQdmBridgeIssues: vi.fn(),
+    mockSetQdmBridgeIssueTriageState: vi.fn(),
     mockAuditLog: vi.fn(),
     mockSql: vi.fn(),
     mockGetSystemHealth: vi.fn(),
@@ -95,6 +97,11 @@ vi.mock('../../services/qdm/bridgeOps.js', () => ({
   getQdmBridgeOperationalStatus: mockGetQdmBridgeOperationalStatus,
   listQdmBridgeRuns: mockListQdmBridgeRuns,
   listQdmBridgeIssues: mockListQdmBridgeIssues,
+}));
+vi.mock('../../services/qdm/issueTriage.js', () => ({
+  isQdmBridgeIssueTriageState: (value: string): boolean =>
+    value === 'open' || value === 'acknowledged' || value === 'resolved' || value === 'suppressed',
+  setQdmBridgeIssueTriageState: mockSetQdmBridgeIssueTriageState,
 }));
 vi.mock('../../services/omopExport.js', () => ({
   exportPatientsToOmop: vi.fn(),
@@ -2312,6 +2319,127 @@ describe('admin measure promotion governance routes', () => {
 
     expect(res.statusCode).toBe(400);
     expect(mockListQdmBridgeRuns).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('applies a valid QDM bridge issue triage transition with PHI-safe audit', async () => {
+    mockSetQdmBridgeIssueTriageState.mockResolvedValueOnce({
+      ok: true,
+      from: 'open',
+      to: 'acknowledged',
+      issue: {
+        id: '22222222-2222-4222-8222-222222222222',
+        status: 'acknowledged',
+        issueType: 'missing_timing',
+        patientId: 3,
+        details: { qdmDatatype: 'Laboratory Test, Performed' },
+      },
+    });
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/qdm-bridge/issues/22222222-2222-4222-8222-222222222222/triage',
+      payload: { state: 'acknowledged' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { issue: { status: 'acknowledged' } },
+    });
+    expect(mockSetQdmBridgeIssueTriageState).toHaveBeenCalledWith({
+      issueId: '22222222-2222-4222-8222-222222222222',
+      toState: 'acknowledged',
+      resolvedBy: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'qdm_bridge_issue_triage',
+      'qdm_bridge_issue',
+      '22222222-2222-4222-8222-222222222222',
+      expect.objectContaining({ from: 'open', to: 'acknowledged', outcome: 'applied' }),
+    );
+    // Audit metadata must not leak issue details / PHI-adjacent payloads.
+    const auditMetadata = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(JSON.stringify(auditMetadata)).not.toContain('Laboratory Test');
+    expect(auditMetadata).not.toHaveProperty('details');
+    expect(auditMetadata).not.toHaveProperty('patientId');
+    await app.close();
+  });
+
+  it('rejects an unknown triage state before calling the service', async () => {
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/qdm-bridge/issues/22222222-2222-4222-8222-222222222222/triage',
+      payload: { state: 'in_progress' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockSetQdmBridgeIssueTriageState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('returns 409 and audits a rejected invalid triage transition', async () => {
+    mockSetQdmBridgeIssueTriageState.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'INVALID_TRANSITION', from: 'resolved', to: 'suppressed' },
+    });
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/qdm-bridge/issues/22222222-2222-4222-8222-222222222222/triage',
+      payload: { state: 'suppressed' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'INVALID_TRANSITION' },
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'qdm_bridge_issue_triage',
+      'qdm_bridge_issue',
+      '22222222-2222-4222-8222-222222222222',
+      expect.objectContaining({ from: 'resolved', to: 'suppressed', outcome: 'rejected' }),
+    );
+    await app.close();
+  });
+
+  it('returns 404 when the QDM bridge issue does not exist', async () => {
+    mockSetQdmBridgeIssueTriageState.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'ISSUE_NOT_FOUND' },
+    });
+    const app = await buildApp(ADMIN_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/qdm-bridge/issues/22222222-2222-4222-8222-222222222222/triage',
+      payload: { state: 'acknowledged' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'ISSUE_NOT_FOUND' },
+    });
+    await app.close();
+  });
+
+  it('forbids non-admin roles from setting QDM bridge issue triage state', async () => {
+    const app = await buildApp(PROVIDER_USER);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/qdm-bridge/issues/22222222-2222-4222-8222-222222222222/triage',
+      payload: { state: 'acknowledged' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockSetQdmBridgeIssueTriageState).not.toHaveBeenCalled();
     await app.close();
   });
 

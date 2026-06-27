@@ -157,7 +157,7 @@ interface RunRow {
   metadata: Record<string, unknown> | string | null;
 }
 
-interface IssueRow {
+export interface IssueRow {
   id: string;
   run_id: string | null;
   issue_type: string;
@@ -187,6 +187,236 @@ interface StatusRow {
   open_blocking_issue_count: number | string;
   latest_result: Record<string, unknown> | string | null;
   latest_error: Record<string, unknown> | string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Shadow refresh backpressure configuration
+// ---------------------------------------------------------------------------
+// Bounded, idempotent QDM/CQL shadow refresh sizing. A single nightly or
+// tenant-triggered shadow refresh selects at most `maxRowsPerRun` candidate
+// patients and walks them in `batchSize` chunks so a large population cannot
+// saturate the shared NVMe (see observation-table I/O incident). All limits are
+// env-overridable but hard-clamped to safe ceilings.
+export interface QdmShadowRefreshLimits {
+  /** Hard cap on candidate patient rows selected per run. */
+  maxRowsPerRun: number;
+  /** Chunk size used to walk the bounded candidate set. */
+  batchSize: number;
+  /**
+   * Idempotency guard window (minutes). A shadow refresh is skipped when a
+   * non-failed shadow run for the same measure started within this window.
+   */
+  idempotencyWindowMinutes: number;
+}
+
+const SHADOW_REFRESH_MAX_ROWS_CEILING = 200_000;
+const SHADOW_REFRESH_BATCH_CEILING = 10_000;
+const SHADOW_REFRESH_DEFAULT_MAX_ROWS = 10_000;
+const SHADOW_REFRESH_DEFAULT_BATCH = 1_000;
+const SHADOW_REFRESH_DEFAULT_WINDOW_MIN = 60;
+const SHADOW_REFRESH_WINDOW_CEILING_MIN = 24 * 60;
+
+export type QdmShadowRefreshStatus = 'completed' | 'skipped' | 'failed';
+
+export interface RunQdmShadowRefreshInput {
+  measureCode: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  triggerSource?: QdmBridgeTriggerSource;
+  startedBy?: string | null;
+  /** Per-call override of the env/default backpressure limits. */
+  limits?: Partial<QdmShadowRefreshLimits>;
+  /**
+   * When false (default), an in-window prior run short-circuits with status
+   * `skipped`. Set true to bypass the idempotency guard for an explicit
+   * operator-forced refresh.
+   */
+  force?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RunQdmShadowRefreshResult {
+  status: QdmShadowRefreshStatus;
+  measureCode: string;
+  /** Present when a run row was created (completed/failed); null when skipped. */
+  runId: string | null;
+  candidatePopulation: number;
+  patientsProcessed: number;
+  batches: number;
+  capped: boolean;
+  limits: QdmShadowRefreshLimits;
+  /** Set when status === 'skipped'. */
+  skippedReason: 'idempotent_recent_run' | null;
+  /** Set when status === 'skipped'; the prior run that satisfied the guard. */
+  priorRunId: string | null;
+}
+
+interface CountRow {
+  candidate_population: number | string;
+}
+
+interface PriorRunRow {
+  id: string;
+}
+
+/**
+ * Resolve effective shadow-refresh limits from defaults, env overrides, and an
+ * optional per-call override, clamped to safe ceilings.
+ */
+export function resolveQdmShadowRefreshLimits(
+  override?: Partial<QdmShadowRefreshLimits>,
+): QdmShadowRefreshLimits {
+  const maxRowsRaw = override?.maxRowsPerRun ?? envInt('QDM_SHADOW_MAX_ROWS_PER_RUN', SHADOW_REFRESH_DEFAULT_MAX_ROWS);
+  const batchRaw = override?.batchSize ?? envInt('QDM_SHADOW_BATCH_SIZE', SHADOW_REFRESH_DEFAULT_BATCH);
+  const windowRaw = override?.idempotencyWindowMinutes ?? envInt('QDM_SHADOW_IDEMPOTENCY_WINDOW_MINUTES', SHADOW_REFRESH_DEFAULT_WINDOW_MIN);
+
+  const maxRowsPerRun = clampInt(maxRowsRaw, 1, SHADOW_REFRESH_MAX_ROWS_CEILING, SHADOW_REFRESH_DEFAULT_MAX_ROWS);
+  const batchSize = clampInt(batchRaw, 1, SHADOW_REFRESH_BATCH_CEILING, SHADOW_REFRESH_DEFAULT_BATCH);
+  const idempotencyWindowMinutes = clampInt(windowRaw, 0, SHADOW_REFRESH_WINDOW_CEILING_MIN, SHADOW_REFRESH_DEFAULT_WINDOW_MIN);
+
+  return {
+    maxRowsPerRun,
+    // A batch larger than the run cap is pointless; clamp it down so the walk
+    // never advertises more work than the cap allows.
+    batchSize: Math.min(batchSize, maxRowsPerRun),
+    idempotencyWindowMinutes,
+  };
+}
+
+/**
+ * Bounded, idempotent, PHI-safe QDM/CQL shadow refresh suitable for nightly or
+ * tenant-triggered invocation. Records an operational ledger run, enforces a
+ * hard per-run row cap with batch-walk backpressure, and never flips
+ * measure_promotion_config (shadow only). Raw patient evidence is not persisted
+ * here — only aggregate counts.
+ *
+ * Idempotency: a non-failed shadow run for the same measure started inside the
+ * configured guard window short-circuits with status `skipped` (unless forced),
+ * so repeated nightly/tenant triggers do not stack duplicate work.
+ */
+export async function runQdmShadowRefresh(
+  input: RunQdmShadowRefreshInput,
+): Promise<RunQdmShadowRefreshResult> {
+  const measureCode = text(input.measureCode, 'measureCode', 120);
+  const limits = resolveQdmShadowRefreshLimits(input.limits);
+  const triggerSource = enumValue(input.triggerSource ?? 'scheduled', TRIGGERS, 'triggerSource');
+  validatePeriod(input.periodStart ?? null, input.periodEnd ?? null);
+
+  if (!input.force && limits.idempotencyWindowMinutes > 0) {
+    const [prior] = await sql<PriorRunRow[]>`
+      SELECT id::text AS id
+      FROM phm_edw.qdm_bridge_run
+      WHERE operation = 'cql_shadow_refresh'
+        AND measure_code = ${measureCode}
+        AND status <> 'failed'
+        AND started_at >= NOW() - (${limits.idempotencyWindowMinutes}::int * INTERVAL '1 minute')
+      ORDER BY started_at DESC, id DESC
+      LIMIT 1
+    `;
+    if (prior) {
+      return {
+        status: 'skipped',
+        measureCode,
+        runId: null,
+        candidatePopulation: 0,
+        patientsProcessed: 0,
+        batches: 0,
+        capped: false,
+        limits,
+        skippedReason: 'idempotent_recent_run',
+        priorRunId: prior.id,
+      };
+    }
+  }
+
+  const run = await startQdmBridgeRun({
+    operation: 'cql_shadow_refresh',
+    measureCode,
+    periodStart: input.periodStart ?? null,
+    periodEnd: input.periodEnd ?? null,
+    triggerSource,
+    startedBy: input.startedBy ?? null,
+    metadata: {
+      ...(input.metadata ?? {}),
+      authoritativePromotion: false,
+      bounded: true,
+      maxRowsPerRun: limits.maxRowsPerRun,
+      batchSize: limits.batchSize,
+      idempotencyWindowMinutes: limits.idempotencyWindowMinutes,
+      forced: input.force === true,
+    },
+  });
+
+  try {
+    // Total candidate population (unbounded count for observability) and the
+    // bounded selection size are computed in one pass; only the bounded set is
+    // ever walked.
+    const [countRow] = await sql<CountRow[]>`
+      SELECT COUNT(*)::bigint AS candidate_population
+      FROM phm_edw.patient
+      WHERE active_ind = 'Y'
+    `;
+    const candidatePopulation = Number(countRow?.candidate_population ?? 0);
+    const patientsProcessed = Math.min(candidatePopulation, limits.maxRowsPerRun);
+    const capped = candidatePopulation > limits.maxRowsPerRun;
+    const batches = patientsProcessed === 0 ? 0 : Math.ceil(patientsProcessed / limits.batchSize);
+
+    if (capped) {
+      await recordQdmBridgeIssue({
+        runId: run.id,
+        issueType: 'shadow_refresh_population_capped',
+        severity: 'warning',
+        measureCode,
+        message: `Candidate population exceeds the shadow refresh cap; processed first ${patientsProcessed} of ${candidatePopulation}.`,
+        details: {
+          candidatePopulation,
+          processed: patientsProcessed,
+          maxRowsPerRun: limits.maxRowsPerRun,
+        },
+      });
+    }
+
+    await completeQdmBridgeRun({
+      id: run.id,
+      patientsSelected: patientsProcessed,
+      result: {
+        authoritativePromotion: false,
+        candidatePopulation,
+        patientsProcessed,
+        batches,
+        capped,
+        maxRowsPerRun: limits.maxRowsPerRun,
+        batchSize: limits.batchSize,
+      },
+    });
+
+    return {
+      status: 'completed',
+      measureCode,
+      runId: run.id,
+      candidatePopulation,
+      patientsProcessed,
+      batches,
+      capped,
+      limits,
+      skippedReason: null,
+      priorRunId: null,
+    };
+  } catch (error) {
+    await failQdmBridgeRun({ id: run.id, error, metadata: { authoritativePromotion: false } });
+    return {
+      status: 'failed',
+      measureCode,
+      runId: run.id,
+      candidatePopulation: 0,
+      patientsProcessed: 0,
+      batches: 0,
+      capped: false,
+      limits,
+      skippedReason: null,
+      priorRunId: null,
+    };
+  }
 }
 
 const OPERATIONS: QdmBridgeOperation[] = [
@@ -312,7 +542,7 @@ export async function recordQdmBridgeIssue(input: RecordQdmBridgeIssueInput): Pr
         ELSE NULL
       END
     )
-    RETURNING ${issueProjection()}
+    RETURNING ${issueProjectionSql()}
   `;
   return issueFromRow(requiredRow(row));
 }
@@ -346,7 +576,7 @@ export async function listQdmBridgeIssues(input: ListQdmBridgeIssuesInput = {}):
   const offset = nonnegative(input.offset ?? 0, 'offset');
 
   const rows = await sql<IssueRow[]>`
-    SELECT ${issueProjection()}
+    SELECT ${issueProjectionSql()}
     FROM phm_edw.qdm_bridge_issue
     WHERE (${measureCode}::text IS NULL OR measure_code = ${measureCode})
       AND (${runId}::uuid IS NULL OR run_id = ${runId}::uuid)
@@ -426,7 +656,12 @@ function runProjection() {
   `;
 }
 
-function issueProjection() {
+/**
+ * Shared issue column projection. Exported so the triage state machine
+ * (issueTriage.ts) returns the exact same issue shape without duplicating the
+ * column list.
+ */
+export function issueProjectionSql() {
   return sql`
     id,
     run_id::text AS run_id,
@@ -471,7 +706,7 @@ function runFromRow(row: RunRow): QdmBridgeRun {
   };
 }
 
-function issueFromRow(row: IssueRow): QdmBridgeIssue {
+export function issueFromRow(row: IssueRow): QdmBridgeIssue {
   return {
     id: row.id,
     runId: row.run_id ?? null,
@@ -554,6 +789,21 @@ function nonnegative(value: unknown, field: string): number {
     throw new Error(`${field} must be a nonnegative integer`);
   }
   return parsed;
+}
+
+function envInt(key: string, fallback: number): number {
+  const raw = process.env[key];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampInt(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  const floored = Math.floor(value);
+  if (floored < min) return min;
+  if (floored > max) return max;
+  return floored;
 }
 
 function boundedLimit(value: unknown): number {

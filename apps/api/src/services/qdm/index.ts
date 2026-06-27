@@ -90,6 +90,8 @@ export {
   listQdmBridgeIssues,
   listQdmBridgeRuns,
   recordQdmBridgeIssue,
+  resolveQdmShadowRefreshLimits,
+  runQdmShadowRefresh,
   startQdmBridgeRun,
   type CompleteQdmBridgeRunInput,
   type FailQdmBridgeRunInput,
@@ -103,6 +105,21 @@ export {
   type QdmBridgeRun,
   type QdmBridgeRunStatus,
   type QdmBridgeTriggerSource,
+  type QdmShadowRefreshLimits,
+  type QdmShadowRefreshStatus,
   type RecordQdmBridgeIssueInput,
+  type RunQdmShadowRefreshInput,
+  type RunQdmShadowRefreshResult,
   type StartQdmBridgeRunInput,
 } from './bridgeOps.js';
+
+export {
+  allowedTriageTransitions,
+  isQdmBridgeIssueTriageState,
+  isTerminalTriageState,
+  isValidTriageTransition,
+  setQdmBridgeIssueTriageState,
+  type QdmBridgeIssueTriageError,
+  type SetQdmBridgeIssueTriageStateInput,
+  type SetQdmBridgeIssueTriageStateResult,
+} from './issueTriage.js';

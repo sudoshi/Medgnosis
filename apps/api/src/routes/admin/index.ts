@@ -60,6 +60,10 @@ import {
   type QdmBridgeRunStatus,
 } from '../../services/qdm/bridgeOps.js';
 import {
+  isQdmBridgeIssueTriageState,
+  setQdmBridgeIssueTriageState,
+} from '../../services/qdm/issueTriage.js';
+import {
   createPendingPasswordHash,
   createUserInvite,
   sendInviteEmail,
@@ -2037,6 +2041,68 @@ export default async function adminRoutes(app: FastifyInstance) {
         error: { code: 'BAD_REQUEST', message },
       });
     }
+  });
+
+  // Triage-state transition for a single QDM bridge issue. Guarded by the same
+  // admin route hooks as the other /qdm-bridge endpoints. Audit metadata is
+  // PHI-safe: only the issue id and the from/to triage states are recorded.
+  app.patch('/qdm-bridge/issues/:id/triage', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { state?: unknown };
+    if (typeof body.state !== 'string' || !isQdmBridgeIssueTriageState(body.state)) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'state must be one of: open, acknowledged, resolved, suppressed',
+        },
+      });
+    }
+
+    let result;
+    try {
+      result = await setQdmBridgeIssueTriageState({
+        issueId: id,
+        toState: body.state,
+        resolvedBy: req.user.sub,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message },
+      });
+    }
+
+    if (!result.ok) {
+      if (result.error.code === 'ISSUE_NOT_FOUND') {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'ISSUE_NOT_FOUND', message: 'QDM bridge issue not found' },
+        });
+      }
+      await req.auditLog('qdm_bridge_issue_triage', 'qdm_bridge_issue', id, {
+        issueId: id,
+        from: result.error.from,
+        to: result.error.to,
+        outcome: 'rejected',
+      });
+      return reply.status(409).send({
+        success: false,
+        error: {
+          code: 'INVALID_TRANSITION',
+          message: `Cannot transition QDM bridge issue from '${result.error.from}' to '${result.error.to}'`,
+        },
+      });
+    }
+
+    await req.auditLog('qdm_bridge_issue_triage', 'qdm_bridge_issue', id, {
+      issueId: id,
+      from: result.from,
+      to: result.to,
+      outcome: 'applied',
+    });
+    return reply.send({ success: true, data: { issue: result.issue } });
   });
 
   // ---- Analytics Overview (legacy endpoint — kept for backwards compatibility) ----
