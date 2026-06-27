@@ -38,6 +38,8 @@ const {
   mockRecordAuthProviderTestEvent,
   mockGenerateDeidentifiedCohort,
   mockRefreshMeasures,
+  MockMeasureExportError,
+  mockBuildMeasureExport,
 } = vi.hoisted(() => {
   class MeasurePromotionErrorMock extends Error {
     readonly code: string;
@@ -53,8 +55,22 @@ const {
     }
   }
 
+  class MeasureExportErrorMock extends Error {
+    readonly code: string;
+    readonly statusCode: number;
+
+    constructor(code: string, message: string, statusCode = 404) {
+      super(message);
+      this.name = 'MeasureExportError';
+      this.code = code;
+      this.statusCode = statusCode;
+    }
+  }
+
   return {
     MockMeasurePromotionError: MeasurePromotionErrorMock,
+    MockMeasureExportError: MeasureExportErrorMock,
+    mockBuildMeasureExport: vi.fn(),
     mockListConfigs: vi.fn(),
     mockUpdateConfig: vi.fn(),
     mockPromote: vi.fn(),
@@ -173,6 +189,20 @@ vi.mock('../../services/auth/invites.js', () => ({
   createUserInvite: mockCreateUserInvite,
   sendInviteEmail: mockSendInviteEmail,
 }));
+vi.mock('../../services/measureExports.js', () => {
+  const EXPORT_ARTIFACTS = ['qrda-cat1', 'qrda-cat3', 'qpp', 'deqm', 'measure-report'] as const;
+  return {
+    EXPORT_ARTIFACTS,
+    isExportArtifact: (value: string): boolean =>
+      (EXPORT_ARTIFACTS as readonly string[]).includes(value),
+    buildMeasureExport: mockBuildMeasureExport,
+    exportAuditDetails: (result: { artifact: string; meta: { measureCode: string } }) => ({
+      artifact: result.artifact,
+      measureCode: result.meta.measureCode,
+    }),
+    MeasureExportError: MockMeasureExportError,
+  };
+});
 
 import adminRoutes from './index.js';
 
@@ -2955,6 +2985,183 @@ describe('admin measure promotion governance routes', () => {
 
     expect(res.statusCode).toBe(400);
     expect(mockGetSemanticDriftDetail).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe('admin reporting artifact export routes', () => {
+  function cat3Export() {
+    return {
+      artifact: 'qrda-cat3' as const,
+      filename: 'qrda-cat3-CMS122v12-2026.xml',
+      contentType: 'application/xml',
+      content: '<?xml version="1.0"?>\n<ClinicalDocument/>\n',
+      submissionReadiness: {
+        validated: false as const,
+        validator: 'Cypress / CVU+ (ONC official QRDA validator)',
+        reason: 'Not submission-ready until external validation passes.',
+      },
+      meta: {
+        measureCode: 'CMS122v12',
+        period: { start: '2026-01-01', end: '2026-12-31' },
+        bound: { bounded: false },
+        populations: { initialPopulation: 100, denominator: 80, numerator: 55, denominatorExclusion: 5 },
+      },
+    };
+  }
+
+  function cat1Export() {
+    return {
+      ...cat3Export(),
+      artifact: 'qrda-cat1' as const,
+      filename: 'qrda-cat1-CMS122v12-2026-01-01-2026-12-31.xml',
+      meta: {
+        measureCode: 'CMS122v12',
+        period: { start: '2026-01-01', end: '2026-12-31' },
+        bound: { bounded: true, sampleCap: 25, patientCount: 3 },
+        populations: { initialPopulation: 100, denominator: 80, numerator: 55, denominatorExclusion: 5 },
+      },
+    };
+  }
+
+  it('exports a QRDA Cat III artifact with a submission-readiness envelope and audits counts only', async () => {
+    mockBuildMeasureExport.mockResolvedValueOnce(cat3Export());
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/qrda-cat3',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: {
+        artifact: 'qrda-cat3',
+        filename: 'qrda-cat3-CMS122v12-2026.xml',
+        contentType: 'application/xml',
+        submissionReadiness: { validated: false },
+      },
+    });
+    expect(mockBuildMeasureExport).toHaveBeenCalledWith('qrda-cat3', {
+      measureCode: 'CMS122v12',
+      period: undefined,
+      sampleLimit: undefined,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_artifact_export',
+      'measure_export',
+      'CMS122v12:qrda-cat3',
+      expect.objectContaining({ artifact: 'qrda-cat3', measureCode: 'CMS122v12' }),
+    );
+    await app.close();
+  });
+
+  it('exports a bounded QRDA Cat I artifact and surfaces the sample bound', async () => {
+    mockBuildMeasureExport.mockResolvedValueOnce(cat1Export());
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/qrda-cat1',
+      payload: { sampleLimit: 5 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: { contentType: string; submissionReadiness: { validated: boolean }; meta: { bound: { bounded: boolean; patientCount: number } } };
+    };
+    expect(body.data.contentType).toBe('application/xml');
+    expect(body.data.submissionReadiness.validated).toBe(false);
+    expect(body.data.meta.bound.bounded).toBe(true);
+    expect(body.data.meta.bound.patientCount).toBe(3);
+    expect(mockBuildMeasureExport).toHaveBeenCalledWith('qrda-cat1', {
+      measureCode: 'CMS122v12',
+      period: undefined,
+      sampleLimit: 5,
+    });
+    await app.close();
+  });
+
+  it('passes through an explicit reporting period', async () => {
+    mockBuildMeasureExport.mockResolvedValueOnce(cat3Export());
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/qpp',
+      payload: { periodStart: '2025-01-01', periodEnd: '2025-12-31' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockBuildMeasureExport).toHaveBeenCalledWith('qpp', {
+      measureCode: 'CMS122v12',
+      period: { start: '2025-01-01', end: '2025-12-31' },
+      sampleLimit: undefined,
+    });
+    await app.close();
+  });
+
+  it('rejects an unknown artifact before calling the generator', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/not-an-artifact',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockBuildMeasureExport).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects a half-specified reporting period', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/qrda-cat3',
+      payload: { periodStart: '2025-01-01' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockBuildMeasureExport).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('maps MeasureExportError to its status code', async () => {
+    mockBuildMeasureExport.mockRejectedValueOnce(
+      new MockMeasureExportError('NO_MEASURE_REPORT', 'No persisted MeasureReport', 404),
+    );
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/measure-report',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      success: false,
+      error: { code: 'NO_MEASURE_REPORT' },
+    });
+    await app.close();
+  });
+
+  it('forbids non-admin roles from exporting artifacts', async () => {
+    const app = await buildApp(PROVIDER_USER);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-exports/CMS122v12/qrda-cat3',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(mockBuildMeasureExport).not.toHaveBeenCalled();
     await app.close();
   });
 });

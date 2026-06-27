@@ -75,6 +75,14 @@ import {
   sendInviteEmail,
   type CreatedInvite,
 } from '../../services/auth/invites.js';
+import {
+  buildMeasureExport,
+  exportAuditDetails,
+  isExportArtifact,
+  MeasureExportError,
+  type ExportArtifact,
+  type ExportRequest,
+} from '../../services/measureExports.js';
 
 interface AuthProviderRow {
   provider_type: string;
@@ -2309,6 +2317,96 @@ export default async function adminRoutes(app: FastifyInstance) {
       outcome: 'applied',
     });
     return reply.send({ success: true, data: { issue: result.issue } });
+  });
+
+  // ---- Reporting Artifact Exports (Phase 5) ----
+  // Admin-gated, audited downloads of the reporting artifacts for a measure +
+  // period: QRDA Cat I/III, QPP JSON, DEQM Gaps-in-Care, and FHIR MeasureReport.
+  // The generators live in services/measureExports.ts (this route only wires
+  // params -> generator -> envelope). Every artifact is returned with an
+  // explicit submissionReadiness.validated === false: artifacts are well-formed
+  // but NOT submission-ready until external validation (Cypress/CVU+ for QRDA,
+  // CMS QPP sandbox for QPP) has run. The AUDIT row is PHI-safe: measure code +
+  // artifact type + period + COUNTS only — never patient identifiers or content.
+
+  app.post('/measure-exports/:measureCode/:artifact', async (req, reply) => {
+    const { measureCode, artifact } = req.params as { measureCode: string; artifact: string };
+    if (!isExportArtifact(artifact)) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'artifact must be one of: qrda-cat1, qrda-cat3, qpp, deqm, measure-report',
+        },
+      });
+    }
+
+    const body = (req.body ?? {}) as {
+      periodStart?: unknown;
+      periodEnd?: unknown;
+      sampleLimit?: unknown;
+    };
+    const periodStart = typeof body.periodStart === 'string' && body.periodStart.trim().length > 0
+      ? body.periodStart.trim()
+      : undefined;
+    const periodEnd = typeof body.periodEnd === 'string' && body.periodEnd.trim().length > 0
+      ? body.periodEnd.trim()
+      : undefined;
+    if ((periodStart && !periodEnd) || (!periodStart && periodEnd)) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'periodStart and periodEnd must be provided together' },
+      });
+    }
+    const sampleLimit = body.sampleLimit === undefined ? undefined : positiveInt(body.sampleLimit);
+    if (body.sampleLimit !== undefined && sampleLimit === null) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'sampleLimit must be a positive integer' },
+      });
+    }
+
+    const exportRequest: ExportRequest = {
+      measureCode,
+      period: periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined,
+      sampleLimit: sampleLimit ?? undefined,
+    };
+
+    let result;
+    try {
+      result = await buildMeasureExport(artifact as ExportArtifact, exportRequest);
+    } catch (err) {
+      if (err instanceof MeasureExportError) {
+        return reply.status(err.statusCode).send({
+          success: false,
+          error: { code: err.code, message: err.message },
+        });
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({
+        success: false,
+        error: { code: 'MEASURE_EXPORT_FAILED', message },
+      });
+    }
+
+    await req.auditLog(
+      'measure_artifact_export',
+      'measure_export',
+      `${measureCode}:${artifact}`,
+      exportAuditDetails(result),
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        artifact: result.artifact,
+        filename: result.filename,
+        contentType: result.contentType,
+        content: result.content,
+        submissionReadiness: result.submissionReadiness,
+        meta: result.meta,
+      },
+    });
   });
 
   // ---- Analytics Overview (legacy endpoint — kept for backwards compatibility) ----

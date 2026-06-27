@@ -6,6 +6,7 @@ import { MeasureGovernanceTab } from './MeasureGovernanceTab.js';
 import type {
   DriftComment,
   MeasureDossier,
+  MeasureExportResponse,
   MeasurePromotionConfig,
   SemanticDriftDetail,
   SemanticDriftWorklist,
@@ -186,6 +187,24 @@ const comments: DriftComment[] = [
   },
 ];
 
+const cat1Export: MeasureExportResponse = {
+  artifact: 'qrda-cat1',
+  filename: 'qrda-cat1-CMS122v12-2026-01-01-2026-12-31.xml',
+  contentType: 'application/xml',
+  content: '<?xml version="1.0"?>\n<ClinicalDocument/>\n',
+  submissionReadiness: {
+    validated: false,
+    validator: 'Cypress / CVU+ (ONC official QRDA validator)',
+    reason: 'Bounded sample only; not validated. Not submission-ready until external validation passes.',
+  },
+  meta: {
+    measureCode: 'CMS122v12',
+    period: { start: '2026-01-01', end: '2026-12-31' },
+    bound: { bounded: true, sampleCap: 25, patientCount: 3 },
+    populations: { initialPopulation: 100, denominator: 80, numerator: 55, denominatorExclusion: 5 },
+  },
+};
+
 function ok<T>(data: T) {
   return Promise.resolve({ success: true, data });
 }
@@ -292,5 +311,55 @@ describe('MeasureGovernanceTab review workflow + drilldowns', () => {
         { assigneeUserId: CURRENT_USER_ID },
       );
     });
+  });
+});
+
+describe('MeasureGovernanceTab reporting exports', () => {
+  it('renders the export controls with a persistent not-submission-ready warning', async () => {
+    renderTab();
+
+    const panel = (await screen.findByText('Reporting Exports')).closest('.surface') as HTMLElement;
+    expect(within(panel).getByText('Not submission-ready')).toBeInTheDocument();
+    expect(within(panel).getByText(/Cypress \/ CVU\+/)).toBeInTheDocument();
+    // One button per artifact (Cat I, Cat III, QPP, DEQM, MeasureReport).
+    expect(within(panel).getByRole('button', { name: /Export QRDA Cat I$/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Export QRDA Cat III/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Export QPP JSON/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Export DEQM Bundle/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Export MeasureReport/ })).toBeInTheDocument();
+  });
+
+  it('calls the export endpoint and triggers a client-side download with the right filename', async () => {
+    const createObjectURL = vi.fn(() => 'blob:export-url');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true });
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    mockApiPost.mockResolvedValueOnce({ success: true, data: cat1Export });
+
+    const user = userEvent.setup();
+    renderTab();
+
+    const panel = (await screen.findByText('Reporting Exports')).closest('.surface') as HTMLElement;
+    await user.click(within(panel).getByRole('button', { name: /Export QRDA Cat I$/ }));
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith(
+        '/admin/measure-exports/CMS122v12/qrda-cat1',
+        {},
+      );
+    });
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-url');
+
+    // The bounded-sample summary surfaces after a successful export.
+    expect(await within(panel).findByText(cat1Export.filename)).toBeInTheDocument();
+    expect(within(panel).getByText(/Bounded sample: 3 of at most 25/)).toBeInTheDocument();
+
+    clickSpy.mockRestore();
   });
 });

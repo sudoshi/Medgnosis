@@ -4,8 +4,10 @@ import {
   Activity,
   AlertTriangle,
   ClipboardCheck,
+  Download,
   Eye,
   FilePlus2,
+  FileWarning,
   FlaskConical,
   GitCompareArrows,
   ListChecks,
@@ -25,6 +27,8 @@ import {
   type DriftComment,
   type DriftReview,
   type DriftReviewState,
+  type MeasureExportArtifact,
+  type MeasureExportResponse,
   type MeasurePromotionConfig,
   type MeasureDossier,
   type PopulationCounts,
@@ -58,6 +62,32 @@ const DEFAULT_DENOMINATOR_DRIFT = 'residual_cql_or_qicore_semantic_gap';
 const WORKLIST_LIMIT = 25;
 const PROMOTION_STATEMENT_TIMEOUT_MS = 60_000;
 type BadgeVariant = 'crimson' | 'amber' | 'teal' | 'emerald' | 'violet' | 'info' | 'dim';
+
+// Reporting artifacts available for export. Order drives the export-control UI.
+const EXPORT_ARTIFACTS: ReadonlyArray<{ artifact: MeasureExportArtifact; label: string }> = [
+  { artifact: 'qrda-cat1', label: 'QRDA Cat I' },
+  { artifact: 'qrda-cat3', label: 'QRDA Cat III' },
+  { artifact: 'qpp', label: 'QPP JSON' },
+  { artifact: 'deqm', label: 'DEQM Bundle' },
+  { artifact: 'measure-report', label: 'MeasureReport' },
+];
+
+/**
+ * Trigger a client-side download of the artifact content returned by the export
+ * endpoint, using the server-provided filename + contentType. Object URLs are
+ * revoked after the synthetic click so blobs are not leaked.
+ */
+function triggerArtifactDownload(result: MeasureExportResponse): void {
+  const blob = new Blob([result.content], { type: result.contentType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = result.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 interface GovernanceEvidence {
   reconciliationRunId: number | null;
@@ -500,6 +530,79 @@ function GovernanceActions({
   );
 }
 
+function ExportControls({
+  measureCode,
+  pendingArtifact,
+  lastExport,
+  onExport,
+}: {
+  measureCode: string;
+  pendingArtifact: MeasureExportArtifact | null;
+  lastExport: MeasureExportResponse | null;
+  onExport: (artifact: MeasureExportArtifact) => void;
+}) {
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <Download size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Reporting Exports</h3>
+      </div>
+
+      {/* Persistent submission-readiness warning — exports are well-formed but
+          NOT submission-ready until external validation runs. */}
+      <div
+        role="alert"
+        className="mb-4 flex items-start gap-2 rounded-card border border-amber/30 bg-amber/10 p-3"
+      >
+        <FileWarning size={15} className="mt-0.5 shrink-0 text-amber" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-amber">Not submission-ready</p>
+          <p className="mt-1 text-xs leading-5 text-dim">
+            Pending external validation (Cypress / CVU+ for QRDA; CMS QPP sandbox for QPP).
+            QRDA Cat I and DEQM are a bounded patient-level sample.
+          </p>
+        </div>
+      </div>
+
+      <p className="mb-3 text-xs text-ghost">
+        Export reporting artifacts for <span className="font-data text-dim">{measureCode}</span>.
+      </p>
+      <div className="space-y-2">
+        {EXPORT_ARTIFACTS.map(({ artifact, label }) => (
+          <Button
+            key={artifact}
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => onExport(artifact)}
+            disabled={pendingArtifact !== null}
+          >
+            <Download />
+            {pendingArtifact === artifact ? `Exporting ${label}...` : `Export ${label}`}
+          </Button>
+        ))}
+      </div>
+
+      {lastExport && (
+        <div className="mt-4 rounded-card border border-edge/25 bg-s0 p-3 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate font-data text-dim">{lastExport.filename}</span>
+            <Badge variant="amber">Unvalidated</Badge>
+          </div>
+          {lastExport.meta.bound.bounded && (
+            <p className="mt-1.5 text-ghost">
+              Bounded sample: {lastExport.meta.bound.patientCount ?? 0} of at most{' '}
+              {lastExport.meta.bound.sampleCap ?? 0} patient(s).
+            </p>
+          )}
+          <p className="mt-1.5 leading-5 text-dim">{lastExport.submissionReadiness.reason}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OpsPanel({
   statusRows,
   issues,
@@ -896,6 +999,12 @@ export function MeasureGovernanceTab() {
   const [denominatorDrift, setDenominatorDrift] = useState(DEFAULT_DENOMINATOR_DRIFT);
   const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
+  const [exportingArtifact, setExportingArtifact] = useState<MeasureExportArtifact | null>(null);
+  const [lastExport, setLastExport] = useState<MeasureExportResponse | null>(null);
+
+  useEffect(() => {
+    setLastExport(null);
+  }, [selectedMeasure]);
 
   const configsQuery = useQuery({
     queryKey: ['admin', 'measure-governance', 'configs'],
@@ -1081,6 +1190,27 @@ export function MeasureGovernanceTab() {
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'CQL authoritative promotion failed')),
   });
+  const exportArtifactMutation = useMutation({
+    mutationFn: (artifact: MeasureExportArtifact) =>
+      api.post<MeasureExportResponse>(
+        `/admin/measure-exports/${encodeURIComponent(selectedMeasure)}/${artifact}`,
+        {},
+      ),
+    onMutate: (artifact) => setExportingArtifact(artifact),
+    onSuccess: (res) => {
+      const data = res.data;
+      if (!data) {
+        toast.error('Export returned no content');
+        return;
+      }
+      triggerArtifactDownload(data);
+      setLastExport(data);
+      // Surface the not-submission-ready state on every successful export.
+      toast.warning(`${data.filename} downloaded — not submission-ready (pending validation)`);
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Artifact export failed')),
+    onSettled: () => setExportingArtifact(null),
+  });
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -1209,6 +1339,13 @@ export function MeasureGovernanceTab() {
                 requestPromotionMutation.mutate();
               }
             }}
+          />
+
+          <ExportControls
+            measureCode={selectedMeasure}
+            pendingArtifact={exportingArtifact}
+            lastExport={lastExport}
+            onExport={(artifact) => exportArtifactMutation.mutate(artifact)}
           />
 
           <OpsPanel

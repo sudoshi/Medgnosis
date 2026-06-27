@@ -472,6 +472,45 @@ export interface MeasureDossier {
   };
 }
 
+// ─── Reporting artifact exports (Phase 5) ─────────────────────────────────────
+
+export type MeasureExportArtifact = 'qrda-cat1' | 'qrda-cat3' | 'qpp' | 'deqm' | 'measure-report';
+
+export interface MeasureExportSubmissionReadiness {
+  /** Always false — external validation has not been run. */
+  validated: false;
+  /** External validator that gates submission readiness for this artifact. */
+  validator: string;
+  /** Human-readable reason the artifact is not yet submission-ready. */
+  reason: string;
+}
+
+export interface MeasureExportBound {
+  bounded: boolean;
+  sampleCap?: number;
+  patientCount?: number;
+}
+
+export interface MeasureExportResponse {
+  artifact: MeasureExportArtifact;
+  filename: string;
+  contentType: string;
+  /** The serialized artifact content to download. */
+  content: string;
+  submissionReadiness: MeasureExportSubmissionReadiness;
+  meta: {
+    measureCode: string;
+    period: { start: string; end: string };
+    bound: MeasureExportBound;
+    populations: {
+      initialPopulation: number;
+      denominator: number;
+      numerator: number;
+      denominatorExclusion: number;
+    };
+  };
+}
+
 export interface DriftFlags {
   denominator: boolean;
   numerator: boolean;
