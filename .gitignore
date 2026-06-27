@@ -61,3 +61,7 @@ validator_cli.jar
 # Task input artifacts (not source)
 CMS Measure Inventory Export*.xlsx
 QDM-v5.6-508.pdf
+
+# Cached official CMS eCQM measure bundles (operator-fetched; never committed).
+# Populated by scripts/fetch-cms-measure-bundles.sh into data/cms-bundles/<year>/.
+data/cms-bundles/

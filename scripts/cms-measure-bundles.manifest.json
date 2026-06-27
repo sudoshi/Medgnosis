@@ -1,0 +1,51 @@
+{
+  "$comment": "Target eCQM measure-bundle portfolio for the CMS measure-bundle fetch/cache script (scripts/fetch-cms-measure-bundles.sh). Bundle file names use the eCQM short id; the fetch script resolves each to a per-year URL under ECQM_BUNDLE_SOURCE_URL. Versions track the published reporting-year eCQM release and should be bumped when the target reporting year advances. The portfolio is the four plan measures (CMS122 diabetes, CMS165 hypertension, CMS130 + CMS125 cancer screening) plus one explicitly chosen additional non-diabetes measure (CMS124 Cervical Cancer Screening) so coverage spans cardiovascular, multiple cancer-screening, and diabetes domains rather than diabetes-only.",
+  "reportingYear": 2026,
+  "source": {
+    "name": "CMS eCQM published measure content (MADiE / eCQI Resource Center)",
+    "baseUrlEnv": "ECQM_BUNDLE_SOURCE_URL",
+    "notes": "Operator supplies the official per-reporting-year bundle base URL. The script appends <year>/<bundleFile> to ECQM_BUNDLE_SOURCE_URL for each measure."
+  },
+  "measures": [
+    {
+      "ecqmShortId": "CMS122",
+      "version": "CMS122v13",
+      "ecqmId": "CMS122FHIRDiabetesAssessGreaterThan9Percent",
+      "title": "Diabetes: Hemoglobin A1c (HbA1c) Poor Control (> 9%)",
+      "domain": "diabetes",
+      "bundleFile": "CMS122-v13-FHIR.json"
+    },
+    {
+      "ecqmShortId": "CMS165",
+      "version": "CMS165v13",
+      "ecqmId": "CMS165FHIRControllingHighBloodPressure",
+      "title": "Controlling High Blood Pressure",
+      "domain": "cardiovascular",
+      "bundleFile": "CMS165-v13-FHIR.json"
+    },
+    {
+      "ecqmShortId": "CMS130",
+      "version": "CMS130v13",
+      "ecqmId": "CMS130FHIRColorectalCancerScreening",
+      "title": "Colorectal Cancer Screening",
+      "domain": "preventive-cancer-screening",
+      "bundleFile": "CMS130-v13-FHIR.json"
+    },
+    {
+      "ecqmShortId": "CMS125",
+      "version": "CMS125v13",
+      "ecqmId": "CMS125FHIRBreastCancerScreening",
+      "title": "Breast Cancer Screening",
+      "domain": "preventive-cancer-screening",
+      "bundleFile": "CMS125-v13-FHIR.json"
+    },
+    {
+      "ecqmShortId": "CMS124",
+      "version": "CMS124v13",
+      "ecqmId": "CMS124FHIRCervicalCancerScreening",
+      "title": "Cervical Cancer Screening",
+      "domain": "preventive-cancer-screening",
+      "bundleFile": "CMS124-v13-FHIR.json"
+    }
+  ]
+}
