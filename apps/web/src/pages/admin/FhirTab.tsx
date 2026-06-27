@@ -19,6 +19,7 @@ import { api } from '../../services/api.js';
 import { StatusBadge, fmtDateTime } from './helpers.js';
 import type { FhirEndpoint } from './types.js';
 import { ConfirmModal } from '../../components/ConfirmModal.js';
+import { QueryError } from '../../components/QueryError.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -162,7 +163,7 @@ export function FhirTab() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FhirEndpoint | null>(null);
 
-  const { data: epData, isLoading } = useQuery({
+  const { data: epData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'fhir-endpoints'],
     queryFn: () => api.get('/admin/fhir-endpoints'),
     staleTime: 60_000,
@@ -211,7 +212,13 @@ export function FhirTab() {
         </div>
       )}
 
-      {!isLoading && endpoints.length === 0 && (
+      {/* Error must win over the empty state — a failed endpoint fetch must
+          never read as "No FHIR endpoints configured" (masking live links). */}
+      {!isLoading && isError && (
+        <QueryError what="FHIR endpoints" onRetry={() => void refetch()} />
+      )}
+
+      {!isLoading && !isError && endpoints.length === 0 && (
         <div className="surface p-8 text-center">
           <Globe size={24} className="text-ghost mx-auto mb-3 text-2xl" />
           <p className="text-sm text-bright">No FHIR endpoints configured</p>
@@ -220,7 +227,7 @@ export function FhirTab() {
       )}
 
       <div className="space-y-3">
-        {endpoints.map((ep) => {
+        {!isError && endpoints.map((ep) => {
           const isExpanded = expanded === ep.endpoint_id;
           return (
             <div key={ep.endpoint_id} className="surface p-0 overflow-hidden">

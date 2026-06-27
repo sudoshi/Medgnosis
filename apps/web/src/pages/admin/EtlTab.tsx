@@ -8,6 +8,7 @@ import { useToast } from '../../stores/ui.js';
 import { api } from '../../services/api.js';
 import { fmtDate, fmtDateTime } from './helpers.js';
 import type { EtlLog, Migration, StarCounts } from './types.js';
+import { QueryError } from '../../components/QueryError.js';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -22,7 +23,7 @@ export function EtlTab() {
   const toast = useToast();
   const qc = useQueryClient();
 
-  const { data: etlData, isLoading } = useQuery({
+  const { data: etlData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'etl-status'],
     queryFn: () => api.get('/admin/etl-status'),
     staleTime: 60_000,
@@ -70,6 +71,10 @@ export function EtlTab() {
         </div>
         {isLoading ? (
           <p className="text-sm text-ghost">Loading...</p>
+        ) : isError ? (
+          /* Error must win over the zeroed row counts — a failed etl-status
+             fetch must never read as healthy empty tables. */
+          <QueryError what="ETL & database status" onRetry={() => void refetch()} />
         ) : (
           <Table>
             <TableHeader>
@@ -93,7 +98,9 @@ export function EtlTab() {
       {/* ETL log */}
       <div className="surface p-5">
         <h3 className="text-xs font-semibold text-bright uppercase tracking-wider mb-4">Recent ETL Runs</h3>
-        {etlLogs.length === 0 ? (
+        {isError ? (
+          <QueryError what="recent ETL runs" onRetry={() => void refetch()} />
+        ) : etlLogs.length === 0 ? (
           <p className="text-sm text-ghost text-center py-4">No ETL runs recorded</p>
         ) : (
           <Table>
@@ -126,17 +133,21 @@ export function EtlTab() {
       {/* Migration history */}
       <div className="surface p-5">
         <h3 className="text-xs font-semibold text-bright uppercase tracking-wider mb-4">Migration History</h3>
-        <div className="divide-y divide-edge/15 max-h-72 overflow-y-auto scrollbar-thin">
-          {migrations.map((m) => (
-            <div key={m.migration_name} className="flex items-center justify-between py-2.5">
-              <span className="font-data text-xs text-dim">{m.migration_name}</span>
-              <span className="font-data text-xs text-ghost">{fmtDate(m.applied_at)}</span>
-            </div>
-          ))}
-          {migrations.length === 0 && (
-            <p className="text-sm text-ghost text-center py-4">No migrations tracked</p>
-          )}
-        </div>
+        {isError ? (
+          <QueryError what="migration history" onRetry={() => void refetch()} />
+        ) : (
+          <div className="divide-y divide-edge/15 max-h-72 overflow-y-auto scrollbar-thin">
+            {migrations.map((m) => (
+              <div key={m.migration_name} className="flex items-center justify-between py-2.5">
+                <span className="font-data text-xs text-dim">{m.migration_name}</span>
+                <span className="font-data text-xs text-ghost">{fmtDate(m.applied_at)}</span>
+              </div>
+            ))}
+            {migrations.length === 0 && (
+              <p className="text-sm text-ghost text-center py-4">No migrations tracked</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

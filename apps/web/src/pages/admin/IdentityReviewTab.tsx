@@ -12,6 +12,7 @@ import { GitMerge, X, Users, ShieldQuestion, Undo2 } from 'lucide-react';
 import { useToast } from '../../stores/ui.js';
 import { api, apiErrorMessage } from '../../services/api.js';
 import { fmtDate } from './helpers.js';
+import { QueryError } from '../../components/QueryError.js';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -64,7 +65,7 @@ export function IdentityReviewTab() {
   const toast = useToast();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'identity', 'reviews'],
     queryFn: () => api.get<{ reviews: IdentityReview[] }>('/admin/identity/reviews'),
     staleTime: 15_000,
@@ -135,7 +136,13 @@ export function IdentityReviewTab() {
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
 
-      {!isLoading && reviews.length === 0 && (
+      {/* Error must win over the empty state — a failed review-queue fetch must
+          never read as "No open reviews" (a steward would miss pending merges). */}
+      {!isLoading && isError && (
+        <QueryError what="the identity review queue" onRetry={() => void refetch()} />
+      )}
+
+      {!isLoading && !isError && reviews.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-10 text-center">
           <ShieldQuestion className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">No open reviews</p>
@@ -144,7 +151,7 @@ export function IdentityReviewTab() {
       )}
 
       <div className="space-y-4">
-        {reviews.map((review) => (
+        {!isError && reviews.map((review) => (
           <ReviewCard
             key={review.id}
             review={review}

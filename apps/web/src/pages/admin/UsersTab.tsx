@@ -41,6 +41,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ConfirmModal } from '../../components/ConfirmModal.js';
+import { QueryError } from '../../components/QueryError.js';
 
 interface InviteDelivery {
   user: {
@@ -223,7 +224,7 @@ export function UsersTab() {
   const [revokeInviteTarget, setRevokeInviteTarget] = useState<AdminUser | null>(null);
   const [inviteDelivery, setInviteDelivery] = useState<InviteDelivery | null>(null);
 
-  const { data: usersData, isLoading } = useQuery({
+  const { data: usersData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: () => api.get('/admin/users'),
     staleTime: 30_000,
@@ -292,12 +293,21 @@ export function UsersTab() {
                 <TableCell colSpan={6} className="py-8 text-center text-ghost">Loading users...</TableCell>
               </TableRow>
             )}
-            {!isLoading && users.length === 0 && (
+            {/* Error must win over the empty row — a failed user-list fetch must
+                never read as "No users found" (silently hiding every account). */}
+            {!isLoading && isError && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-4">
+                  <QueryError what="the user list" onRetry={() => void refetch()} />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && !isError && users.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-ghost">No users found</TableCell>
               </TableRow>
             )}
-            {users.map((u) => {
+            {!isError && users.map((u) => {
               const initials = `${u.first_name[0] ?? ''}${u.last_name?.[0] ?? ''}`.toUpperCase();
               const fullName = `${u.first_name} ${u.last_name ?? ''}`.trim();
               const inviteStatus = u.pending_invite?.status;

@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { fmtDateTime } from './helpers.js';
+import { QueryError } from '../../components/QueryError.js';
 import type {
   EhrBulkExportLevel,
   EhrBulkJob,
@@ -603,6 +604,10 @@ export function EhrIntegrationsTab() {
 
           {tenantsQuery.isLoading ? (
             <p className="text-sm text-ghost py-8 text-center">Loading EHR tenants...</p>
+          ) : tenantsQuery.isError ? (
+            /* Error must win over the empty state — a failed tenant-registry
+               fetch must never read as "No EHR tenants registered". */
+            <QueryError what="the EHR tenant registry" onRetry={() => void tenantsQuery.refetch()} />
           ) : tenants.length === 0 ? (
             <div className="py-10 text-center">
               <PlugZap size={22} className="mx-auto text-ghost mb-3" />
