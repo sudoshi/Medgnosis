@@ -432,6 +432,14 @@ export interface MeasureTestDeckCoverage {
   promotionGate: string;
 }
 
+export interface MeasureValueSet {
+  value_set_oid: string;
+  name: string;
+  vsac_cms_id: string;
+  qdm_category: string | null;
+  code_count: number;
+}
+
 export interface MeasureDossier {
   measureCode: string;
   binding: {
@@ -443,6 +451,7 @@ export interface MeasureDossier {
     reporting_period_end: string | null;
     status: string;
   } | null;
+  valueSets?: MeasureValueSet[];
   components: {
     fhirLibraryUrl: string | null;
     fhirMeasureUrl: string | null;
@@ -493,6 +502,40 @@ export interface SemanticDriftWorklistRow {
   };
   reviewPriority: number;
   reviewHint: string;
+  reviewState: DriftReviewState;
+  assigneeUserId: string | null;
+  reviewUpdatedAt: string | null;
+  commentCount: number;
+  createdAt: string;
+}
+
+export type DriftReviewState = 'open' | 'in_review' | 'resolved' | 'accepted' | 'dismissed';
+
+export const DRIFT_REVIEW_STATES: readonly DriftReviewState[] = [
+  'open',
+  'in_review',
+  'resolved',
+  'accepted',
+  'dismissed',
+];
+
+export interface DriftReview {
+  measureCode: string;
+  dossierId: number;
+  dossierPatientId: number;
+  patientId: number | null;
+  patientRef: string | null;
+  reviewState: DriftReviewState;
+  assigneeUserId: string | null;
+  reviewUpdatedAt: string | null;
+  reviewUpdatedBy: string | null;
+}
+
+export interface DriftComment {
+  id: number;
+  driftPatientId: number;
+  authorUserId: string | null;
+  body: string;
   createdAt: string;
 }
 

@@ -22,8 +22,15 @@ import {
   generateMeasureSemanticDriftDossier,
   getMeasureSemanticDriftDetail,
   listMeasureSemanticDriftWorklist,
+  setDriftReviewState,
+  setDriftAssignee,
+  addDriftComment,
+  listDriftComments,
+  isDriftReviewState,
   MeasureSemanticDriftError,
 } from './measureSemanticDriftDossier.js';
+
+const ACTOR_ID = '00000000-0000-4000-8000-000000000099';
 
 const RUN = {
   id: 7003,
@@ -350,6 +357,203 @@ describe('getMeasureSemanticDriftDetail', () => {
     await expect(
       getMeasureSemanticDriftDetail({ measureCode: 'CMS122v12', dossierPatientId: 999 }),
     ).rejects.toMatchObject({ code: 'SEMANTIC_DRIFT_PATIENT_NOT_FOUND', statusCode: 404 });
+  });
+});
+
+describe('drift review workflow', () => {
+  it('isDriftReviewState validates the lifecycle states', () => {
+    expect(isDriftReviewState('open')).toBe(true);
+    expect(isDriftReviewState('in_review')).toBe(true);
+    expect(isDriftReviewState('resolved')).toBe(true);
+    expect(isDriftReviewState('accepted')).toBe(true);
+    expect(isDriftReviewState('dismissed')).toBe(true);
+    expect(isDriftReviewState('bogus')).toBe(false);
+    expect(isDriftReviewState(42)).toBe(false);
+  });
+
+  it('sets a review state scoped to the measure and returns the updated row', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        id: 1001,
+        dossier_id: 42,
+        measure_code: 'CMS122v12',
+        patient_id: 3,
+        patient_ref: 'Patient/3',
+        review_state: 'in_review',
+        assignee_user_id: null,
+        review_updated_at: '2026-06-26T10:00:00Z',
+        review_updated_by: ACTOR_ID,
+      },
+    ]);
+
+    const review = await setDriftReviewState({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      reviewState: 'in_review',
+      actorId: ACTOR_ID,
+    });
+
+    expect(review).toMatchObject({
+      measureCode: 'CMS122v12',
+      dossierId: 42,
+      dossierPatientId: 1001,
+      reviewState: 'in_review',
+      assigneeUserId: null,
+    });
+    const query = (mockSql.mock.calls[0]?.[0] as TemplateStringsArray).join('');
+    expect(query).toContain('UPDATE phm_edw.measure_semantic_drift_patient');
+    expect(query).toContain('d.measure_code =');
+    expect(mockSql.mock.calls[0]).toContain('CMS122v12');
+  });
+
+  it('rejects an invalid review state before reading the database', async () => {
+    await expect(
+      setDriftReviewState({
+        measureCode: 'CMS122v12',
+        dossierPatientId: 1001,
+        reviewState: 'nonsense' as never,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT', statusCode: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when the review row is outside the measure', async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    await expect(
+      setDriftReviewState({
+        measureCode: 'CMS122v12',
+        dossierPatientId: 999,
+        reviewState: 'resolved',
+      }),
+    ).rejects.toMatchObject({ code: 'SEMANTIC_DRIFT_PATIENT_NOT_FOUND', statusCode: 404 });
+  });
+
+  it('assigns and clears an assignee', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        id: 1001,
+        dossier_id: 42,
+        measure_code: 'CMS122v12',
+        patient_id: 3,
+        patient_ref: 'Patient/3',
+        review_state: 'open',
+        assignee_user_id: ACTOR_ID,
+        review_updated_at: '2026-06-26T10:05:00Z',
+        review_updated_by: ACTOR_ID,
+      },
+    ]);
+
+    const assigned = await setDriftAssignee({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      assigneeUserId: ACTOR_ID,
+      actorId: ACTOR_ID,
+    });
+    expect(assigned.assigneeUserId).toBe(ACTOR_ID);
+
+    mockSql.mockResolvedValueOnce([
+      {
+        id: 1001,
+        dossier_id: 42,
+        measure_code: 'CMS122v12',
+        patient_id: 3,
+        patient_ref: 'Patient/3',
+        review_state: 'open',
+        assignee_user_id: null,
+        review_updated_at: '2026-06-26T10:06:00Z',
+        review_updated_by: ACTOR_ID,
+      },
+    ]);
+    const cleared = await setDriftAssignee({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      assigneeUserId: null,
+      actorId: ACTOR_ID,
+    });
+    expect(cleared.assigneeUserId).toBeNull();
+  });
+
+  it('rejects a non-UUID assignee before reading the database', async () => {
+    await expect(
+      setDriftAssignee({
+        measureCode: 'CMS122v12',
+        dossierPatientId: 1001,
+        assigneeUserId: 'not-a-uuid',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT', statusCode: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('adds a comment scoped to the measure and returns the persisted row', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        id: 5001,
+        drift_patient_id: 1001,
+        author_user_id: ACTOR_ID,
+        body: 'Confirmed QI-Core projection drops the qualifying encounter.',
+        created_at: '2026-06-26T10:10:00Z',
+      },
+    ]);
+
+    const comment = await addDriftComment({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      body: '  Confirmed QI-Core projection drops the qualifying encounter.  ',
+      actorId: ACTOR_ID,
+    });
+
+    expect(comment).toMatchObject({
+      id: 5001,
+      driftPatientId: 1001,
+      authorUserId: ACTOR_ID,
+    });
+    const query = (mockSql.mock.calls[0]?.[0] as TemplateStringsArray).join('');
+    expect(query).toContain('INSERT INTO phm_edw.measure_drift_comment');
+    expect(query).toContain('d.measure_code =');
+  });
+
+  it('rejects an empty comment body before reading the database', async () => {
+    await expect(
+      addDriftComment({ measureCode: 'CMS122v12', dossierPatientId: 1001, body: '   ' }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT', statusCode: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when commenting on a row outside the measure', async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    await expect(
+      addDriftComment({ measureCode: 'CMS122v12', dossierPatientId: 999, body: 'note' }),
+    ).rejects.toMatchObject({ code: 'SEMANTIC_DRIFT_PATIENT_NOT_FOUND', statusCode: 404 });
+  });
+
+  it('lists comments oldest-first scoped to the measure', async () => {
+    mockSql.mockResolvedValueOnce([
+      {
+        id: 5001,
+        drift_patient_id: 1001,
+        author_user_id: ACTOR_ID,
+        body: 'first',
+        created_at: '2026-06-26T10:10:00Z',
+      },
+      {
+        id: 5002,
+        drift_patient_id: 1001,
+        author_user_id: null,
+        body: 'second',
+        created_at: '2026-06-26T10:20:00Z',
+      },
+    ]);
+
+    const comments = await listDriftComments({ measureCode: 'CMS122v12', dossierPatientId: 1001 });
+
+    expect(comments.map((c) => c.id)).toEqual([5001, 5002]);
+    expect(comments[1].authorUserId).toBeNull();
+    const query = (mockSql.mock.calls[0]?.[0] as TemplateStringsArray).join('');
+    expect(query).toContain('FROM phm_edw.measure_drift_comment');
+    expect(query).toContain('ORDER BY c.created_at ASC');
+    expect(query).toContain('d.measure_code =');
   });
 });
 

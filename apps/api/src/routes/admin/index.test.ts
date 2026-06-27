@@ -14,6 +14,10 @@ const {
   mockGenerateSemanticDriftDossier,
   mockGetSemanticDriftDetail,
   mockListSemanticDriftWorklist,
+  mockSetDriftReviewState,
+  mockSetDriftAssignee,
+  mockAddDriftComment,
+  mockListDriftComments,
   mockGetQdmBridgeOperationalStatus,
   mockListQdmBridgeRuns,
   mockListQdmBridgeIssues,
@@ -57,6 +61,10 @@ const {
     mockGenerateSemanticDriftDossier: vi.fn(),
     mockGetSemanticDriftDetail: vi.fn(),
     mockListSemanticDriftWorklist: vi.fn(),
+    mockSetDriftReviewState: vi.fn(),
+    mockSetDriftAssignee: vi.fn(),
+    mockAddDriftComment: vi.fn(),
+    mockListDriftComments: vi.fn(),
     mockGetQdmBridgeOperationalStatus: vi.fn(),
     mockListQdmBridgeRuns: vi.fn(),
     mockListQdmBridgeIssues: vi.fn(),
@@ -87,12 +95,22 @@ vi.mock('../../services/measureReconciliation.js', () => ({
   promoteMeasureToCqlAuthoritative: mockPromote,
   MeasurePromotionError: MockMeasurePromotionError,
 }));
-vi.mock('../../services/measureSemanticDriftDossier.js', () => ({
-  generateMeasureSemanticDriftDossier: mockGenerateSemanticDriftDossier,
-  getMeasureSemanticDriftDetail: mockGetSemanticDriftDetail,
-  listMeasureSemanticDriftWorklist: mockListSemanticDriftWorklist,
-  MeasureSemanticDriftError: MockMeasurePromotionError,
-}));
+vi.mock('../../services/measureSemanticDriftDossier.js', () => {
+  const DRIFT_REVIEW_STATES = ['open', 'in_review', 'resolved', 'accepted', 'dismissed'] as const;
+  return {
+    generateMeasureSemanticDriftDossier: mockGenerateSemanticDriftDossier,
+    getMeasureSemanticDriftDetail: mockGetSemanticDriftDetail,
+    listMeasureSemanticDriftWorklist: mockListSemanticDriftWorklist,
+    setDriftReviewState: mockSetDriftReviewState,
+    setDriftAssignee: mockSetDriftAssignee,
+    addDriftComment: mockAddDriftComment,
+    listDriftComments: mockListDriftComments,
+    DRIFT_REVIEW_STATES,
+    isDriftReviewState: (value: unknown): boolean =>
+      typeof value === 'string' && (DRIFT_REVIEW_STATES as readonly string[]).includes(value),
+    MeasureSemanticDriftError: MockMeasurePromotionError,
+  };
+});
 vi.mock('../../services/qdm/bridgeOps.js', () => ({
   getQdmBridgeOperationalStatus: mockGetQdmBridgeOperationalStatus,
   listQdmBridgeRuns: mockListQdmBridgeRuns,
@@ -2183,6 +2201,266 @@ describe('admin measure promotion governance routes', () => {
     expect(auditMetadata).not.toHaveProperty('fhirSubjectReport');
     expect(JSON.stringify(auditMetadata)).not.toContain('qdmEventId');
     expect(JSON.stringify(auditMetadata)).not.toContain('MeasureReport');
+    await app.close();
+  });
+
+  it('sets a drift review state and audits PHI-safe metadata', async () => {
+    mockSetDriftReviewState.mockResolvedValueOnce({
+      measureCode: 'CMS122v12',
+      dossierId: 42,
+      dossierPatientId: 1001,
+      patientId: 3,
+      patientRef: 'Patient/3',
+      reviewState: 'in_review',
+      assigneeUserId: null,
+      reviewUpdatedAt: '2026-06-26T10:00:00Z',
+      reviewUpdatedBy: ADMIN_USER.sub,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/review-state',
+      payload: { reviewState: 'in_review' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { review: { dossierPatientId: 1001, reviewState: 'in_review' } },
+    });
+    expect(mockSetDriftReviewState).toHaveBeenCalledWith({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      reviewState: 'in_review',
+      actorId: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_drift_review_state_update',
+      'measure_semantic_drift_patient',
+      '1001',
+      expect.objectContaining({
+        measureCode: 'CMS122v12',
+        dossierId: 42,
+        dossierPatientId: 1001,
+        reviewState: 'in_review',
+      }),
+    );
+    const auditMetadata = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(auditMetadata).not.toHaveProperty('patientId');
+    expect(auditMetadata).not.toHaveProperty('patientRef');
+    expect(JSON.stringify(auditMetadata)).not.toContain('Patient/3');
+    await app.close();
+  });
+
+  it('rejects an unsupported review state without calling the service', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/review-state',
+      payload: { reviewState: 'totally_invalid' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockSetDriftReviewState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('sets an assignee and audits whether the row is now assigned', async () => {
+    mockSetDriftAssignee.mockResolvedValueOnce({
+      measureCode: 'CMS122v12',
+      dossierId: 42,
+      dossierPatientId: 1001,
+      patientId: 3,
+      patientRef: 'Patient/3',
+      reviewState: 'open',
+      assigneeUserId: ADMIN_USER.sub,
+      reviewUpdatedAt: '2026-06-26T10:05:00Z',
+      reviewUpdatedBy: ADMIN_USER.sub,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/assignee',
+      payload: { assigneeUserId: ADMIN_USER.sub },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { review: { assigneeUserId: ADMIN_USER.sub } },
+    });
+    expect(mockSetDriftAssignee).toHaveBeenCalledWith({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      assigneeUserId: ADMIN_USER.sub,
+      actorId: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_drift_review_assignee_update',
+      'measure_semantic_drift_patient',
+      '1001',
+      expect.objectContaining({ measureCode: 'CMS122v12', assigned: true }),
+    );
+    const auditMetadata = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(auditMetadata).not.toHaveProperty('patientId');
+    expect(JSON.stringify(auditMetadata)).not.toContain('Patient/3');
+    await app.close();
+  });
+
+  it('clears an assignee when assigneeUserId is null', async () => {
+    mockSetDriftAssignee.mockResolvedValueOnce({
+      measureCode: 'CMS122v12',
+      dossierId: 42,
+      dossierPatientId: 1001,
+      patientId: 3,
+      patientRef: 'Patient/3',
+      reviewState: 'open',
+      assigneeUserId: null,
+      reviewUpdatedAt: '2026-06-26T10:06:00Z',
+      reviewUpdatedBy: ADMIN_USER.sub,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/assignee',
+      payload: { assigneeUserId: null },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockSetDriftAssignee).toHaveBeenCalledWith({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      assigneeUserId: null,
+      actorId: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_drift_review_assignee_update',
+      'measure_semantic_drift_patient',
+      '1001',
+      expect.objectContaining({ assigned: false }),
+    );
+    await app.close();
+  });
+
+  it('adds a drift comment and audits only the comment length, never the body', async () => {
+    const body = 'Confirmed QI-Core projection drops the qualifying encounter for this row.';
+    mockAddDriftComment.mockResolvedValueOnce({
+      id: 5001,
+      driftPatientId: 1001,
+      authorUserId: ADMIN_USER.sub,
+      body,
+      createdAt: '2026-06-26T10:10:00Z',
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/comments',
+      payload: { body },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { comment: { id: 5001, driftPatientId: 1001 } },
+    });
+    expect(mockAddDriftComment).toHaveBeenCalledWith({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      body,
+      actorId: ADMIN_USER.sub,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_drift_comment_add',
+      'measure_semantic_drift_patient',
+      '1001',
+      expect.objectContaining({
+        measureCode: 'CMS122v12',
+        dossierPatientId: 1001,
+        commentId: 5001,
+        commentLength: body.length,
+      }),
+    );
+    const auditMetadata = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(auditMetadata).not.toHaveProperty('body');
+    expect(JSON.stringify(auditMetadata)).not.toContain('QI-Core projection');
+    await app.close();
+  });
+
+  it('rejects an empty comment body without calling the service', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/comments',
+      payload: { body: '   ' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockAddDriftComment).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('lists drift comments and audits only the count', async () => {
+    mockListDriftComments.mockResolvedValueOnce([
+      {
+        id: 5001,
+        driftPatientId: 1001,
+        authorUserId: ADMIN_USER.sub,
+        body: 'first reviewer note',
+        createdAt: '2026-06-26T10:10:00Z',
+      },
+      {
+        id: 5002,
+        driftPatientId: 1001,
+        authorUserId: null,
+        body: 'second reviewer note',
+        createdAt: '2026-06-26T10:20:00Z',
+      },
+    ]);
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/1001/comments',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      data: { comments: [{ id: 5001 }, { id: 5002 }] },
+    });
+    expect(mockListDriftComments).toHaveBeenCalledWith({
+      measureCode: 'CMS122v12',
+      dossierPatientId: 1001,
+      limit: undefined,
+    });
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      'measure_drift_comment_list',
+      'measure_semantic_drift_patient',
+      '1001',
+      expect.objectContaining({ measureCode: 'CMS122v12', commentCount: 2 }),
+    );
+    const auditMetadata = mockAuditLog.mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(JSON.stringify(auditMetadata)).not.toContain('reviewer note');
+    await app.close();
+  });
+
+  it('rejects a non-integer dossierPatientId on review endpoints', async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist/not-an-id/review-state',
+      payload: { reviewState: 'open' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mockSetDriftReviewState).not.toHaveBeenCalled();
     await app.close();
   });
 

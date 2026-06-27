@@ -48,6 +48,12 @@ import {
   generateMeasureSemanticDriftDossier,
   getMeasureSemanticDriftDetail,
   listMeasureSemanticDriftWorklist,
+  setDriftReviewState,
+  setDriftAssignee,
+  addDriftComment,
+  listDriftComments,
+  isDriftReviewState,
+  DRIFT_REVIEW_STATES,
   MeasureSemanticDriftError,
 } from '../../services/measureSemanticDriftDossier.js';
 import {
@@ -1910,6 +1916,206 @@ export default async function adminRoutes(app: FastifyInstance) {
       return mapMeasurePromotionError(err, reply);
     }
   });
+
+  // ---- Semantic Drift Review Workflow (Phase 7) ----
+  // PHI-safe by construction: audit details carry only measure code, drift id,
+  // review state/assignee, and comment length — never patient identifiers or
+  // comment bodies.
+
+  app.patch(
+    '/measure-promotion-configs/:measureCode/semantic-drift-worklist/:dossierPatientId/review-state',
+    async (req, reply) => {
+      const { measureCode, dossierPatientId: rawDossierPatientId } = req.params as {
+        measureCode: string;
+        dossierPatientId: string;
+      };
+      const dossierPatientId = positiveInt(rawDossierPatientId);
+      if (dossierPatientId === null) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'dossierPatientId must be a positive integer' },
+        });
+      }
+      const body = (req.body ?? {}) as { reviewState?: string };
+      if (!isDriftReviewState(body.reviewState)) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'BAD_REQUEST',
+            message: `reviewState must be one of: ${DRIFT_REVIEW_STATES.join(', ')}`,
+          },
+        });
+      }
+
+      try {
+        const review = await setDriftReviewState({
+          measureCode,
+          dossierPatientId,
+          reviewState: body.reviewState,
+          actorId: req.user.sub,
+        });
+        await req.auditLog(
+          'measure_drift_review_state_update',
+          'measure_semantic_drift_patient',
+          String(review.dossierPatientId),
+          {
+            measureCode,
+            dossierId: review.dossierId,
+            dossierPatientId: review.dossierPatientId,
+            reviewState: review.reviewState,
+          },
+        );
+        return reply.send({ success: true, data: { review } });
+      } catch (err) {
+        return mapMeasurePromotionError(err, reply);
+      }
+    },
+  );
+
+  app.patch(
+    '/measure-promotion-configs/:measureCode/semantic-drift-worklist/:dossierPatientId/assignee',
+    async (req, reply) => {
+      const { measureCode, dossierPatientId: rawDossierPatientId } = req.params as {
+        measureCode: string;
+        dossierPatientId: string;
+      };
+      const dossierPatientId = positiveInt(rawDossierPatientId);
+      if (dossierPatientId === null) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'dossierPatientId must be a positive integer' },
+        });
+      }
+      const body = (req.body ?? {}) as { assigneeUserId?: string | null };
+      if (
+        body.assigneeUserId !== null &&
+        body.assigneeUserId !== undefined &&
+        typeof body.assigneeUserId !== 'string'
+      ) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'assigneeUserId must be a UUID string or null' },
+        });
+      }
+
+      try {
+        const review = await setDriftAssignee({
+          measureCode,
+          dossierPatientId,
+          assigneeUserId: body.assigneeUserId ?? null,
+          actorId: req.user.sub,
+        });
+        await req.auditLog(
+          'measure_drift_review_assignee_update',
+          'measure_semantic_drift_patient',
+          String(review.dossierPatientId),
+          {
+            measureCode,
+            dossierId: review.dossierId,
+            dossierPatientId: review.dossierPatientId,
+            assigned: review.assigneeUserId !== null,
+            assigneeUserId: review.assigneeUserId,
+          },
+        );
+        return reply.send({ success: true, data: { review } });
+      } catch (err) {
+        return mapMeasurePromotionError(err, reply);
+      }
+    },
+  );
+
+  app.get(
+    '/measure-promotion-configs/:measureCode/semantic-drift-worklist/:dossierPatientId/comments',
+    async (req, reply) => {
+      const { measureCode, dossierPatientId: rawDossierPatientId } = req.params as {
+        measureCode: string;
+        dossierPatientId: string;
+      };
+      const dossierPatientId = positiveInt(rawDossierPatientId);
+      if (dossierPatientId === null) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'dossierPatientId must be a positive integer' },
+        });
+      }
+      const query = req.query as { limit?: string };
+      const limit = query.limit === undefined ? undefined : positiveInt(query.limit);
+      if (query.limit !== undefined && limit === null) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'limit must be a positive integer' },
+        });
+      }
+
+      try {
+        const comments = await listDriftComments({
+          measureCode,
+          dossierPatientId,
+          limit: limit ?? undefined,
+        });
+        await req.auditLog(
+          'measure_drift_comment_list',
+          'measure_semantic_drift_patient',
+          String(dossierPatientId),
+          {
+            measureCode,
+            dossierPatientId,
+            commentCount: comments.length,
+          },
+        );
+        return reply.send({ success: true, data: { comments } });
+      } catch (err) {
+        return mapMeasurePromotionError(err, reply);
+      }
+    },
+  );
+
+  app.post(
+    '/measure-promotion-configs/:measureCode/semantic-drift-worklist/:dossierPatientId/comments',
+    async (req, reply) => {
+      const { measureCode, dossierPatientId: rawDossierPatientId } = req.params as {
+        measureCode: string;
+        dossierPatientId: string;
+      };
+      const dossierPatientId = positiveInt(rawDossierPatientId);
+      if (dossierPatientId === null) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'dossierPatientId must be a positive integer' },
+        });
+      }
+      const body = (req.body ?? {}) as { body?: unknown };
+      if (typeof body.body !== 'string' || body.body.trim().length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'body must be a non-empty string' },
+        });
+      }
+
+      try {
+        const comment = await addDriftComment({
+          measureCode,
+          dossierPatientId,
+          body: body.body,
+          actorId: req.user.sub,
+        });
+        await req.auditLog(
+          'measure_drift_comment_add',
+          'measure_semantic_drift_patient',
+          String(comment.driftPatientId),
+          {
+            measureCode,
+            dossierPatientId: comment.driftPatientId,
+            commentId: comment.id,
+            commentLength: comment.body.length,
+          },
+        );
+        return reply.send({ success: true, data: { comment } });
+      } catch (err) {
+        return mapMeasurePromotionError(err, reply);
+      }
+    },
+  );
 
   // ---- QDM Bridge Operations ----
 

@@ -90,6 +90,10 @@ export interface MeasureSemanticDriftWorklistRow extends PatientSemanticDriftRow
   };
   reviewPriority: number;
   reviewHint: string;
+  reviewState: DriftReviewState;
+  assigneeUserId: string | null;
+  reviewUpdatedAt: string | null;
+  commentCount: number;
   createdAt: string;
 }
 
@@ -154,6 +158,67 @@ export interface MeasureSemanticDriftDetail {
   generatedAt: string;
   worklistRow: MeasureSemanticDriftWorklistRow;
   measureReportEvidence: MeasureSemanticDriftEvidenceDetail | null;
+}
+
+export const DRIFT_REVIEW_STATES = [
+  'open',
+  'in_review',
+  'resolved',
+  'accepted',
+  'dismissed',
+] as const;
+
+export type DriftReviewState = (typeof DRIFT_REVIEW_STATES)[number];
+
+export function isDriftReviewState(value: unknown): value is DriftReviewState {
+  return typeof value === 'string' && (DRIFT_REVIEW_STATES as readonly string[]).includes(value);
+}
+
+export interface DriftReviewRow {
+  measureCode: string;
+  dossierId: number;
+  dossierPatientId: number;
+  patientId: number | null;
+  patientRef: string | null;
+  reviewState: DriftReviewState;
+  assigneeUserId: string | null;
+  reviewUpdatedAt: string | null;
+  reviewUpdatedBy: string | null;
+}
+
+export interface DriftComment {
+  id: number;
+  driftPatientId: number;
+  authorUserId: string | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface SetDriftReviewStateInput {
+  measureCode: string;
+  dossierPatientId: number;
+  reviewState: DriftReviewState;
+  actorId?: string | null;
+}
+
+export interface SetDriftAssigneeInput {
+  measureCode: string;
+  dossierPatientId: number;
+  assigneeUserId: string | null;
+  actorId?: string | null;
+}
+
+export interface AddDriftCommentInput {
+  measureCode: string;
+  dossierPatientId: number;
+  body: string;
+  actorId?: string | null;
+}
+
+export interface ListDriftCommentsInput {
+  measureCode: string;
+  dossierPatientId: number;
+  limit?: number;
 }
 
 export class MeasureSemanticDriftError extends Error {
@@ -287,6 +352,10 @@ interface WorklistPatientRow {
   evidence_summary: Record<string, unknown> | string | null;
   cql_population_counts: Record<string, unknown> | string | null;
   has_subject_report: boolean | null;
+  review_state: string | null;
+  assignee_user_id: string | null;
+  review_updated_at: string | null;
+  comment_count: number | string | null;
   created_at: string;
 }
 
@@ -314,10 +383,33 @@ interface DetailPatientRow extends WorklistPatientRow {
   raw_fhir_subject_report: unknown;
 }
 
+interface DriftReviewDbRow {
+  id: number | string;
+  dossier_id: number | string;
+  measure_code: string;
+  patient_id: number | string | null;
+  patient_ref: string | null;
+  review_state: string;
+  assignee_user_id: string | null;
+  review_updated_at: string | null;
+  review_updated_by: string | null;
+}
+
+interface DriftCommentDbRow {
+  id: number | string;
+  drift_patient_id: number | string;
+  author_user_id: string | null;
+  body: string;
+  created_at: string;
+}
+
 const DEFAULT_PATIENT_SAMPLE_LIMIT = 100;
 const MAX_PATIENT_SAMPLE_LIMIT = 1_000;
 const DEFAULT_WORKLIST_LIMIT = 50;
 const MAX_WORKLIST_LIMIT = 500;
+const DEFAULT_COMMENT_LIMIT = 50;
+const MAX_COMMENT_LIMIT = 200;
+const MAX_COMMENT_BODY_LENGTH = 4_000;
 const SEMANTIC_RELATIONSHIP = 'surrogate_not_equivalent';
 
 export async function generateMeasureSemanticDriftDossier(
@@ -473,6 +565,10 @@ export async function listMeasureSemanticDriftWorklist(
       p.evidence_summary,
       COALESCE(subject_pop.cql_population_counts, '{}'::jsonb) AS cql_population_counts,
       (mre.fhir_subject_report IS NOT NULL) AS has_subject_report,
+      p.review_state,
+      p.assignee_user_id,
+      p.review_updated_at::text AS review_updated_at,
+      COALESCE(comment_rollup.comment_count, 0) AS comment_count,
       p.created_at::text AS created_at
     FROM phm_edw.measure_semantic_drift_patient p
     JOIN phm_edw.measure_semantic_drift_dossier d
@@ -516,6 +612,11 @@ export async function listMeasureSemanticDriftWorklist(
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(grp->'population', '[]'::jsonb)) pop
       ) population_counts
     ) subject_pop ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS comment_count
+      FROM phm_edw.measure_drift_comment c
+      WHERE c.drift_patient_id = p.id
+    ) comment_rollup ON TRUE
     WHERE p.dossier_id = ${Number(dossier.id)}
       AND (${denominatorDrift}::text IS NULL OR p.denominator_drift = ${denominatorDrift})
       AND (${numeratorDrift}::text IS NULL OR p.numerator_drift = ${numeratorDrift})
@@ -600,6 +701,10 @@ export async function getMeasureSemanticDriftDetail(
       p.evidence_summary,
       COALESCE(subject_pop.cql_population_counts, '{}'::jsonb) AS cql_population_counts,
       (mre.fhir_subject_report IS NOT NULL) AS has_subject_report,
+      p.review_state,
+      p.assignee_user_id,
+      p.review_updated_at::text AS review_updated_at,
+      COALESCE(comment_rollup.comment_count, 0) AS comment_count,
       p.created_at::text AS created_at,
       mre.id AS measure_report_evidence_id,
       mre.measure_report_id AS evidence_measure_report_id,
@@ -655,6 +760,11 @@ export async function getMeasureSemanticDriftDetail(
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(grp->'population', '[]'::jsonb)) pop
       ) population_counts
     ) subject_pop ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS comment_count
+      FROM phm_edw.measure_drift_comment c
+      WHERE c.drift_patient_id = p.id
+    ) comment_rollup ON TRUE
     WHERE d.measure_code = ${measureCode}
       AND p.id = ${dossierPatientId}
     LIMIT 1
@@ -704,6 +814,170 @@ export async function getMeasureSemanticDriftDetail(
             qdmEvidence,
             fhirSubjectReport,
           },
+  };
+}
+
+export async function setDriftReviewState(
+  input: SetDriftReviewStateInput,
+): Promise<DriftReviewRow> {
+  const measureCode = normalizeMeasureCode(input.measureCode);
+  const dossierPatientId = normalizePositiveInt(input.dossierPatientId, 'dossierPatientId');
+  if (!isDriftReviewState(input.reviewState)) {
+    throw new MeasureSemanticDriftError(
+      'INVALID_INPUT',
+      `reviewState must be one of: ${DRIFT_REVIEW_STATES.join(', ')}`,
+      400,
+    );
+  }
+  const actorId = normalizeActorId(input.actorId);
+
+  const rows = await sql<DriftReviewDbRow[]>`
+    UPDATE phm_edw.measure_semantic_drift_patient p
+    SET
+      review_state = ${input.reviewState},
+      review_updated_at = NOW(),
+      review_updated_by = ${actorId}::uuid
+    FROM phm_edw.measure_semantic_drift_dossier d
+    WHERE p.dossier_id = d.id
+      AND p.id = ${dossierPatientId}
+      AND d.measure_code = ${measureCode}
+    RETURNING
+      p.id,
+      p.dossier_id,
+      d.measure_code,
+      p.patient_id,
+      p.patient_ref,
+      p.review_state,
+      p.assignee_user_id,
+      p.review_updated_at::text AS review_updated_at,
+      p.review_updated_by
+  `;
+  return reviewRowFromDb(requireDriftReviewRow(rows[0], measureCode, dossierPatientId));
+}
+
+export async function setDriftAssignee(input: SetDriftAssigneeInput): Promise<DriftReviewRow> {
+  const measureCode = normalizeMeasureCode(input.measureCode);
+  const dossierPatientId = normalizePositiveInt(input.dossierPatientId, 'dossierPatientId');
+  const assigneeUserId =
+    input.assigneeUserId === null ? null : normalizeUuid(input.assigneeUserId, 'assigneeUserId');
+  const actorId = normalizeActorId(input.actorId);
+
+  const rows = await sql<DriftReviewDbRow[]>`
+    UPDATE phm_edw.measure_semantic_drift_patient p
+    SET
+      assignee_user_id = ${assigneeUserId}::uuid,
+      review_updated_at = NOW(),
+      review_updated_by = ${actorId}::uuid
+    FROM phm_edw.measure_semantic_drift_dossier d
+    WHERE p.dossier_id = d.id
+      AND p.id = ${dossierPatientId}
+      AND d.measure_code = ${measureCode}
+    RETURNING
+      p.id,
+      p.dossier_id,
+      d.measure_code,
+      p.patient_id,
+      p.patient_ref,
+      p.review_state,
+      p.assignee_user_id,
+      p.review_updated_at::text AS review_updated_at,
+      p.review_updated_by
+  `;
+  return reviewRowFromDb(requireDriftReviewRow(rows[0], measureCode, dossierPatientId));
+}
+
+export async function addDriftComment(input: AddDriftCommentInput): Promise<DriftComment> {
+  const measureCode = normalizeMeasureCode(input.measureCode);
+  const dossierPatientId = normalizePositiveInt(input.dossierPatientId, 'dossierPatientId');
+  const body = normalizeCommentBody(input.body);
+  const actorId = normalizeActorId(input.actorId);
+
+  // Guard insertion to the requested measure so a comment cannot be attached to a
+  // drift row belonging to a different measure via a mismatched id/measure pair.
+  const rows = await sql<DriftCommentDbRow[]>`
+    INSERT INTO phm_edw.measure_drift_comment (drift_patient_id, author_user_id, body)
+    SELECT p.id, ${actorId}::uuid, ${body}
+    FROM phm_edw.measure_semantic_drift_patient p
+    JOIN phm_edw.measure_semantic_drift_dossier d ON d.id = p.dossier_id
+    WHERE p.id = ${dossierPatientId}
+      AND d.measure_code = ${measureCode}
+    RETURNING
+      id,
+      drift_patient_id,
+      author_user_id,
+      body,
+      created_at::text AS created_at
+  `;
+  const row = rows[0];
+  if (!row) {
+    throw new MeasureSemanticDriftError(
+      'SEMANTIC_DRIFT_PATIENT_NOT_FOUND',
+      `No semantic drift patient row ${dossierPatientId} exists for ${measureCode}`,
+      404,
+    );
+  }
+  return commentFromDb(row);
+}
+
+export async function listDriftComments(input: ListDriftCommentsInput): Promise<DriftComment[]> {
+  const measureCode = normalizeMeasureCode(input.measureCode);
+  const dossierPatientId = normalizePositiveInt(input.dossierPatientId, 'dossierPatientId');
+  const limit = normalizeCommentLimit(input.limit);
+
+  const rows = await sql<DriftCommentDbRow[]>`
+    SELECT
+      c.id,
+      c.drift_patient_id,
+      c.author_user_id,
+      c.body,
+      c.created_at::text AS created_at
+    FROM phm_edw.measure_drift_comment c
+    JOIN phm_edw.measure_semantic_drift_patient p ON p.id = c.drift_patient_id
+    JOIN phm_edw.measure_semantic_drift_dossier d ON d.id = p.dossier_id
+    WHERE c.drift_patient_id = ${dossierPatientId}
+      AND d.measure_code = ${measureCode}
+    ORDER BY c.created_at ASC, c.id ASC
+    LIMIT ${limit}
+  `;
+  return rows.map(commentFromDb);
+}
+
+function requireDriftReviewRow(
+  row: DriftReviewDbRow | undefined,
+  measureCode: string,
+  dossierPatientId: number,
+): DriftReviewDbRow {
+  if (!row) {
+    throw new MeasureSemanticDriftError(
+      'SEMANTIC_DRIFT_PATIENT_NOT_FOUND',
+      `No semantic drift patient row ${dossierPatientId} exists for ${measureCode}`,
+      404,
+    );
+  }
+  return row;
+}
+
+function reviewRowFromDb(row: DriftReviewDbRow): DriftReviewRow {
+  return {
+    measureCode: row.measure_code,
+    dossierId: Number(row.dossier_id),
+    dossierPatientId: Number(row.id),
+    patientId: nullablePositiveInt(row.patient_id),
+    patientRef: row.patient_ref ?? null,
+    reviewState: isDriftReviewState(row.review_state) ? row.review_state : 'open',
+    assigneeUserId: row.assignee_user_id ?? null,
+    reviewUpdatedAt: row.review_updated_at ?? null,
+    reviewUpdatedBy: row.review_updated_by ?? null,
+  };
+}
+
+function commentFromDb(row: DriftCommentDbRow): DriftComment {
+  return {
+    id: Number(row.id),
+    driftPatientId: Number(row.drift_patient_id),
+    authorUserId: row.author_user_id ?? null,
+    body: row.body,
+    createdAt: row.created_at,
   };
 }
 
@@ -1225,6 +1499,10 @@ function worklistRowFromDb(row: WorklistPatientRow): MeasureSemanticDriftWorklis
     ),
     reviewPriority: reviewPriority(denominatorDrift, numeratorDrift, evidenceSummary),
     reviewHint: reviewHint(denominatorDrift, numeratorDrift, evidenceSummary, cqlPopulationCounts),
+    reviewState: isDriftReviewState(row.review_state) ? row.review_state : 'open',
+    assigneeUserId: row.assignee_user_id ?? null,
+    reviewUpdatedAt: row.review_updated_at ?? null,
+    commentCount: toInteger(row.comment_count),
     createdAt: row.created_at,
   };
 }
@@ -1852,6 +2130,45 @@ function normalizeOptionalText(value: unknown, field: string, maxLength: number)
     );
   }
   return trimmed;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeActorId(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return normalizeUuid(value, 'actorId');
+}
+
+function normalizeUuid(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value.trim())) {
+    throw new MeasureSemanticDriftError('INVALID_INPUT', `${field} must be a valid UUID`, 400);
+  }
+  return value.trim();
+}
+
+function normalizeCommentBody(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new MeasureSemanticDriftError('INVALID_INPUT', 'comment body must be a string', 400);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new MeasureSemanticDriftError('INVALID_INPUT', 'comment body must not be empty', 400);
+  }
+  if (trimmed.length > MAX_COMMENT_BODY_LENGTH) {
+    throw new MeasureSemanticDriftError(
+      'INVALID_INPUT',
+      `comment body must be ${MAX_COMMENT_BODY_LENGTH} characters or fewer`,
+      400,
+    );
+  }
+  return trimmed;
+}
+
+function normalizeCommentLimit(value: unknown): number {
+  if (value === undefined || value === null) return DEFAULT_COMMENT_LIMIT;
+  const parsed = normalizePositiveInt(value, 'limit');
+  return Math.min(parsed, MAX_COMMENT_LIMIT);
 }
 
 function nullablePositiveInt(value: unknown): number | null {

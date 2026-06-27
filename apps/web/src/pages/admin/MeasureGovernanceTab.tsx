@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -8,22 +8,31 @@ import {
   FilePlus2,
   FlaskConical,
   GitCompareArrows,
+  ListChecks,
+  Library,
+  MessageSquare,
   RefreshCw,
   Send,
   ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '../../services/api.js';
 import { useToast } from '../../stores/ui.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { fmtDate, fmtDateTime } from './helpers.js';
-import type {
-  MeasurePromotionConfig,
-  MeasureDossier,
-  PopulationCounts,
-  QdmBridgeIssue,
-  QdmBridgeOperationalStatus,
-  SemanticDriftDetail,
-  SemanticDriftWorklist,
-  SemanticDriftWorklistRow,
+import {
+  DRIFT_REVIEW_STATES,
+  type DriftComment,
+  type DriftReview,
+  type DriftReviewState,
+  type MeasurePromotionConfig,
+  type MeasureDossier,
+  type PopulationCounts,
+  type QdmBridgeIssue,
+  type QdmBridgeOperationalStatus,
+  type SemanticDriftDetail,
+  type SemanticDriftWorklist,
+  type SemanticDriftWorklistRow,
 } from './types.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +51,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 
 const DEFAULT_MEASURE = 'CMS122v12';
 const DEFAULT_DENOMINATOR_DRIFT = 'residual_cql_or_qicore_semantic_gap';
@@ -113,6 +123,37 @@ function coverageCountText(counts: {
   numerator: number;
 }) {
   return `${counts.initialPopulation}/${counts.denominator}/${counts.denominatorExclusion}/${counts.numerator}`;
+}
+
+function reviewStateVariant(state: DriftReviewState): BadgeVariant {
+  switch (state) {
+    case 'accepted':
+      return 'emerald';
+    case 'resolved':
+      return 'teal';
+    case 'in_review':
+      return 'amber';
+    case 'dismissed':
+      return 'dim';
+    case 'open':
+    default:
+      return 'info';
+  }
+}
+
+function shortActor(userId: string | null): string {
+  if (!userId) return 'Unassigned';
+  return userId.length > 8 ? `${userId.slice(0, 8)}…` : userId;
+}
+
+function driftSummaryEntries(counts: Record<string, unknown> | undefined): Array<{ label: string; value: number }> {
+  if (!counts || typeof counts !== 'object') return [];
+  const denominator = counts['denominator'];
+  if (!denominator || typeof denominator !== 'object') return [];
+  return Object.entries(denominator as Record<string, unknown>)
+    .map(([key, raw]) => ({ label: labelize(key), value: Number(raw) }))
+    .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
+    .sort((a, b) => b.value - a.value);
 }
 
 function jsonPreview(value: unknown, maxItems?: number) {
@@ -236,6 +277,17 @@ function DriftRow({
       </TableCell>
       <TableCell>
         <Badge variant="amber">{labelize(row.denominatorDrift)}</Badge>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Badge variant={reviewStateVariant(row.reviewState)} className="text-[10px]">
+            {labelize(row.reviewState)}
+          </Badge>
+          {row.commentCount > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-ghost">
+              <MessageSquare size={11} />
+              {row.commentCount}
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <div className="text-xs text-dim">{labelize(row.reviewBuckets.localGap)}</div>
@@ -255,10 +307,11 @@ function DriftRow({
   );
 }
 
-function DetailPanel({ detail, isLoading, error }: {
+function DetailPanel({ detail, isLoading, error, reviewWorkflow }: {
   detail: SemanticDriftDetail | undefined;
   isLoading: boolean;
   error: unknown;
+  reviewWorkflow?: ReactNode;
 }) {
   if (isLoading) {
     return <div className="surface p-5 text-sm text-ghost">Loading detail...</div>;
@@ -306,6 +359,8 @@ function DetailPanel({ detail, isLoading, error }: {
       </div>
 
       <div className="mt-4 grid gap-4">
+        {reviewWorkflow}
+
         <section>
           <div className="mb-2 flex items-center justify-between">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-dim">Subject Populations</h4>
@@ -578,12 +633,269 @@ function DossierPanel({
   );
 }
 
+function CountComparisonPanel({ config }: { config: MeasurePromotionConfig | undefined }) {
+  const shadow = config?.metadata.latestShadowMaterialization;
+  const sqlCounts = shadow?.sqlCounts;
+  const cqlCounts = shadow?.cqlCounts;
+  const deltas = shadow?.deltas;
+
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <GitCompareArrows size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">SQL vs CQL Counts</h3>
+      </div>
+      {sqlCounts && cqlCounts ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Population</TableHead>
+              <TableHead className="text-right">SQL</TableHead>
+              <TableHead className="text-right">CQL</TableHead>
+              <TableHead className="text-right">Δ</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(['denominator', 'numerator', 'exclusion'] as const).map((key) => (
+              <TableRow key={key}>
+                <TableCell className="text-xs text-dim">{labelize(key)}</TableCell>
+                <TableCell className="text-right font-data text-xs text-bright">{sqlCounts[key]}</TableCell>
+                <TableCell className="text-right font-data text-xs text-bright">{cqlCounts[key]}</TableCell>
+                <TableCell className="text-right font-data text-xs">
+                  <span className={(deltas?.[key] ?? Math.abs(sqlCounts[key] - cqlCounts[key])) > 0 ? 'text-amber' : 'text-emerald'}>
+                    {deltas?.[key] ?? Math.abs(sqlCounts[key] - cqlCounts[key])}
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <p className="text-xs text-ghost">No shadow reconciliation counts are available for this measure.</p>
+      )}
+    </div>
+  );
+}
+
+function DriftSummaryPanel({ worklist }: { worklist: SemanticDriftWorklist | undefined }) {
+  const entries = useMemo(() => driftSummaryEntries(worklist?.classificationCounts), [worklist?.classificationCounts]);
+  const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <ListChecks size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Drift Summary</h3>
+      </div>
+      {entries.length > 0 ? (
+        <div className="space-y-2">
+          {entries.map((entry) => (
+            <div key={entry.label} className="rounded-card border border-edge/25 bg-s0 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs text-dim">{entry.label}</span>
+                <span className="font-data text-xs text-bright">{entry.value}</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-s2">
+                <div
+                  className="h-full rounded-full bg-[var(--primary)]"
+                  style={{ width: total > 0 ? `${Math.round((entry.value / total) * 100)}%` : '0%' }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-ghost">No denominator drift classifications recorded for this dossier.</p>
+      )}
+    </div>
+  );
+}
+
+function ValueSetDrilldownPanel({
+  dossier,
+  isLoading,
+  error,
+}: {
+  dossier: MeasureDossier | undefined;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const valueSets = dossier?.valueSets ?? [];
+
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <Library size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Value Set Drilldown</h3>
+      </div>
+      {isLoading && <p className="text-sm text-ghost">Loading value sets...</p>}
+      {Boolean(error) && <p className="text-sm text-crimson">{apiErrorMessage(error, 'Value set load failed')}</p>}
+      {!isLoading && !error && valueSets.length === 0 && (
+        <p className="text-xs text-ghost">No VSAC value sets are bound to this measure.</p>
+      )}
+      {!isLoading && !error && valueSets.length > 0 && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Value Set</TableHead>
+              <TableHead>OID</TableHead>
+              <TableHead className="text-right">Codes</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {valueSets.map((vs) => (
+              <TableRow key={vs.value_set_oid}>
+                <TableCell>
+                  <div className="text-xs text-bright">{vs.name}</div>
+                  {vs.qdm_category && <div className="mt-0.5 text-[11px] text-ghost">{vs.qdm_category}</div>}
+                </TableCell>
+                <TableCell className="font-data text-[11px] text-ghost">{vs.value_set_oid}</TableCell>
+                <TableCell className="text-right font-data text-xs text-bright">{vs.code_count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function ReviewWorkflowSection({
+  row,
+  comments,
+  commentsLoading,
+  commentsError,
+  commentDraft,
+  onCommentDraftChange,
+  isUpdatingState,
+  isUpdatingAssignee,
+  isAddingComment,
+  onSetReviewState,
+  onClaimAssignee,
+  onClearAssignee,
+  onAddComment,
+}: {
+  row: SemanticDriftWorklistRow;
+  comments: DriftComment[];
+  commentsLoading: boolean;
+  commentsError: unknown;
+  commentDraft: string;
+  onCommentDraftChange: (value: string) => void;
+  isUpdatingState: boolean;
+  isUpdatingAssignee: boolean;
+  isAddingComment: boolean;
+  onSetReviewState: (state: DriftReviewState) => void;
+  onClaimAssignee: () => void;
+  onClearAssignee: () => void;
+  onAddComment: () => void;
+}) {
+  return (
+    <section className="rounded-card border border-edge/25 bg-s0 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dim">
+          <ClipboardCheck size={13} />
+          Review Workflow
+        </h4>
+        <Badge variant={reviewStateVariant(row.reviewState)}>{labelize(row.reviewState)}</Badge>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-dim">Review state</span>
+        <Select
+          value={row.reviewState}
+          onValueChange={(value) => onSetReviewState(value as DriftReviewState)}
+          disabled={isUpdatingState}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DRIFT_REVIEW_STATES.map((state) => (
+              <SelectItem key={state} value={state}>
+                {labelize(state)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-card border border-edge/25 bg-s1 p-2.5">
+        <div className="min-w-0">
+          <p className="text-[11px] text-ghost">Assignee</p>
+          <p className="truncate font-data text-xs text-bright">{shortActor(row.assigneeUserId)}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button size="sm" variant="secondary" onClick={onClaimAssignee} disabled={isUpdatingAssignee}>
+            <UserCheck />
+            Claim
+          </Button>
+          {row.assigneeUserId && (
+            <Button size="sm" variant="ghost" onClick={onClearAssignee} disabled={isUpdatingAssignee}>
+              Clear
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-dim">
+            <MessageSquare size={12} />
+            Comments
+          </span>
+          <span className="text-[11px] text-ghost">{comments.length}</span>
+        </div>
+        {commentsLoading && <p className="text-xs text-ghost">Loading comments...</p>}
+        {Boolean(commentsError) && (
+          <p className="text-xs text-crimson">{apiErrorMessage(commentsError, 'Comment load failed')}</p>
+        )}
+        {!commentsLoading && !commentsError && comments.length === 0 && (
+          <p className="text-xs text-ghost">No reviewer comments yet.</p>
+        )}
+        {comments.length > 0 && (
+          <ul className="space-y-2">
+            {comments.map((comment) => (
+              <li key={comment.id} className="rounded-card border border-edge/25 bg-s1 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-data text-[11px] text-dim">{shortActor(comment.authorUserId)}</span>
+                  <span className="text-[11px] text-ghost">{fmtDateTime(comment.createdAt)}</span>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-bright">{comment.body}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Textarea
+          rows={3}
+          value={commentDraft}
+          onChange={(event) => onCommentDraftChange(event.target.value)}
+          placeholder="Add a reviewer comment (no PHI)..."
+          maxLength={4000}
+        />
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onAddComment}
+            disabled={isAddingComment || commentDraft.trim().length === 0}
+          >
+            <Send />
+            {isAddingComment ? 'Posting...' : 'Add comment'}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function MeasureGovernanceTab() {
   const toast = useToast();
   const qc = useQueryClient();
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [selectedMeasure, setSelectedMeasure] = useState(DEFAULT_MEASURE);
   const [denominatorDrift, setDenominatorDrift] = useState(DEFAULT_DENOMINATOR_DRIFT);
   const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
 
   const configsQuery = useQuery({
     queryKey: ['admin', 'measure-governance', 'configs'],
@@ -628,6 +940,10 @@ export function MeasureGovernanceTab() {
     }
   }, [rows, selectedRowId]);
 
+  useEffect(() => {
+    setCommentDraft('');
+  }, [selectedRowId]);
+
   const detailQuery = useQuery({
     queryKey: ['admin', 'measure-governance', 'detail', selectedMeasure, selectedRowId],
     queryFn: () =>
@@ -658,9 +974,47 @@ export function MeasureGovernanceTab() {
     enabled: Boolean(selectedMeasure),
     staleTime: 60_000,
   });
+  const commentsQuery = useQuery({
+    queryKey: ['admin', 'measure-governance', 'comments', selectedMeasure, selectedRowId],
+    queryFn: () =>
+      api.get<{ comments: DriftComment[] }>(
+        `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}/semantic-drift-worklist/${selectedRowId}/comments`,
+      ),
+    enabled: Boolean(selectedMeasure && selectedRowId),
+    staleTime: 15_000,
+  });
+  const comments = useMemo(() => commentsQuery.data?.data?.comments ?? [], [commentsQuery.data?.data?.comments]);
   const invalidateGovernance = () => {
     void qc.invalidateQueries({ queryKey: ['admin', 'measure-governance'] });
   };
+  const reviewBasePath = `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}/semantic-drift-worklist/${selectedRowId}`;
+  const setReviewStateMutation = useMutation({
+    mutationFn: (reviewState: DriftReviewState) =>
+      api.patch<{ review: DriftReview }>(`${reviewBasePath}/review-state`, { reviewState }),
+    onSuccess: (res) => {
+      toast.success(`Review state set to ${labelize(res.data?.review.reviewState ?? 'open')}`);
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Review state update failed')),
+  });
+  const setAssigneeMutation = useMutation({
+    mutationFn: (assigneeUserId: string | null) =>
+      api.patch<{ review: DriftReview }>(`${reviewBasePath}/assignee`, { assigneeUserId }),
+    onSuccess: (res) => {
+      toast.success(res.data?.review.assigneeUserId ? 'Drift row assigned' : 'Assignee cleared');
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Assignee update failed')),
+  });
+  const addCommentMutation = useMutation({
+    mutationFn: (body: string) => api.post<{ comment: DriftComment }>(`${reviewBasePath}/comments`, { body }),
+    onSuccess: () => {
+      toast.success('Comment added');
+      setCommentDraft('');
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Comment add failed')),
+  });
   const setShadowModeMutation = useMutation({
     mutationFn: () =>
       api.patch<{ config: MeasurePromotionConfig }>(
@@ -869,6 +1223,16 @@ export function MeasureGovernanceTab() {
             isLoading={dossierQuery.isLoading}
             error={dossierQuery.error}
           />
+
+          <CountComparisonPanel config={selectedConfig} />
+
+          <DriftSummaryPanel worklist={worklist} />
+
+          <ValueSetDrilldownPanel
+            dossier={dossierQuery.data?.data}
+            isLoading={dossierQuery.isLoading}
+            error={dossierQuery.error}
+          />
         </div>
 
         <div className="surface p-5">
@@ -920,6 +1284,34 @@ export function MeasureGovernanceTab() {
           detail={detailQuery.data?.data?.detail}
           isLoading={detailQuery.isLoading || detailQuery.isFetching}
           error={detailQuery.error}
+          reviewWorkflow={
+            detailQuery.data?.data?.detail && selectedRowId ? (
+              <ReviewWorkflowSection
+                row={detailQuery.data.data.detail.worklistRow}
+                comments={comments}
+                commentsLoading={commentsQuery.isLoading}
+                commentsError={commentsQuery.error}
+                commentDraft={commentDraft}
+                onCommentDraftChange={setCommentDraft}
+                isUpdatingState={setReviewStateMutation.isPending}
+                isUpdatingAssignee={setAssigneeMutation.isPending}
+                isAddingComment={addCommentMutation.isPending}
+                onSetReviewState={(state) => setReviewStateMutation.mutate(state)}
+                onClaimAssignee={() => {
+                  if (!currentUserId) {
+                    toast.error('No authenticated user to assign');
+                    return;
+                  }
+                  setAssigneeMutation.mutate(currentUserId);
+                }}
+                onClearAssignee={() => setAssigneeMutation.mutate(null)}
+                onAddComment={() => {
+                  const trimmed = commentDraft.trim();
+                  if (trimmed.length > 0) addCommentMutation.mutate(trimmed);
+                }}
+              />
+            ) : undefined
+          }
         />
       </div>
     </div>
