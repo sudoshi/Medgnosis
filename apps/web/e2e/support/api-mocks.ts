@@ -1052,9 +1052,53 @@ function releaseSmokeReadinessEvidence() {
   };
 }
 
-function releaseSmokeWorklist() {
+function releaseSmokeMeasureConfigs() {
+  return [
+    {
+      measureCode: 'CMS122v12',
+      promotionMode: 'cql_shadow',
+      authoritativeSource: 'sql_bundle',
+      tolerance: 0,
+      evaluatorSource: 'qdm-cql',
+      requireReconciliationAgreement: true,
+      metadata: {
+        latestShadowMaterialization: {
+          sqlCounts: { denominator: 256, numerator: 58, exclusion: 0 },
+          cqlCounts: { denominator: 155, numerator: 0, exclusion: 0 },
+          deltas: { denominator: 101, numerator: 58, exclusion: 0 },
+          evaluationScope: 'full_population',
+          measureReportId: 881,
+          reconciliationRunId: 441,
+          reconciliationStatus: 'drift',
+          source: 'qdm-cql',
+        },
+      },
+      latestReconciliationRun: {
+        id: 441,
+        status: 'drift',
+        agree: false,
+        promotionEligible: false,
+        evaluationScope: 'full_population',
+        deltas: { denominator: 101, numerator: 58, exclusion: 0 },
+        computedAt: releaseSmokeNow,
+      },
+    },
+    {
+      measureCode: 'CMS165v12',
+      promotionMode: 'sql_only',
+      authoritativeSource: 'sql_bundle',
+      tolerance: 0,
+      evaluatorSource: null,
+      requireReconciliationAgreement: true,
+      metadata: {},
+      latestReconciliationRun: null,
+    },
+  ];
+}
+
+function releaseSmokeWorklist(measureCode = 'CMS122v12') {
   return {
-    measureCode: 'CMS122v12',
+    measureCode,
     dossierId: 122,
     sourceMeasureCode: null,
     reconciliationRunId: null,
@@ -1080,9 +1124,9 @@ function releaseSmokeWorklist() {
   };
 }
 
-function releaseSmokeDossier() {
+function releaseSmokeDossier(measureCode = 'CMS122v12') {
   return {
-    measureCode: 'CMS122v12',
+    measureCode,
     binding: null,
     components: {
       fhirLibraryUrl: null,
@@ -1231,14 +1275,54 @@ export async function mockAdminReleaseSmokeApis(page: Page, unhandledRequests: s
     }
 
     if (method === 'GET' && apiPath === '/admin/measure-promotion-configs') {
-      return fulfillJson(route, successBody({ configs: [] }));
+      return fulfillJson(route, successBody({ configs: releaseSmokeMeasureConfigs() }));
     }
 
-    if (
-      method === 'GET' &&
-      apiPath === '/admin/measure-promotion-configs/CMS122v12/semantic-drift-worklist'
-    ) {
-      return fulfillJson(route, successBody({ worklist: releaseSmokeWorklist() }));
+    const worklistMatch = apiPath.match(/^\/admin\/measure-promotion-configs\/([^/]+)\/semantic-drift-worklist$/);
+    if (method === 'GET' && worklistMatch) {
+      return fulfillJson(route, successBody({ worklist: releaseSmokeWorklist(decodeURIComponent(worklistMatch[1])) }));
+    }
+
+    const configPatchMatch = apiPath.match(/^\/admin\/measure-promotion-configs\/([^/]+)$/);
+    if (method === 'PATCH' && configPatchMatch) {
+      const measureCode = decodeURIComponent(configPatchMatch[1]);
+      const config = releaseSmokeMeasureConfigs().find((item) => item.measureCode === measureCode) ?? {
+        measureCode,
+        promotionMode: 'sql_only',
+        authoritativeSource: 'sql_bundle',
+        tolerance: 0,
+        evaluatorSource: null,
+        requireReconciliationAgreement: true,
+        metadata: {},
+        latestReconciliationRun: null,
+      };
+      return fulfillJson(route, successBody({ config: { ...config, promotionMode: 'cql_shadow' } }));
+    }
+
+    const dossierGenerateMatch = apiPath.match(/^\/admin\/measure-promotion-configs\/([^/]+)\/semantic-drift-dossier$/);
+    if (method === 'POST' && dossierGenerateMatch) {
+      const measureCode = decodeURIComponent(dossierGenerateMatch[1]);
+      return fulfillJson(route, successBody({
+        dossier: {
+          dossierId: 223,
+          measureCode,
+          persisted: true,
+          patientRowsReturned: 25,
+          patientsPersisted: 25,
+        },
+      }));
+    }
+
+    const promotionMatch = apiPath.match(/^\/admin\/measure-promotion-configs\/([^/]+)\/promote-cql-authoritative$/);
+    if (method === 'POST' && promotionMatch) {
+      const body = request.postDataJSON() as { dryRun?: boolean } | null;
+      return fulfillJson(route, successBody({
+        promotion: {
+          measureCode: decodeURIComponent(promotionMatch[1]),
+          dryRun: body?.dryRun !== false,
+          rowsPromoted: body?.dryRun === false ? 155 : 0,
+        },
+      }));
     }
 
     if (method === 'GET' && apiPath === '/admin/qdm-bridge/status') {
@@ -1249,8 +1333,9 @@ export async function mockAdminReleaseSmokeApis(page: Page, unhandledRequests: s
       return fulfillJson(route, successBody({ issues: [] }));
     }
 
-    if (method === 'GET' && apiPath === '/measures/CMS122v12/dossier') {
-      return fulfillJson(route, successBody(releaseSmokeDossier()));
+    const dossierMatch = apiPath.match(/^\/measures\/([^/]+)\/dossier$/);
+    if (method === 'GET' && dossierMatch) {
+      return fulfillJson(route, successBody(releaseSmokeDossier(decodeURIComponent(dossierMatch[1]))));
     }
 
     const label = `${method} ${apiPath}${url.search}`;

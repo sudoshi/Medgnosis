@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ClipboardCheck, Eye, GitCompareArrows, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Activity,
+  AlertTriangle,
+  ClipboardCheck,
+  Eye,
+  FilePlus2,
+  FlaskConical,
+  GitCompareArrows,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+} from 'lucide-react';
 import { api, apiErrorMessage } from '../../services/api.js';
+import { useToast } from '../../stores/ui.js';
 import { fmtDate, fmtDateTime } from './helpers.js';
 import type {
   MeasurePromotionConfig,
@@ -34,7 +46,31 @@ import {
 const DEFAULT_MEASURE = 'CMS122v12';
 const DEFAULT_DENOMINATOR_DRIFT = 'residual_cql_or_qicore_semantic_gap';
 const WORKLIST_LIMIT = 25;
+const PROMOTION_STATEMENT_TIMEOUT_MS = 60_000;
 type BadgeVariant = 'crimson' | 'amber' | 'teal' | 'emerald' | 'violet' | 'info' | 'dim';
+
+interface GovernanceEvidence {
+  reconciliationRunId: number | null;
+  measureReportId: number | null;
+  promotionEligible: boolean;
+  hasFullPopulationRun: boolean;
+}
+
+interface PromotionActionResponse {
+  promotion: {
+    dryRun?: boolean;
+    rowsPromoted?: number;
+  };
+}
+
+interface DossierActionResponse {
+  dossier: {
+    dossierId?: number | null;
+    patientRowsReturned?: number;
+    patientsPersisted?: number;
+    persisted?: boolean;
+  };
+}
 
 function labelize(value: string | null | undefined): string {
   if (!value) return 'None';
@@ -84,6 +120,37 @@ function jsonPreview(value: unknown, maxItems?: number) {
     return JSON.stringify(value.slice(0, maxItems), null, 2);
   }
   return JSON.stringify(value ?? null, null, 2);
+}
+
+function positiveNumber(value: unknown): number | null {
+  if (typeof value !== 'number') return null;
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function evidenceForConfig(config: MeasurePromotionConfig | undefined): GovernanceEvidence {
+  const shadow = config?.metadata.latestShadowMaterialization;
+  const reconciliationRunId = positiveNumber(shadow?.reconciliationRunId) ?? positiveNumber(config?.latestReconciliationRun?.id);
+  const measureReportId = positiveNumber(shadow?.measureReportId);
+  const evaluationScope = shadow?.evaluationScope ?? config?.latestReconciliationRun?.evaluationScope;
+
+  return {
+    reconciliationRunId,
+    measureReportId,
+    promotionEligible: config?.latestReconciliationRun?.promotionEligible === true,
+    hasFullPopulationRun: evaluationScope === 'full_population',
+  };
+}
+
+function requirePromotionEvidence(evidence: GovernanceEvidence) {
+  if (!evidence.reconciliationRunId || !evidence.measureReportId) {
+    throw new Error('Latest reconciliation run and MeasureReport evidence are required');
+  }
+  return {
+    reconciliationRunId: evidence.reconciliationRunId,
+    measureReportId: evidence.measureReportId,
+    requireFullPopulation: true,
+    statementTimeoutMs: PROMOTION_STATEMENT_TIMEOUT_MS,
+  };
 }
 
 function buildWorklistPath(measureCode: string, denominatorDrift: string) {
@@ -273,6 +340,111 @@ function DetailPanel({ detail, isLoading, error }: {
   );
 }
 
+function GovernanceActions({
+  config,
+  evidence,
+  isSettingShadow,
+  isGeneratingDossier,
+  isDryRunningPromotion,
+  isRequestingPromotion,
+  onSetShadow,
+  onGenerateDossier,
+  onDryRunPromotion,
+  onRequestPromotion,
+}: {
+  config: MeasurePromotionConfig | undefined;
+  evidence: GovernanceEvidence;
+  isSettingShadow: boolean;
+  isGeneratingDossier: boolean;
+  isDryRunningPromotion: boolean;
+  isRequestingPromotion: boolean;
+  onSetShadow: () => void;
+  onGenerateDossier: () => void;
+  onDryRunPromotion: () => void;
+  onRequestPromotion: () => void;
+}) {
+  const hasPromotionEvidence = Boolean(evidence.reconciliationRunId && evidence.measureReportId);
+  const promotionBlockedReason = !hasPromotionEvidence
+    ? 'Latest run and MeasureReport required'
+    : !evidence.hasFullPopulationRun
+      ? 'Full-population run required'
+      : !evidence.promotionEligible
+        ? 'Not promotion eligible'
+        : 'Ready';
+
+  return (
+    <div className="surface p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <FlaskConical size={16} className="text-[var(--primary)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Governance Actions</h3>
+      </div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-card border border-edge/25 bg-s0 p-3">
+            <p className="text-ghost">Run</p>
+            <p className="mt-1 font-data text-bright">{evidence.reconciliationRunId ?? '-'}</p>
+          </div>
+          <div className="rounded-card border border-edge/25 bg-s0 p-3">
+            <p className="text-ghost">MeasureReport</p>
+            <p className="mt-1 font-data text-bright">{evidence.measureReportId ?? '-'}</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full justify-start"
+          onClick={onSetShadow}
+          disabled={!config || config.promotionMode === 'cql_shadow' || isSettingShadow}
+        >
+          <GitCompareArrows />
+          {isSettingShadow ? 'Saving...' : 'Set shadow mode'}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full justify-start"
+          onClick={onGenerateDossier}
+          disabled={!config || isGeneratingDossier}
+        >
+          <FilePlus2 />
+          {isGeneratingDossier ? 'Generating...' : 'Generate dossier'}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full justify-start"
+          onClick={onDryRunPromotion}
+          disabled={!config || !hasPromotionEvidence || !evidence.hasFullPopulationRun || isDryRunningPromotion}
+        >
+          <FlaskConical />
+          {isDryRunningPromotion ? 'Running...' : 'Dry-run promotion'}
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="w-full justify-start"
+          onClick={onRequestPromotion}
+          disabled={
+            !config ||
+            !hasPromotionEvidence ||
+            !evidence.hasFullPopulationRun ||
+            !evidence.promotionEligible ||
+            isRequestingPromotion
+          }
+        >
+          <Send />
+          {isRequestingPromotion ? 'Requesting...' : 'Request promotion'}
+        </Button>
+        <p className="text-xs text-ghost">{promotionBlockedReason}</p>
+      </div>
+    </div>
+  );
+}
+
 function OpsPanel({
   statusRows,
   issues,
@@ -407,6 +579,8 @@ function DossierPanel({
 }
 
 export function MeasureGovernanceTab() {
+  const toast = useToast();
+  const qc = useQueryClient();
   const [selectedMeasure, setSelectedMeasure] = useState(DEFAULT_MEASURE);
   const [denominatorDrift, setDenominatorDrift] = useState(DEFAULT_DENOMINATOR_DRIFT);
   const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
@@ -416,8 +590,20 @@ export function MeasureGovernanceTab() {
     queryFn: () => api.get<{ configs: MeasurePromotionConfig[] }>('/admin/measure-promotion-configs?limit=100'),
     staleTime: 30_000,
   });
-  const configs = configsQuery.data?.data?.configs ?? [];
+  const configRows = configsQuery.data?.data?.configs;
+  const configs = useMemo(() => configRows ?? [], [configRows]);
   const selectedConfig = configs.find((config) => config.measureCode === selectedMeasure);
+  const selectedEvidence = evidenceForConfig(selectedConfig);
+  const measureOptions = useMemo(
+    () => [selectedMeasure, ...configs.map((config) => config.measureCode)].filter((value, index, arr) => value && arr.indexOf(value) === index),
+    [configs, selectedMeasure],
+  );
+
+  useEffect(() => {
+    if (!configsQuery.isSuccess || configs.length === 0) return;
+    if (configs.some((config) => config.measureCode === selectedMeasure)) return;
+    setSelectedMeasure(configs[0].measureCode);
+  }, [configs, configsQuery.isSuccess, selectedMeasure]);
 
   const worklistPath = useMemo(
     () => buildWorklistPath(selectedMeasure, denominatorDrift),
@@ -472,6 +658,75 @@ export function MeasureGovernanceTab() {
     enabled: Boolean(selectedMeasure),
     staleTime: 60_000,
   });
+  const invalidateGovernance = () => {
+    void qc.invalidateQueries({ queryKey: ['admin', 'measure-governance'] });
+  };
+  const setShadowModeMutation = useMutation({
+    mutationFn: () =>
+      api.patch<{ config: MeasurePromotionConfig }>(
+        `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}`,
+        { promotionMode: 'cql_shadow' },
+      ),
+    onSuccess: () => {
+      toast.success('Shadow mode saved');
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Shadow mode update failed')),
+  });
+  const generateDossierMutation = useMutation({
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        persist: true,
+        patientSampleLimit: WORKLIST_LIMIT,
+      };
+      if (selectedEvidence.reconciliationRunId) body.reconciliationRunId = selectedEvidence.reconciliationRunId;
+      if (selectedEvidence.measureReportId) body.measureReportId = selectedEvidence.measureReportId;
+      return api.post<DossierActionResponse>(
+        `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}/semantic-drift-dossier`,
+        body,
+      );
+    },
+    onSuccess: (res) => {
+      const dossier = res.data?.dossier;
+      toast.success(
+        dossier?.dossierId
+          ? `Dossier ${dossier.dossierId} generated`
+          : 'Dossier generated',
+      );
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Dossier generation failed')),
+  });
+  const dryRunPromotionMutation = useMutation({
+    mutationFn: () =>
+      api.post<PromotionActionResponse>(
+        `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}/promote-cql-authoritative`,
+        {
+          ...requirePromotionEvidence(selectedEvidence),
+          dryRun: true,
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(`Promotion dry-run completed: ${res.data?.promotion.rowsPromoted ?? 0} rows`);
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Promotion dry-run failed')),
+  });
+  const requestPromotionMutation = useMutation({
+    mutationFn: () =>
+      api.post<PromotionActionResponse>(
+        `/admin/measure-promotion-configs/${encodeURIComponent(selectedMeasure)}/promote-cql-authoritative`,
+        {
+          ...requirePromotionEvidence(selectedEvidence),
+          dryRun: false,
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(`CQL authoritative promotion requested: ${res.data?.promotion.rowsPromoted ?? 0} rows`);
+      invalidateGovernance();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'CQL authoritative promotion failed')),
+  });
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -517,6 +772,9 @@ export function MeasureGovernanceTab() {
               <GitCompareArrows size={16} className="text-[var(--primary)]" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-bright">Promotion Configs</h3>
             </div>
+            <p className="mb-3 text-xs text-ghost">
+              {configs.length > 0 ? `${configs.length} governed measures` : 'No governed measures returned'}
+            </p>
             {configsQuery.isLoading && <p className="text-sm text-ghost">Loading configs...</p>}
             {configsQuery.error && (
               <p className="text-sm text-crimson">{apiErrorMessage(configsQuery.error, 'Config load failed')}</p>
@@ -551,13 +809,11 @@ export function MeasureGovernanceTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[selectedMeasure, ...configs.map((config) => config.measureCode)]
-                    .filter((value, index, arr) => value && arr.indexOf(value) === index)
-                    .map((measureCode) => (
-                      <SelectItem key={measureCode} value={measureCode}>
-                        {measureCode}
-                      </SelectItem>
-                    ))}
+                  {measureOptions.map((measureCode) => (
+                    <SelectItem key={measureCode} value={measureCode}>
+                      {measureCode}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>
@@ -583,6 +839,23 @@ export function MeasureGovernanceTab() {
               </Select>
             </label>
           </div>
+
+          <GovernanceActions
+            config={selectedConfig}
+            evidence={selectedEvidence}
+            isSettingShadow={setShadowModeMutation.isPending}
+            isGeneratingDossier={generateDossierMutation.isPending}
+            isDryRunningPromotion={dryRunPromotionMutation.isPending}
+            isRequestingPromotion={requestPromotionMutation.isPending}
+            onSetShadow={() => setShadowModeMutation.mutate()}
+            onGenerateDossier={() => generateDossierMutation.mutate()}
+            onDryRunPromotion={() => dryRunPromotionMutation.mutate()}
+            onRequestPromotion={() => {
+              if (window.confirm(`Promote ${selectedMeasure} to CQL authoritative?`)) {
+                requestPromotionMutation.mutate();
+              }
+            }}
+          />
 
           <OpsPanel
             statusRows={opsStatusQuery.data?.data?.status ?? []}

@@ -71,14 +71,26 @@ test.describe('Admin release smoke', () => {
     await page.getByRole('button', { name: 'Measure Governance' }).click();
     await expect(page.getByRole('heading', { name: 'Measure Governance' })).toBeVisible();
     await expect(page.getByText('Promotion Configs')).toBeVisible();
-    await expect(page.getByText('Default measure')).toBeVisible();
+    await expect(page.getByText('2 governed measures')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'CMS122v12' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /CMS165v12/ })).toBeVisible();
+    await expect(page.getByText('Governance Actions')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Set shadow mode' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Generate dossier' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Dry-run promotion' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Request promotion' })).toBeDisabled();
     await expect(page.getByText('Bridge Ops')).toBeVisible();
     await expect(page.getByText('No open QDM bridge issues')).toBeVisible();
     await expect(page.getByText('Dossier Evidence')).toBeVisible();
     await expect(page.getByText('No validated local test-deck evidence is registered for this measure.')).toBeVisible();
     await expect(page.getByText('No rows for this filter')).toBeVisible();
     await expect(page.getByText('Select a drift row')).toBeVisible();
+    await page.getByRole('button', { name: 'Generate dossier' }).click();
+    await expect(page.getByText('Dossier 223 generated')).toBeVisible();
+    await page.getByRole('button', { name: 'Dry-run promotion' }).click();
+    await expect(page.getByText('Promotion dry-run completed: 0 rows')).toBeVisible();
+    await page.getByRole('button', { name: /CMS165v12/ }).click();
+    await expect(page.getByRole('heading', { name: 'CMS165v12' })).toBeVisible();
 
     await expect(page).not.toHaveURL(/\/login(?:[?#]|$)/);
     await expect(page.getByRole('heading', { name: '404' })).toHaveCount(0);
