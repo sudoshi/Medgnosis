@@ -50,6 +50,7 @@ Validation performed:
 - Production worker/CQL restart runbook validation confirmed the documented commands against the current systemd worker unit, deploy script, Docker CQL profile, and CQL smoke scripts. `systemctl cat medgnosis-worker`, `systemctl cat medgnosis-api`, `systemctl is-active medgnosis-worker medgnosis-api`, `docker compose --profile cql config --services | rg '^cql-engine$'`, `bash -n scripts/cql-engine-smoke.sh scripts/cql-qdm-smoke.sh scripts/cql-realmeasure-smoke.sh scripts/deploy-production.sh`, and `git diff --check` passed for the docs-only slice.
 - Focused QRDA/QPP local validation after adding deterministic Cat I, Cat III, and QPP fixtures plus validation scripts: `./scripts/qrda-validate.sh` passed local XML structural checks and explicitly skipped external CVU+ because `QRDA_CVU_CAT1_CMD`/`QRDA_CVU_CAT3_CMD` were not configured; `./scripts/qpp-validate.sh` passed local JSON structural checks and explicitly skipped external QPP sandbox/API validation because `QPP_VALIDATE_CMD` was not configured; `npm run test --workspace=apps/api -- src/services/qrda/qrdaCat1.test.ts src/services/qrda/qrdaCat3.test.ts` passed 2 files and 12 tests.
 - Focused FHIR/DEQM CI stabilization after GitHub Actions run `28267861945` failed on `tx.fhir.org` timeout/cache-session errors rather than fixture/profile errors: `./scripts/fhir-validate.sh` and `./scripts/deqm-validate.sh` now default to offline terminology with no terminology cache, while explicit `FHIR_VALIDATOR_TX`/`FHIR_VALIDATOR_TX_CACHE` overrides remain available for live terminology evidence. Local deterministic runs passed for both scripts after the update.
+- Focused Measure Governance UI validation after making the admin tab backend-config driven and adding audited action controls: `npm run typecheck --workspace=apps/web`, `npm run lint --workspace=apps/web`, and `PLAYWRIGHT_PORT=4217 npm run test:e2e --workspace=apps/web -- admin-release-smoke.spec.ts` passed. The release-smoke fixture now covers multiple governed measures, guarded dossier generation, dry-run promotion, disabled authoritative promotion when latest evidence is not eligible, and unhandled admin API request detection.
 
 Areas examined:
 
@@ -439,8 +440,12 @@ Objective: expose the production-critical back-end state to users and operators.
   - [x] Add deeper EHR/FHIR tenant readiness with stored SMART/FHIR discovery, backend-services, token, launch, FHIR/backend-token failure, and Bulk resource coverage evidence.
   - [x] Distinguish disabled, degraded, blocked, and healthy semantics for EHR/FHIR tenant readiness.
 - [ ] Expand Measure Governance UI.
-  - [ ] Make it multi-measure by default instead of CMS122-centric.
+  - [x] Make it multi-measure by default instead of CMS122-centric.
   - [ ] Add direct actions for dossier generation, shadow refresh, test-deck run, promotion dry-run, and promotion request.
+    - [x] Add backend-config-driven measure selection.
+    - [x] Add audited shadow-mode, semantic-drift dossier generation, promotion dry-run, and guarded promotion-request controls where current reconciliation/MeasureReport evidence exists.
+    - [ ] Add a real test-deck run action after a backend runner/official harness exists.
+    - [ ] Add an operator-triggered CQL shadow-refresh job instead of read-only bridge run status only.
   - [ ] Add review states and assignee/comment support for semantic drift rows.
 - [ ] Finish security settings UX.
   - [x] Replace disabled 2FA panel with TOTP setup/disable UX.
