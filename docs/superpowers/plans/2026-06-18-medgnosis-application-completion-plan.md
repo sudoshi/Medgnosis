@@ -347,7 +347,7 @@ Objective: make quality measurement standards work governable, reproducible, and
   - [ ] Document denominator, numerator, exclusion, and initial-population differences.
   - [ ] Require clinical/product sign-off before promotion.
 - [ ] Broaden official measure coverage.
-  - [ ] Add official CMS FHIR/QI-Core bundles or a documented fetch/cache process for the target reporting year.
+  - [x] Add official CMS FHIR/QI-Core bundles or a documented fetch/cache process for the target reporting year.
   - [ ] Start with a small portfolio: CMS122, CMS165, CMS130, CMS125, and one non-diabetes measure.
   - [ ] Add known MADiE test-deck subjects and expected MeasureReports for each.
   - [x] Surface `testDeckCoverage` in `MeasureDossier` instead of returning `null`.
@@ -369,7 +369,7 @@ Objective: make quality measurement standards work governable, reproducible, and
   - [ ] DEQM: keep current validator pass and add more representative care-gap bundles.
 - [ ] Add reporting admin UX.
   - [x] Surface per-measure dossier artifact binding, version, latest MeasureReport summary, and structured test-deck status in Measure Governance.
-  - [ ] Add value-set drilldown, latest SQL/CQL count comparison, promotion mode actions, and drift summary controls.
+  - [x] Add value-set drilldown, latest SQL/CQL count comparison, promotion mode actions, and drift summary controls.
   - [ ] Export controls for QRDA Cat I/III, QPP JSON, DEQM, and FHIR MeasureReport.
   - [ ] Clear "not submission-ready" warnings until external validation passes.
 
@@ -446,7 +446,7 @@ Objective: expose the production-critical back-end state to users and operators.
     - [x] Add audited shadow-mode, semantic-drift dossier generation, promotion dry-run, and guarded promotion-request controls where current reconciliation/MeasureReport evidence exists.
     - [ ] Add a real test-deck run action after a backend runner/official harness exists.
     - [ ] Add an operator-triggered CQL shadow-refresh job instead of read-only bridge run status only.
-  - [ ] Add review states and assignee/comment support for semantic drift rows.
+  - [x] Add review states and assignee/comment support for semantic drift rows.
 - [ ] Finish security settings UX.
   - [x] Replace disabled 2FA panel with TOTP setup/disable UX.
   - [x] Add active sessions and device/session revoke list.
