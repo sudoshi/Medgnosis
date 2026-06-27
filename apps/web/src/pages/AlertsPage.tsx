@@ -16,6 +16,7 @@ import {
 import { api } from '../services/api.js';
 import { relativeTime } from '../utils/time.js';
 import { useToast } from '../stores/ui.js';
+import { QueryError } from '../components/QueryError.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,7 +224,7 @@ export function AlertsPage() {
   const queryClient         = useQueryClient();
   const toast               = useToast();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['alerts', filter],
     queryFn: () => {
       const params = new URLSearchParams({ per_page: '50' });
@@ -308,6 +309,12 @@ export function AlertsPage() {
       {/* ── Alert feed ──────────────────────────────────────────────────── */}
       <div className="space-y-2">
 
+        {/* Error — must win over the empty state: a failed fetch must never
+            read as "No alerts" (silently "all clear"). */}
+        {!isLoading && isError && (
+          <QueryError what="alerts" onRetry={() => void refetch()} />
+        )}
+
         {/* Loading skeletons */}
         {isLoading && (
           <>
@@ -333,7 +340,7 @@ export function AlertsPage() {
         )}
 
         {/* Alert cards */}
-        {!isLoading &&
+        {!isLoading && !isError &&
           alerts.map((alert) => (
             <AlertCard
               key={alert.id}
@@ -344,7 +351,7 @@ export function AlertsPage() {
           ))}
 
         {/* Empty state */}
-        {!isLoading && alerts.length === 0 && (
+        {!isLoading && !isError && alerts.length === 0 && (
           <div className="empty-state py-20">
             <div className="flex items-center justify-center w-14 h-14 rounded-full bg-s1 mx-auto mb-4">
               <Bell size={24} strokeWidth={1.5} className="text-2xl text-ghost" aria-hidden="true" />

@@ -6,6 +6,7 @@
 import { useDashboard, useMorningBriefing } from '../hooks/useApi.js';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
+import { QueryError } from '../components/QueryError.js';
 import { useAuthStore } from '../stores/auth.js';
 import { getGreeting } from '../utils/time.js';
 import { SectionDivider, USE_MOCK_SCHEDULE, MOCK_SCHEDULE } from './dashboard/helpers.js';
@@ -20,7 +21,7 @@ import { RecentActivitySection } from './dashboard/RecentActivitySection.js';
 export function DashboardPage() {
   const { user } = useAuthStore();
 
-  const { data, isLoading, error } = useDashboard();
+  const { data, isLoading, error, refetch } = useDashboard();
 
   const { data: briefingData } = useMorningBriefing(!isLoading && !error);
 
@@ -39,11 +40,7 @@ export function DashboardPage() {
   });
 
   if (error) {
-    return (
-      <div className="p-4 bg-crimson/10 text-crimson rounded-card border border-crimson/20 text-sm">
-        Failed to load dashboard data. Check API connectivity.
-      </div>
-    );
+    return <QueryError what="dashboard data" onRetry={() => void refetch()} />;
   }
 
   // Prefer real appointments; fall back to a clearly-labeled sample only when the

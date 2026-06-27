@@ -26,6 +26,7 @@ import { api } from '../services/api.js';
 import { formatDate, calcAge } from '../utils/time.js';
 import { PatientAvatar, getInitialsFromParts } from '../components/PatientAvatar.js';
 import { Pagination } from '../components/Pagination.js';
+import { QueryError } from '../components/QueryError.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ export function PatientsPage() {
     setPage(1);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['patients', debouncedSearch, page, riskLevel, measure, cohort],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), per_page: '20' });
@@ -287,7 +288,7 @@ export function PatientsPage() {
               ))}
 
             {/* ── Data rows ───────────────────────────────────────────── */}
-            {!isLoading &&
+            {!isLoading && !isError &&
               patients.map((p) => {
                 const age    = calcAge(p.date_of_birth);
                 const dob    = formatDate(p.date_of_birth);
@@ -348,8 +349,17 @@ export function PatientsPage() {
           </TableBody>
         </Table>
 
+        {/* ── Error state ───────────────────────────────────────────── */}
+        {/* Must win over the empty state: a failed fetch must never read as
+            "No patients found" (silently empty population). */}
+        {!isLoading && isError && (
+          <div className="p-4">
+            <QueryError what="the patient population" onRetry={() => void refetch()} />
+          </div>
+        )}
+
         {/* ── Empty state ───────────────────────────────────────────── */}
-        {!isLoading && patients.length === 0 && (
+        {!isLoading && !isError && patients.length === 0 && (
           <div className="empty-state py-16">
             <p className="empty-state-title">No patients found</p>
             {search ? (

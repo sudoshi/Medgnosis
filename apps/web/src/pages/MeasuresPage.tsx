@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { ArcGauge } from '../components/charts/ArcGauge.js';
+import { QueryError } from '../components/QueryError.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -327,7 +328,7 @@ export function MeasuresPage() {
   const [search, setSearch]               = useState('');
   const [selectedId, setSelectedId]       = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['measures'],
     queryFn: () => api.get<MeasureRow[]>('/measures'),
   });
@@ -404,6 +405,12 @@ export function MeasuresPage() {
                   <div className="skeleton h-3 w-4/5 rounded" />
                 </div>
               ))}
+            </div>
+          ) : isError ? (
+            // Error must win over the empty state — a failed fetch must never
+            // read as "No measures found".
+            <div className="p-3">
+              <QueryError what="quality measures" onRetry={() => void refetch()} />
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-12 px-5 text-center">

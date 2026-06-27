@@ -6,14 +6,19 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api.js';
 import { MetricCard, fmtDateTime } from './helpers.js';
 import type { AdminStats, AuditLog } from './types.js';
+import { QueryError } from '../../components/QueryError.js';
 
 export function DashboardTab() {
-  const { data: statsData } = useQuery({
+  const {
+    data: statsData,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: () => api.get('/admin/stats'),
     staleTime: 60_000,
   });
-  const { data: auditData } = useQuery({
+  const { data: auditData, isError: auditError } = useQuery({
     queryKey: ['admin', 'audit-log', 'recent'],
     queryFn: () => api.get('/admin/audit-log?limit=5'),
     staleTime: 60_000,
@@ -24,6 +29,11 @@ export function DashboardTab() {
 
   return (
     <div className="space-y-6 animate-fade-up">
+      {/* Stats error — surface the failure rather than showing zeroed metrics. */}
+      {statsError && (
+        <QueryError what="admin statistics" onRetry={() => void refetchStats()} />
+      )}
+
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6 gap-4">
         <MetricCard label="Total Providers"  value={stats?.total_providers   ?? null} color="teal"    />
@@ -58,7 +68,10 @@ export function DashboardTab() {
       {/* Recent audit events */}
       <div className="surface p-5">
         <h3 className="text-xs font-semibold text-bright uppercase tracking-wider mb-4">Recent Activity</h3>
-        {recentAudit.length === 0 ? (
+        {auditError ? (
+          // A failed fetch must not read as "No recent events".
+          <p className="text-sm text-crimson py-4 text-center">Couldn&rsquo;t load recent activity.</p>
+        ) : recentAudit.length === 0 ? (
           <p className="text-sm text-ghost py-4 text-center">No recent events</p>
         ) : (
           <div className="divide-y divide-edge/15">

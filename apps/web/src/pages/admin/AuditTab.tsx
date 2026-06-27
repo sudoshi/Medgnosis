@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api.js';
 import { fmtDateTime } from './helpers.js';
 import type { AuditLog } from './types.js';
+import { QueryError } from '../../components/QueryError.js';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -24,7 +25,7 @@ export function AuditTab() {
   const [offset, setOffset] = useState(0);
   const LIMIT = 25;
 
-  const { data: auditData, isLoading } = useQuery({
+  const { data: auditData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'audit-log', eventType, offset],
     queryFn: () => {
       const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
@@ -91,10 +92,19 @@ export function AuditTab() {
             {isLoading && (
               <TableRow><TableCell colSpan={5} className="py-8 text-center text-ghost">Loading...</TableCell></TableRow>
             )}
-            {!isLoading && logs.length === 0 && (
+            {/* Error must win over the empty row — a failed audit-log fetch must
+                never read as "No events found" (silently no audit trail). */}
+            {!isLoading && isError && (
+              <TableRow>
+                <TableCell colSpan={5} className="py-4">
+                  <QueryError what="the audit log" onRetry={() => void refetch()} />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && !isError && logs.length === 0 && (
               <TableRow><TableCell colSpan={5} className="py-8 text-center text-ghost">No events found</TableCell></TableRow>
             )}
-            {logs.map((log) => {
+            {!isError && logs.map((log) => {
               const actorName = log.user_first_name
                 ? `${log.user_first_name} ${log.user_last_name ?? ''}`.trim()
                 : log.user_email ?? 'System';
@@ -114,7 +124,7 @@ export function AuditTab() {
                   <TableCell><span className="text-xs text-dim">{actorName}</span></TableCell>
                   <TableCell><span className="font-data text-xs text-ghost">{log.target_type ?? '\u2014'}</span></TableCell>
                   <TableCell><span className="block max-w-[200px] truncate text-xs text-dim">{log.description ?? '\u2014'}</span></TableCell>
-                  <TableCell><span className="font-data text-[11px] text-ghost whitespace-nowrap">{fmtDateTime(log.created_at)}</span></TableCell>
+                  <TableCell><span className="font-data text-[11px] text-ghost whitespace-nowrap tabular-nums">{fmtDateTime(log.created_at)}</span></TableCell>
                 </TableRow>
               );
             })}
@@ -125,7 +135,7 @@ export function AuditTab() {
       {/* Pagination */}
       {total > LIMIT && (
         <div className="flex items-center justify-between text-xs text-ghost">
-          <span>{offset + 1}\u2013{Math.min(offset + LIMIT, total)} of {total.toLocaleString()}</span>
+          <span className="tabular-nums">{offset + 1}&ndash;{Math.min(offset + LIMIT, total)} of {total.toLocaleString()}</span>
           <div className="flex gap-2">
             <Button
               variant="secondary"
