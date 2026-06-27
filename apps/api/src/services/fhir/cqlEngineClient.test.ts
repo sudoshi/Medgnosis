@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { evaluateMeasure, populationsFromReport } from './cqlEngineClient.js';
+import { evaluateMeasure, fetchEngineCapability, populationsFromReport } from './cqlEngineClient.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -78,6 +78,54 @@ describe('evaluateMeasure', () => {
         reportType: 'population',
       }),
     ).rejects.toThrow(/unknown Measure/);
+  });
+});
+
+describe('fetchEngineCapability', () => {
+  const CAPABILITY = {
+    resourceType: 'CapabilityStatement',
+    status: 'active',
+    software: { name: 'HAPI FHIR Server', version: '7.4.0' },
+    fhirVersion: '4.0.1',
+  };
+
+  it('GETs /metadata and projects software.version + fhirVersion', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(fhirResponse(CAPABILITY));
+    const cap = await fetchEngineCapability('http://cql-engine/fhir');
+    expect(cap.reachable).toBe(true);
+    expect(cap.version).toBe('7.4.0');
+    expect(cap.software).toBe('HAPI FHIR Server');
+    expect(cap.fhirVersion).toBe('4.0.1');
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toBe('http://cql-engine/fhir/metadata');
+  });
+
+  it('returns an unreachable capability (null version, no throw) on a non-2xx', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(fhirResponse({}, 503));
+    const cap = await fetchEngineCapability('http://cql-engine/fhir');
+    expect(cap.reachable).toBe(false);
+    expect(cap.version).toBeNull();
+    expect(cap.error).toContain('503');
+  });
+
+  it('returns an unreachable capability (null version, no throw) on a network error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+    const cap = await fetchEngineCapability('http://cql-engine/fhir');
+    expect(cap.reachable).toBe(false);
+    expect(cap.version).toBeNull();
+    expect(cap.error).toContain('ECONNREFUSED');
+  });
+
+  it('records null version when software.version is missing or blank', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      fhirResponse({ resourceType: 'CapabilityStatement', software: { name: 'x', version: '  ' } }),
+    );
+    const cap = await fetchEngineCapability('http://cql-engine/fhir');
+    expect(cap.reachable).toBe(true);
+    expect(cap.version).toBeNull();
+    expect(cap.software).toBe('x');
   });
 });
 

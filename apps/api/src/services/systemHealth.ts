@@ -18,6 +18,8 @@ import {
   type AuthProviderHealth,
 } from './auth/providerHealth.js';
 import { getEhrSyncAlertingStatus, type EhrSyncAlertingStatus } from './ehr/syncAlerts.js';
+import { fetchEngineCapability } from './fhir/cqlEngineClient.js';
+import { getCqlLoadRunState } from './cqlEngineLoader.js';
 
 export type HealthStatus = 'ok' | 'degraded' | 'blocked' | 'error' | 'disabled';
 
@@ -31,11 +33,46 @@ export interface SystemHealth {
   scheduler: SchedulerHealth;
   migrations: MigrationHealth;
   observability: SystemObservability;
+  cql_engine: CqlEngineHealth;
   ehr_tenants: EhrTenantReadiness;
   ehr_bulk: EhrBulkReadiness;
   ehr_sync_alerts: EhrSyncAlertingStatus;
   standards: StandardsReadiness;
   duration_ms: number;
+}
+
+/**
+ * Operational readiness of the CQL clinical-reasoning sidecar plus evidence of
+ * what has been loaded into it. Statuses:
+ *   - disabled: CQL_ENGINE_URL is not configured (optional sidecar absent).
+ *   - blocked:  configured but unreachable (/metadata probe failed) — CQL
+ *               evaluation/loading cannot run.
+ *   - degraded: reachable but no successful artifact load is recorded, or the
+ *               last load failed — the engine has nothing to evaluate against.
+ *   - ok:       reachable AND a successful load with bundle entries is recorded.
+ * PHI-safe: only version, counts, and timestamps.
+ */
+export interface CqlEngineHealth {
+  status: HealthStatus;
+  runtime_configured: boolean;
+  reachable: boolean;
+  version: string | null;
+  fhir_version: string | null;
+  url: string;
+  loaded: {
+    /** Distinct measure artifacts with an executable engine binding. */
+    artifacts: number;
+    /** Distinct patients represented by persisted CQL MeasureReport evidence. */
+    patients: number;
+    last_run_at: string | null;
+    last_success_at: string | null;
+    last_status: string | null;
+    last_engine_version: string | null;
+    last_bundle_entries: number | null;
+    last_loaded_resources: number | null;
+  };
+  issues: string[];
+  error?: string;
 }
 
 /**
@@ -448,7 +485,7 @@ const REPO_ROOT_CANDIDATES = Array.from(new Set([
 
 export async function getSystemHealth(): Promise<SystemHealth> {
   const startedAt = Date.now();
-  const [database, redis, solr, auth, workers, scheduler, migrations, ehrTenants, ehrBulk, ehrSyncAlerts, standards] =
+  const [database, redis, solr, auth, workers, scheduler, migrations, cqlEngine, ehrTenants, ehrBulk, ehrSyncAlerts, standards] =
     await Promise.all([
       getDatabaseHealth(),
       getRedisHealth(),
@@ -457,6 +494,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
       getWorkerQueueHealth(),
       getSchedulerHealth(),
       getMigrationHealth(),
+      getCqlEngineHealth(),
       getEhrTenantReadiness(),
       getEhrBulkReadiness(),
       getEhrSyncAlertingStatus(),
@@ -481,6 +519,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     scheduler,
     migrations,
     observability,
+    cql_engine: cqlEngine,
     ehr_tenants: ehrTenants,
     ehr_bulk: ehrBulk,
     ehr_sync_alerts: ehrSyncAlerts,
@@ -1259,6 +1298,119 @@ export async function getStandardsReadiness(): Promise<StandardsReadiness> {
     status: aggregateStandardsStatus(checks),
     checks,
     issues,
+  };
+}
+
+/**
+ * CQL clinical-reasoning sidecar readiness + loaded-evidence rollup. Probes the
+ * engine /metadata (version + reachability, null-safe), counts executable
+ * artifact bindings and distinct patients with persisted CQL MeasureReport
+ * evidence, and reads the last load-run state. Read-only; never loads or evaluates.
+ */
+export async function getCqlEngineHealth(): Promise<CqlEngineHealth> {
+  const configuredUrl = process.env['CQL_ENGINE_URL']?.trim();
+  const url = configuredUrl || 'http://cql-engine:8080/fhir';
+
+  if (!configuredUrl) {
+    return {
+      status: 'disabled',
+      runtime_configured: false,
+      reachable: false,
+      version: null,
+      fhir_version: null,
+      url,
+      loaded: emptyCqlLoaded(),
+      issues: ['CQL_ENGINE_URL is not configured; CQL evaluation/loading is disabled'],
+    };
+  }
+
+  try {
+    const [capability, loadState, counts] = await Promise.all([
+      fetchEngineCapability(url),
+      getCqlLoadRunState(),
+      getCqlLoadedCounts(),
+    ]);
+
+    const issues: string[] = [];
+    if (!capability.reachable) {
+      issues.push(
+        `CQL engine /metadata is unreachable${capability.error ? ` (${capability.error})` : ''}`,
+      );
+    }
+    if (loadState.lastStatus === 'failed') {
+      issues.push('Most recent CQL artifact load failed');
+    }
+    if (capability.reachable && loadState.lastSuccessAt === null) {
+      issues.push('CQL engine is reachable but no successful artifact load is recorded');
+    }
+
+    const status: HealthStatus = !capability.reachable
+      ? 'blocked'
+      : loadState.lastStatus === 'failed' || loadState.lastSuccessAt === null
+        ? 'degraded'
+        : 'ok';
+
+    return {
+      status,
+      runtime_configured: true,
+      reachable: capability.reachable,
+      version: capability.version,
+      fhir_version: capability.fhirVersion,
+      url,
+      loaded: {
+        artifacts: counts.artifacts,
+        patients: counts.patients,
+        last_run_at: loadState.lastRunAt,
+        last_success_at: loadState.lastSuccessAt,
+        last_status: loadState.lastStatus,
+        last_engine_version: loadState.lastEngineVersion,
+        last_bundle_entries: loadState.lastBundleEntries,
+        last_loaded_resources: loadState.lastLoadedResources,
+      },
+      issues,
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      runtime_configured: true,
+      reachable: false,
+      version: null,
+      fhir_version: null,
+      url,
+      loaded: emptyCqlLoaded(),
+      issues: [errorMessage(err)],
+      error: errorMessage(err),
+    };
+  }
+}
+
+async function getCqlLoadedCounts(): Promise<{ artifacts: number; patients: number }> {
+  const [row] = await sql<{ artifacts: number | string | null; patients: number | string | null }[]>`
+    SELECT
+      (
+        SELECT COUNT(*)::int
+        FROM phm_edw.measure_artifact
+        WHERE ecqm_id IS NOT NULL AND status = 'active'
+      ) AS artifacts,
+      (
+        SELECT COUNT(DISTINCT COALESCE(patient_key::text, patient_id::text, patient_ref))::int
+        FROM phm_edw.measure_report_evidence
+        WHERE source <> 'sql_bundle'
+      ) AS patients
+  `;
+  return { artifacts: toNumber(row?.artifacts), patients: toNumber(row?.patients) };
+}
+
+function emptyCqlLoaded(): CqlEngineHealth['loaded'] {
+  return {
+    artifacts: 0,
+    patients: 0,
+    last_run_at: null,
+    last_success_at: null,
+    last_status: null,
+    last_engine_version: null,
+    last_bundle_entries: null,
+    last_loaded_resources: null,
   };
 }
 

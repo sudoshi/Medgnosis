@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockSql, mockEval } = vi.hoisted(() => {
+const { mockSql, mockEval, mockCapability } = vi.hoisted(() => {
   const sql = vi.fn();
   const unsafe = vi.fn();
   Object.assign(sql, {
@@ -12,11 +12,12 @@ const { mockSql, mockEval } = vi.hoisted(() => {
     unsafe,
     begin: vi.fn(async (cb: (tx: { unsafe: typeof unsafe }) => Promise<unknown>) => cb({ unsafe })),
   });
-  return { mockSql: sql, mockEval: vi.fn() };
+  return { mockSql: sql, mockEval: vi.fn(), mockCapability: vi.fn() };
 });
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
 vi.mock('./fhir/cqlEngineClient.js', () => ({
   evaluateMeasure: mockEval,
+  fetchEngineCapability: mockCapability,
   populationsFromReport: (r: {
     __p: { denominator: number; numerator: number; denominatorExclusion: number };
   }) => ({
@@ -49,6 +50,12 @@ beforeEach(() => {
     async (cb: (tx: { unsafe: typeof mockSql.unsafe }) => Promise<unknown>) =>
       cb({ unsafe: mockSql.unsafe }),
   );
+  mockCapability.mockResolvedValue({
+    reachable: true,
+    version: 'HAPI-7.4.0',
+    software: 'HAPI FHIR',
+    fhirVersion: '4.0.1',
+  });
 });
 
 describe('reconcile', () => {
@@ -70,6 +77,48 @@ describe('reconcile', () => {
     expect(query).toContain("fr.source = 'sql_bundle'");
     expect(query).toContain("fr.evaluation_scope = 'full_population'");
     expect(query).toContain("fr.reconciliation_status = 'authoritative'");
+  });
+
+  it('captures the engine version on the result and persists it in metadata', async () => {
+    mockSql
+      .mockResolvedValueOnce([CONFIG])
+      .mockResolvedValueOnce([{ denominator: 80, numerator: 55, exclusion: 5 }])
+      .mockResolvedValueOnce([{ id: 7100 }]);
+    mockEval.mockResolvedValue({
+      __p: { denominator: 80, numerator: 55, denominatorExclusion: 5 },
+    });
+
+    const r = await reconcile('CMS122v12', PERIOD, {
+      engineUrl: 'http://e/fhir',
+      persist: true,
+    });
+
+    expect(r.engineVersion).toBe('HAPI-7.4.0');
+    expect(mockCapability).toHaveBeenCalledWith('http://e/fhir');
+    // The persisted run's metadata template value carries the engine version.
+    const insertValues = mockSql.mock.calls[2] ?? [];
+    const flattened = JSON.stringify(insertValues);
+    expect(flattened).toContain('HAPI-7.4.0');
+  });
+
+  it('records a null engine version (no throw) when the engine /metadata is unreachable', async () => {
+    mockCapability.mockResolvedValue({
+      reachable: false,
+      version: null,
+      software: null,
+      fhirVersion: null,
+      error: 'ECONNREFUSED',
+    });
+    mockSql
+      .mockResolvedValueOnce([CONFIG])
+      .mockResolvedValueOnce([{ denominator: 80, numerator: 55, exclusion: 5 }]);
+    mockEval.mockResolvedValue({
+      __p: { denominator: 80, numerator: 55, denominatorExclusion: 5 },
+    });
+
+    const r = await reconcile('CMS122v12', PERIOD, { engineUrl: 'http://e/fhir' });
+    expect(r.engineVersion).toBeNull();
+    expect(r.agree).toBe(true);
   });
 
   it('disagrees and reports deltas', async () => {

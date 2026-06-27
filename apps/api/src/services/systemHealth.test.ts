@@ -9,6 +9,8 @@ const {
   mockIsSolrAvailable,
   mockGetOidcProviderConfig,
   mockListAuthProviderHealth,
+  mockFetchEngineCapability,
+  mockGetCqlLoadRunState,
 } = vi.hoisted(() => ({
   mockQueueCtor: vi.fn(),
   mockSql: vi.fn(),
@@ -26,6 +28,8 @@ const {
   },
   mockGetOidcProviderConfig: vi.fn(),
   mockListAuthProviderHealth: vi.fn(),
+  mockFetchEngineCapability: vi.fn(),
+  mockGetCqlLoadRunState: vi.fn(),
 }));
 
 vi.mock('bullmq', () => ({
@@ -48,9 +52,16 @@ vi.mock('./auth/oidc/providerConfig.js', () => ({
 vi.mock('./auth/providerHealth.js', () => ({
   listAuthProviderHealth: mockListAuthProviderHealth,
 }));
+vi.mock('./fhir/cqlEngineClient.js', () => ({
+  fetchEngineCapability: mockFetchEngineCapability,
+}));
+vi.mock('./cqlEngineLoader.js', () => ({
+  getCqlLoadRunState: mockGetCqlLoadRunState,
+}));
 
 import {
   getAuthHealth,
+  getCqlEngineHealth,
   getEhrBulkReadiness,
   getEhrTenantReadiness,
   getMigrationHealth,
@@ -356,6 +367,102 @@ describe('getStandardsReadiness', () => {
       'FHIR US Core / QI-Core missing /tmp/medgnosis-missing-validator.jar',
       'Da Vinci DEQM missing /tmp/medgnosis-missing-validator.jar',
     ]);
+  });
+});
+
+describe('getCqlEngineHealth', () => {
+  const loadedRunState = (overrides: Record<string, unknown> = {}) => ({
+    lastRunAt: '2026-06-25T02:00:00.000Z',
+    lastSuccessAt: '2026-06-25T02:00:00.000Z',
+    lastStatus: 'loaded',
+    lastEngineVersion: 'HAPI-7.4.0',
+    lastBundleEntries: 120,
+    lastLoadedResources: 120,
+    ...overrides,
+  });
+
+  it('reports disabled when CQL_ENGINE_URL is not configured', async () => {
+    delete process.env['CQL_ENGINE_URL'];
+    const health = await getCqlEngineHealth();
+    expect(health.status).toBe('disabled');
+    expect(health.runtime_configured).toBe(false);
+    expect(health.reachable).toBe(false);
+    expect(mockFetchEngineCapability).not.toHaveBeenCalled();
+  });
+
+  it('reports blocked when configured but the engine /metadata is unreachable', async () => {
+    process.env['CQL_ENGINE_URL'] = 'http://cql-engine:8080/fhir';
+    mockFetchEngineCapability.mockResolvedValue({
+      reachable: false,
+      version: null,
+      software: null,
+      fhirVersion: null,
+      error: 'ECONNREFUSED',
+    });
+    mockGetCqlLoadRunState.mockResolvedValue(loadedRunState({ lastSuccessAt: null, lastStatus: null }));
+    mockSql.mockResolvedValueOnce([{ artifacts: 3, patients: 0 }]);
+
+    const health = await getCqlEngineHealth();
+    expect(health.status).toBe('blocked');
+    expect(health.reachable).toBe(false);
+    expect(health.version).toBeNull();
+    expect(health.issues.some((i) => /unreachable/.test(i))).toBe(true);
+  });
+
+  it('reports degraded when reachable but no successful load is recorded', async () => {
+    process.env['CQL_ENGINE_URL'] = 'http://cql-engine:8080/fhir';
+    mockFetchEngineCapability.mockResolvedValue({
+      reachable: true,
+      version: 'HAPI-7.4.0',
+      software: 'HAPI FHIR',
+      fhirVersion: '4.0.1',
+    });
+    mockGetCqlLoadRunState.mockResolvedValue(loadedRunState({ lastSuccessAt: null, lastStatus: 'empty' }));
+    mockSql.mockResolvedValueOnce([{ artifacts: 3, patients: 0 }]);
+
+    const health = await getCqlEngineHealth();
+    expect(health.status).toBe('degraded');
+    expect(health.reachable).toBe(true);
+    expect(health.version).toBe('HAPI-7.4.0');
+    expect(health.loaded.artifacts).toBe(3);
+  });
+
+  it('reports ok with version + loaded counts when reachable and a successful load exists', async () => {
+    process.env['CQL_ENGINE_URL'] = 'http://cql-engine:8080/fhir';
+    mockFetchEngineCapability.mockResolvedValue({
+      reachable: true,
+      version: 'HAPI-7.4.0',
+      software: 'HAPI FHIR',
+      fhirVersion: '4.0.1',
+    });
+    mockGetCqlLoadRunState.mockResolvedValue(loadedRunState());
+    mockSql.mockResolvedValueOnce([{ artifacts: 5, patients: 42 }]);
+
+    const health = await getCqlEngineHealth();
+    expect(health.status).toBe('ok');
+    expect(health.version).toBe('HAPI-7.4.0');
+    expect(health.fhir_version).toBe('4.0.1');
+    expect(health.loaded.artifacts).toBe(5);
+    expect(health.loaded.patients).toBe(42);
+    expect(health.loaded.last_success_at).toBe('2026-06-25T02:00:00.000Z');
+    expect(health.loaded.last_engine_version).toBe('HAPI-7.4.0');
+    expect(health.issues).toEqual([]);
+  });
+
+  it('reports degraded when the last load failed', async () => {
+    process.env['CQL_ENGINE_URL'] = 'http://cql-engine:8080/fhir';
+    mockFetchEngineCapability.mockResolvedValue({
+      reachable: true,
+      version: 'HAPI-7.4.0',
+      software: 'HAPI FHIR',
+      fhirVersion: '4.0.1',
+    });
+    mockGetCqlLoadRunState.mockResolvedValue(loadedRunState({ lastStatus: 'failed' }));
+    mockSql.mockResolvedValueOnce([{ artifacts: 5, patients: 42 }]);
+
+    const health = await getCqlEngineHealth();
+    expect(health.status).toBe('degraded');
+    expect(health.issues).toContain('Most recent CQL artifact load failed');
   });
 });
 

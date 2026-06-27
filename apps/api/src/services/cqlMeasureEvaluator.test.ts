@@ -4,16 +4,25 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockSql, mockEval, mockPersist } = vi.hoisted(() => ({
+const { mockSql, mockEval, mockPersist, mockCapability } = vi.hoisted(() => ({
   mockSql: vi.fn(),
   mockEval: vi.fn(),
   mockPersist: vi.fn(),
+  mockCapability: vi.fn(),
 }));
 vi.mock('@medgnosis/db', () => ({ sql: mockSql }));
-vi.mock('./fhir/cqlEngineClient.js', () => ({ evaluateMeasure: mockEval }));
+vi.mock('./fhir/cqlEngineClient.js', () => ({
+  evaluateMeasure: mockEval,
+  fetchEngineCapability: mockCapability,
+}));
 vi.mock('./measureReportStore.js', () => ({ persistMeasureReport: mockPersist }));
 
-import { refreshCqlMeasureResults } from './cqlMeasureEvaluator.js';
+import {
+  refreshCqlMeasureResults,
+  tagEngineVersion,
+  CQL_ENGINE_VERSION_TAG_SYSTEM,
+} from './cqlMeasureEvaluator.js';
+import type { FhirMeasureReport } from './fhir/cqlEngineClient.js';
 
 const REPORT = { resourceType: 'MeasureReport', status: 'complete', measure: 'X' };
 const binding = (measure_code: string, ecqm_id: string) => ({
@@ -23,7 +32,15 @@ const binding = (measure_code: string, ecqm_id: string) => ({
   period_end: '2024-12-31',
 });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockCapability.mockResolvedValue({
+    reachable: true,
+    version: 'HAPI-7.4.0',
+    software: 'HAPI FHIR',
+    fhirVersion: '4.0.1',
+  });
+});
 
 describe('refreshCqlMeasureResults', () => {
   it('evaluates each bound measure by its engine Measure id and persists the report', async () => {
@@ -56,7 +73,45 @@ describe('refreshCqlMeasureResults', () => {
     const [code, period, report] = mockPersist.mock.calls[0]!;
     expect(code).toBe('CMS122v12'); // persisted under EDW code
     expect(period).toEqual({ start: '2024-01-01', end: '2024-12-31' });
-    expect(report).toBe(REPORT);
+    // The persisted report carries the original payload plus the engine-version tag.
+    expect(report).toMatchObject({ resourceType: 'MeasureReport', measure: 'X' });
+    expect(report.meta.tag).toContainEqual({
+      system: CQL_ENGINE_VERSION_TAG_SYSTEM,
+      code: 'HAPI-7.4.0',
+    });
+  });
+
+  it('captures the engine version and tags each persisted MeasureReport', async () => {
+    mockSql.mockResolvedValueOnce([binding('CMS122v12', 'CMS122FHIR')]);
+    mockEval.mockResolvedValue(REPORT);
+    mockPersist.mockResolvedValue(1);
+
+    await refreshCqlMeasureResults();
+
+    expect(mockCapability).toHaveBeenCalledOnce(); // probed once per refresh
+    const [, , report] = mockPersist.mock.calls[0]!;
+    expect(report.meta.tag).toContainEqual({
+      system: CQL_ENGINE_VERSION_TAG_SYSTEM,
+      code: 'HAPI-7.4.0',
+    });
+  });
+
+  it('persists without a version tag (null-safe) when the engine is unreachable', async () => {
+    mockCapability.mockResolvedValue({
+      reachable: false,
+      version: null,
+      software: null,
+      fhirVersion: null,
+      error: 'ECONNREFUSED',
+    });
+    mockSql.mockResolvedValueOnce([binding('CMS122v12', 'CMS122FHIR')]);
+    mockEval.mockResolvedValue(REPORT);
+    mockPersist.mockResolvedValue(1);
+
+    const result = await refreshCqlMeasureResults();
+    expect(result.rowCount).toBe(1);
+    const [, , report] = mockPersist.mock.calls[0]!;
+    expect(report).toBe(REPORT); // unchanged — no tag added
   });
 
   it('falls back to the env period when a binding leaves it null', async () => {
@@ -92,5 +147,47 @@ describe('refreshCqlMeasureResults', () => {
     const result = await refreshCqlMeasureResults();
     expect(result.rowCount).toBe(0);
     expect(mockEval).not.toHaveBeenCalled();
+  });
+});
+
+function metaTags(report: FhirMeasureReport): Array<{ system?: string; code?: string }> {
+  const meta = report['meta'];
+  if (meta && typeof meta === 'object' && Array.isArray((meta as { tag?: unknown }).tag)) {
+    return (meta as { tag: Array<{ system?: string; code?: string }> }).tag;
+  }
+  return [];
+}
+
+describe('tagEngineVersion', () => {
+  const base: FhirMeasureReport = { resourceType: 'MeasureReport', status: 'complete', measure: 'X' };
+
+  it('adds the engine-version tag to a report without meta', () => {
+    const tagged = tagEngineVersion(base, 'HAPI-7.4.0');
+    expect(metaTags(tagged)).toEqual([
+      { system: CQL_ENGINE_VERSION_TAG_SYSTEM, code: 'HAPI-7.4.0' },
+    ]);
+    expect(base['meta']).toBeUndefined(); // immutable — original untouched
+  });
+
+  it('returns the report unchanged when version is null', () => {
+    const tagged = tagEngineVersion(base, null);
+    expect(tagged).toBe(base);
+  });
+
+  it('replaces a stale engine-version tag while preserving other tags', () => {
+    const withTags: FhirMeasureReport = {
+      ...base,
+      meta: {
+        tag: [
+          { system: 'https://example.org/other', code: 'keep' },
+          { system: CQL_ENGINE_VERSION_TAG_SYSTEM, code: 'OLD' },
+        ],
+      },
+    };
+    const tagged = tagEngineVersion(withTags, 'NEW');
+    expect(metaTags(tagged)).toEqual([
+      { system: 'https://example.org/other', code: 'keep' },
+      { system: CQL_ENGINE_VERSION_TAG_SYSTEM, code: 'NEW' },
+    ]);
   });
 });

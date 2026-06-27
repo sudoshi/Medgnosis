@@ -23,8 +23,37 @@
 
 import { sql } from '@medgnosis/db';
 import type { RefreshResult } from './measureCalculatorV2.js';
-import { evaluateMeasure } from './fhir/cqlEngineClient.js';
+import {
+  evaluateMeasure,
+  fetchEngineCapability,
+  type FhirMeasureReport,
+} from './fhir/cqlEngineClient.js';
 import { persistMeasureReport } from './measureReportStore.js';
+
+/** System URI for the engine-version tag stamped into persisted MeasureReports. */
+export const CQL_ENGINE_VERSION_TAG_SYSTEM = 'https://medgnosis.app/cql-engine-version';
+
+/**
+ * Stamp the captured engine version into the MeasureReport JSONB as a FHIR
+ * `meta.tag`. Additive and null-safe: when the version is unknown (engine
+ * unreachable) the report is returned unchanged — no schema column required.
+ */
+export function tagEngineVersion(
+  report: FhirMeasureReport,
+  version: string | null,
+): FhirMeasureReport {
+  if (version === null) return report;
+  const meta = (report['meta'] ?? {}) as Record<string, unknown>;
+  const existing = Array.isArray(meta['tag']) ? (meta['tag'] as unknown[]) : [];
+  const tag = [
+    ...existing.filter(
+      (t) =>
+        !(t && typeof t === 'object' && (t as { system?: unknown }).system === CQL_ENGINE_VERSION_TAG_SYSTEM),
+    ),
+    { system: CQL_ENGINE_VERSION_TAG_SYSTEM, code: version },
+  ];
+  return { ...report, meta: { ...meta, tag } };
+}
 
 interface MeasureBinding {
   measure_code: string;
@@ -64,6 +93,9 @@ export async function refreshCqlMeasureResults(): Promise<RefreshResult> {
   let rowCount = 0;
   const failures: string[] = [];
 
+  // Capture the engine version once per refresh; null-safe when unreachable.
+  const capability = await fetchEngineCapability(url);
+
   for (const b of bindings) {
     const period = { start: b.period_start ?? fb.start, end: b.period_end ?? fb.end };
     try {
@@ -72,7 +104,11 @@ export async function refreshCqlMeasureResults(): Promise<RefreshResult> {
         periodEnd: period.end,
         reportType: 'population',
       });
-      await persistMeasureReport(b.measure_code, period, report);
+      await persistMeasureReport(
+        b.measure_code,
+        period,
+        tagEngineVersion(report, capability.version),
+      );
       rowCount += 1;
     } catch {
       failures.push(b.measure_code);

@@ -9,6 +9,7 @@
 import { sql } from '@medgnosis/db';
 import {
   evaluateMeasure,
+  fetchEngineCapability,
   populationsFromReport,
   type FhirMeasureReport,
 } from './fhir/cqlEngineClient.js';
@@ -84,6 +85,8 @@ export interface ReconcileResult {
   sql: PopulationCounts;
   cql: PopulationCounts;
   deltas: PopulationCounts;
+  /** Engine software version captured from /metadata; null when unreachable. */
+  engineVersion: string | null;
 }
 
 export interface UpdateMeasurePromotionConfigInput {
@@ -298,11 +301,17 @@ export async function reconcile(
     exclusion: sqlRows[0]?.exclusion ?? 0,
   };
 
-  const report = await evaluateMeasure(engineUrl, engineMeasureId, {
-    periodStart: period.start,
-    periodEnd: period.end,
-    reportType: 'population',
-  });
+  // Capture the engine version null-safely (records null when unreachable)
+  // alongside the evaluation so the reconciliation run is reproducible.
+  const [capability, report] = await Promise.all([
+    fetchEngineCapability(engineUrl),
+    evaluateMeasure(engineUrl, engineMeasureId, {
+      periodStart: period.start,
+      periodEnd: period.end,
+      reportType: 'population',
+    }),
+  ]);
+  const engineVersion = capability.version;
   const p = populationsFromReport(report);
   const cqlPops: PopulationCounts = {
     denominator: p.denominator,
@@ -339,7 +348,7 @@ export async function reconcile(
           report,
           scope: { ...scope, promotionEligible },
           cqlMeasureReportId: opts.cqlMeasureReportId ?? null,
-          metadata: opts.metadata ?? {},
+          metadata: { ...(opts.metadata ?? {}), engineVersion },
         })
       : null;
 
@@ -356,6 +365,7 @@ export async function reconcile(
     sql: sqlPops,
     cql: cqlPops,
     deltas,
+    engineVersion,
   };
 }
 
