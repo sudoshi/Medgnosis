@@ -27,6 +27,8 @@ import {
   systemAlertAuditDetails,
   isSystemAlertNightlyEnabled,
 } from '../services/systemAlerts.js';
+import { runCqlArtifactLoad } from '../services/cqlEngineLoader.js';
+import { runQdmShadowRefresh } from '../services/qdm/bridgeOps.js';
 import { writeSystemAuditLog } from '../services/auditLog.js';
 
 export const SCHEDULER_QUEUE_NAME = 'medgnosis-nightly';
@@ -163,6 +165,52 @@ async function processNightlyJob(): Promise<void> {
       );
     } catch (err) {
       console.error('[nightly] System alert dispatch failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // 12. Bounded CQL/QI-Core artifact load into the clinical-reasoning sidecar.
+  // Off unless enabled; self-bounds via cqlCohortExportLimit and audits internally.
+  if (process.env['CQL_LOAD_NIGHTLY_ENABLED'] === 'true') {
+    try {
+      const cqlLoad = await runCqlArtifactLoad({ triggeredBy: 'nightly' });
+      console.info(
+        '[nightly] CQL artifact load: ' +
+          `status=${cqlLoad.status} reachable=${cqlLoad.engineReachable} version=${cqlLoad.engineVersion ?? 'n/a'}`,
+      );
+    } catch (err) {
+      console.error('[nightly] CQL artifact load failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // 13. Bounded QDM bridge shadow refresh for operator-configured measures.
+  // Off unless enabled; each refresh is row-capped, idempotent, and PHI-safe.
+  if (process.env['QDM_SHADOW_NIGHTLY_ENABLED'] === 'true') {
+    const measures = (process.env['QDM_SHADOW_NIGHTLY_MEASURES'] ?? '')
+      .split(',')
+      .map((code) => code.trim())
+      .filter((code) => code.length > 0);
+    for (const measureCode of measures) {
+      try {
+        const refresh = await runQdmShadowRefresh({ measureCode, triggerSource: 'scheduled' });
+        await writeSystemAuditLog('qdm_shadow_refresh', 'qdm_bridge_run', refresh.runId ?? 'nightly', {
+          status: refresh.status,
+          measureCode: refresh.measureCode,
+          candidatePopulation: refresh.candidatePopulation,
+          patientsProcessed: refresh.patientsProcessed,
+          batches: refresh.batches,
+          capped: refresh.capped,
+          triggeredBy: 'nightly',
+        });
+        console.info(
+          '[nightly] QDM shadow refresh: ' +
+            `measure=${refresh.measureCode} status=${refresh.status} processed=${refresh.patientsProcessed} capped=${refresh.capped}`,
+        );
+      } catch (err) {
+        console.error(
+          `[nightly] QDM shadow refresh failed for ${measureCode}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
   }
 
